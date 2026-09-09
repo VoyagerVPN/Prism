@@ -1,0 +1,9 @@
+{
+  "backend_root": "../../Data/Packages/ComfyUI",
+  "python": "../../Data/Packages/ComfyUI/venv/Scripts/python.exe",
+  "models_root": "../../Data/Models",
+  "port": 8188,
+  "lan_interface": "Ethernet",
+  "startup_timeout_seconds": 180,
+  "arguments": ["--preview-method", "auto", "--use-pytorch-cross-attention", "--enable-manager"]
+}

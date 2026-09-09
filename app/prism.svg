@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <title>Prism</title>
+  <rect width="64" height="64" rx="16" fill="#101018"/>
+  <path d="M31 10 53 49H9L31 10Z" fill="#a78bfa"/>
+  <path d="M31 10v39H9L31 10Z" fill="#ddd6fe"/>
+  <path d="m31 10 22 39-22-13V10Z" fill="#8b5cf6"/>
+  <path d="m31 36 22 13H9l22-13Z" fill="#67e8f9"/>
+  <path d="m49 9 2 5 5 2-5 2-2 5-2-5-5-2 5-2 2-5Z" fill="#fafafa"/>
+</svg>

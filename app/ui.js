@@ -1,0 +1,395 @@
+import { checkpointSelect, stepsSlider, stepsVal, cfgSlider, cfgVal, samplerSelect, schedulerSelect, positiveTextarea, negativeTextarea, widthSlider, heightSlider, batchCountInput, i2iBatchCountInput, i2iDenoiseSlider, i2iDenoiseVal, hiresToggle, hiresScaleSelect, hiresDenoiseSlider, hiresDenoiseVal, faceToggle, faceThresholdSlider, faceThresholdVal, faceStepsSlider, faceStepsVal, upscaleToggle, upscaleSelect, advancedToggle, clipSkipSlider, clipSkipVal, vaeSelect, generateBtn, downloadBtn, seedInput, seedRandomBtn, seedLockBtn, seedPrevBtn, seedNextBtn, interruptBtn, clearQueueBtn, profileSelect, saveProfileBtn, tabT2I, tabI2I, i2iDropzone, i2iFileInput, i2iClearBtn, outputImage, addLoraBtn, reactorToggle, reactorDropzone, reactorFileInput, reactorClearBtn, reactorDetection, reactorRestore, reactorVisibility, reactorVisibilityVal, reactorCodeformerWeight, reactorCodeformerWeightVal, reactorIndexSource, reactorIndexInput } from './elements.js';
+import { switchMode, handleI2IFile, clearI2IFile, setSeedMode, offsetSeed, handleReactorFile, clearReactorFile } from './state.js';
+import { activeLoras, renderLoraStack, addLora } from './lora.js';
+import { modelList, loraList, upscaleModelList, samplerList, schedulerList, vaeList } from './api.js';
+import { applyProfile, saveCustomProfile } from './presets.js';
+import { updateCharLoraList } from './characters.js';
+import { initImageFormats } from './formats.js';
+import {syncBatchControls} from './batch.js';
+
+export function syncModelLists() {
+  populateSelect(checkpointSelect, modelList, "epicrealismXL_pureFix.safetensors");
+  populateSelect(upscaleSelect, upscaleModelList, "4x-UltraSharp.pth");
+  populateSelect(samplerSelect, samplerList, "dpmpp_2m_sde_gpu");
+  populateSelect(schedulerSelect, schedulerList, "karras");
+  populateSelect(vaeSelect, vaeList, "None");
+  updateCharLoraList();
+}
+
+function populateSelect(selectEl, list, defaultVal) {
+  const currentVal = selectEl.value;
+  selectEl.innerHTML = "";
+  list.forEach(item => {
+    const opt = document.createElement("option");
+    opt.value = item;
+    opt.textContent = item;
+    selectEl.appendChild(opt);
+  });
+  if (list.includes(currentVal)) {
+    selectEl.value = currentVal;
+  } else if (currentVal && selectEl.dataset.loaded) {
+    const missing = new Option(`Недоступно: ${currentVal}`, currentVal);
+    missing.disabled = true;
+    selectEl.add(missing);
+    selectEl.value = currentVal;
+  } else if (list.includes(defaultVal)) {
+    selectEl.value = defaultVal;
+  }
+  selectEl.dataset.loaded = 'true';
+}
+
+export function setupUIEventListeners() {
+  setupMobileLayout();
+  setupSettingsTabs();
+  syncBatchControls();
+  for (const input of [batchCountInput,i2iBatchCountInput]) input.addEventListener('input',syncBatchControls);
+  document.addEventListener('wheel', event => {
+    if (event.ctrlKey || event.deltaY === 0 || !(event.target instanceof Element)) return;
+    const input = event.target.closest('.input-group')?.querySelector('input[type="range"], input[type="number"]');
+    if (!input || input.disabled || input.readOnly || input.step === 'any') return;
+    event.preventDefault();
+    const previous = input.value;
+    if (event.deltaY < 0) input.stepUp(); else input.stepDown();
+    if (input.value === previous) return;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }, { passive: false });
+  tabT2I.addEventListener("click", () => switchMode("t2i"));
+  tabI2I.addEventListener("click", () => switchMode("i2i"));
+  
+  i2iDropzone.addEventListener("click", () => i2iFileInput.click());
+  i2iFileInput.addEventListener("change", (e) => {
+    if (e.target.files.length > 0) {
+      handleI2IFile(e.target.files[0]);
+    }
+  });
+  
+  i2iDropzone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    i2iDropzone.style.borderColor = "var(--text-primary)";
+  });
+  
+  i2iDropzone.addEventListener("dragleave", () => {
+    i2iDropzone.style.borderColor = "var(--border-color)";
+  });
+  
+  i2iDropzone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    i2iDropzone.style.borderColor = "var(--border-color)";
+    if (e.dataTransfer.files.length > 0) {
+      handleI2IFile(e.dataTransfer.files[0]);
+    }
+  });
+  
+  i2iClearBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    clearI2IFile();
+  });
+  
+  seedRandomBtn.addEventListener("click", () => setSeedMode("random"));
+  seedLockBtn.addEventListener("click", () => setSeedMode("lock"));
+  const variationStrength = document.getElementById('variation-strength');
+  variationStrength.addEventListener('input', () => {
+    document.getElementById('variation-strength-val').textContent = Number(variationStrength.value).toFixed(2);
+    if (Number(variationStrength.value) > 0 && seedRandomBtn.classList.contains('active')) setSeedMode('lock');
+  });
+  for (const input of [variationStrength,document.getElementById('variation-seed-input')]) {
+    input.addEventListener('change', () => window.dispatchEvent(new CustomEvent('save-settings')));
+  }
+  
+  seedInput.addEventListener("input", () => {
+    const val = seedInput.value.trim();
+    if (val === "random" || val === "") {
+      setSeedMode("random");
+    } else {
+      setSeedMode("lock");
+    }
+  });
+  
+  seedPrevBtn.addEventListener("click", () => offsetSeed(-1));
+  seedNextBtn.addEventListener("click", () => offsetSeed(1));
+  initImageFormats();
+  
+  const setupSlider = (slider, valDisplay, onChangeCallback) => {
+    slider.addEventListener("input", () => {
+      valDisplay.textContent = slider.value;
+      if (onChangeCallback) onChangeCallback(slider.value);
+    });
+    slider.addEventListener("change", () => {
+      window.dispatchEvent(new CustomEvent("save-settings"));
+    });
+  };
+  
+  setupSlider(stepsSlider, stepsVal);
+  setupSlider(cfgSlider, cfgVal);
+  setupSlider(i2iDenoiseSlider, i2iDenoiseVal);
+  setupSlider(hiresDenoiseSlider, hiresDenoiseVal);
+  setupSlider(faceThresholdSlider, faceThresholdVal);
+  setupSlider(faceStepsSlider, faceStepsVal);
+  setupSlider(clipSkipSlider, clipSkipVal);
+  setupSlider(reactorVisibility, reactorVisibilityVal);
+  setupSlider(reactorCodeformerWeight, reactorCodeformerWeightVal);
+  
+  const setupCardToggle = (toggle, cardSelector) => {
+    toggle.addEventListener("change", () => {
+      const card = document.querySelector(cardSelector);
+      if (card) {
+        if (toggle.checked) {
+          card.classList.add("expanded");
+        } else {
+          card.classList.remove("expanded");
+        }
+      }
+      window.dispatchEvent(new CustomEvent("save-settings"));
+    });
+  };
+
+  setupCardToggle(hiresToggle, "#hires-card");
+  setupCardToggle(faceToggle, "#face-card");
+  setupCardToggle(upscaleToggle, "#upscale-card");
+  setupCardToggle(advancedToggle, "#advanced-card");
+  setupCardToggle(reactorToggle, "#reactor-card");
+
+  addLoraBtn.addEventListener("click", () => {
+    addLora(loraList[0] || 'None');
+  });
+
+  generateBtn.addEventListener('click', () => window.dispatchEvent(new CustomEvent('generate-image')));
+  
+  interruptBtn.addEventListener("click", async () => {
+    window.dispatchEvent(new CustomEvent('cancel-job'));
+  });
+  
+  clearQueueBtn.addEventListener("click", async () => {
+    window.dispatchEvent(new CustomEvent('clear-queue'));
+  });
+
+
+  profileSelect.addEventListener("change", () => {
+    applyProfile(profileSelect.value);
+  });
+
+  checkpointSelect.addEventListener("change", () => {
+    // Перерисовываем стек LoRA, чтобы отфильтровать доступные варианты под новую модель
+    renderLoraStack();
+  });
+  
+  saveProfileBtn.addEventListener("click", saveCustomProfile);
+
+  const inputs = [
+    checkpointSelect, stepsSlider, cfgSlider, samplerSelect, schedulerSelect,
+    positiveTextarea, negativeTextarea, batchCountInput, i2iBatchCountInput,
+    widthSlider, heightSlider, hiresToggle, hiresScaleSelect, faceToggle,
+    faceThresholdSlider, faceStepsSlider, upscaleToggle, upscaleSelect,
+    advancedToggle, clipSkipSlider, vaeSelect,
+    reactorToggle, reactorDetection, reactorRestore, reactorVisibility,
+    reactorCodeformerWeight, reactorIndexSource, reactorIndexInput
+  ];
+  inputs.forEach(el => el.addEventListener("change", () => {
+    window.dispatchEvent(new CustomEvent("save-settings"));
+  }));
+
+  window.addEventListener("apply-i2i-file", (e) => {
+    if (e.detail && e.detail.file) {
+      handleI2IFile(e.detail.file);
+    }
+  });
+
+  window.addEventListener("keydown", (e) => {
+    if (e.ctrlKey && e.key === "Enter") {
+      if (!generateBtn.disabled) {
+        e.preventDefault();
+        window.dispatchEvent(new CustomEvent('generate-image'));
+      }
+    }
+  });
+
+  // Привязка управления весом тегов для текстовых полей промптов
+  const setupTextareaWeightControl = (textarea) => {
+    textarea.addEventListener("wheel", (e) => {
+      if (e.ctrlKey) {
+        e.preventDefault();
+        adjustTagWeight(textarea, e.deltaY < 0);
+      }
+    }, { passive: false });
+    
+    textarea.addEventListener("keydown", (e) => {
+      if (e.ctrlKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+        e.preventDefault();
+        adjustTagWeight(textarea, e.key === "ArrowUp");
+      }
+    });
+  };
+
+  setupTextareaWeightControl(positiveTextarea);
+  setupTextareaWeightControl(negativeTextarea);
+
+  // ReActor Drag & Drop and click handlers
+  reactorDropzone.addEventListener("click", () => reactorFileInput.click());
+  reactorFileInput.addEventListener("change", (e) => {
+    if (e.target.files.length > 0) {
+      handleReactorFile(e.target.files[0]);
+    }
+  });
+  
+  reactorClearBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    clearReactorFile();
+  });
+  
+  reactorDropzone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    reactorDropzone.style.borderColor = "var(--text-primary)";
+  });
+  
+  reactorDropzone.addEventListener("dragleave", () => {
+    reactorDropzone.style.borderColor = "var(--border-color)";
+  });
+  
+  reactorDropzone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    reactorDropzone.style.borderColor = "var(--border-color)";
+    if (e.dataTransfer.files.length > 0) {
+      handleReactorFile(e.dataTransfer.files[0]);
+    }
+  });
+
+  const syncCodeformerSlider = () => {
+    const weightGroup = document.getElementById("reactor-codeformer-weight-group");
+    if (weightGroup) {
+      if (reactorRestore.value === "codeformer-v0.1.0.pth") {
+        weightGroup.style.display = "block";
+      } else {
+        weightGroup.style.display = "none";
+      }
+    }
+  };
+  reactorRestore.addEventListener("change", syncCodeformerSlider);
+  syncCodeformerSlider();
+}
+
+function setupSettingsTabs() {
+  const tabs = [...document.querySelectorAll('.settings-tabs [role="tab"]')];
+  const show = tab => {
+    for (const item of tabs) {
+      const active = item === tab;
+      item.setAttribute('aria-selected', String(active));
+      item.tabIndex = active ? 0 : -1;
+      document.getElementById(item.getAttribute('aria-controls')).hidden = !active;
+    }
+  };
+  for (const [index, tab] of tabs.entries()) {
+    tab.addEventListener('click', () => show(tab));
+    tab.addEventListener('keydown', event => {
+      const target = event.key === 'ArrowRight' ? (index + 1) % tabs.length : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : -1;
+      if (target < 0) return;
+      event.preventDefault();
+      show(tabs[target]);
+      tabs[target].focus();
+    });
+  }
+  window.addEventListener('show-content-settings', () => show(tabs[0]));
+  document.getElementById('apply-i2i-btn').addEventListener('click', () => show(tabs[0]));
+}
+
+function setupMobileLayout() {
+  const mobile = matchMedia('(max-width: 1100px)');
+  const moves = [
+    ['.action-status-info', '#mobile-generation-controls'],
+    ['#generate-btn', '#mobile-generation-controls'],
+    ['#interrupt-btn', '#mobile-generation-controls'],
+    ['#progress-container', '#mobile-generation-controls'],
+  ].map(([selector, target]) => {
+    const element = document.querySelector(selector);
+    const anchor = document.createComment('Место элемента в настольной панели');
+    element.before(anchor);
+    return { element, anchor, target: document.querySelector(target) };
+  });
+  const applyLayout = () => {
+    for (const { element, anchor, target } of moves) {
+      if (mobile.matches) target.append(element);
+      else anchor.after(element);
+    }
+  };
+  const showPanel = panel => {
+    if (!mobile.matches) return;
+    document.body.dataset.mobilePanel = panel;
+    document.querySelectorAll('.mobile-nav button').forEach(button => {
+      button.setAttribute('aria-pressed', String(button.dataset.mobilePanel === panel));
+    });
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  };
+  document.querySelectorAll('.mobile-nav button').forEach(button => {
+    button.addEventListener('click', () => showPanel(button.dataset.mobilePanel));
+  });
+  generateBtn.addEventListener('click', () => showPanel('generate'));
+  document.getElementById('apply-i2i-btn').addEventListener('click', () => showPanel('settings'));
+  mobile.addEventListener('change', applyLayout);
+  applyLayout();
+}
+
+// Вспомогательная функция для поиска границ тега вокруг каретки ввода
+function findTagRange(text, pos) {
+  let start = text.lastIndexOf(',', pos - 1);
+  start = start === -1 ? 0 : start + 1;
+  
+  let end = text.indexOf(',', pos);
+  end = end === -1 ? text.length : end;
+  
+  let tagStart = start;
+  while (tagStart < end && /\s/.test(text[tagStart])) {
+    tagStart++;
+  }
+  let tagEnd = end;
+  while (tagEnd > tagStart && /\s/.test(text[tagEnd - 1])) {
+    tagEnd--;
+  }
+  
+  return { start: tagStart, end: tagEnd };
+}
+
+// Изменение веса тега в скобках (поддержка формата Stable Diffusion / ComfyUI)
+function adjustTagWeight(textarea, isIncrement) {
+  const text = textarea.value;
+  const pos = textarea.selectionStart;
+  if (pos === undefined) return;
+  
+  const range = findTagRange(text, pos);
+  if (range.start === range.end) return;
+  
+  const rawTag = text.substring(range.start, range.end);
+  
+  let word = rawTag;
+  let weight = 1.0;
+  
+  const matchWeight = rawTag.match(/^\(([^:]+):([0-9.]+)\)$/);
+  if (matchWeight) {
+    word = matchWeight[1];
+    weight = parseFloat(matchWeight[2]);
+  } else {
+    const matchParens = rawTag.match(/^\(([^:]+)\)$/);
+    if (matchParens) {
+      word = matchParens[1];
+      weight = 1.1;
+    }
+  }
+  
+  weight = isIncrement ? weight + 0.05 : weight - 0.05;
+  weight = parseFloat(weight.toFixed(2));
+  
+  if (weight < 0.05) weight = 0.05;
+  
+  let newTag = `(${word}:${weight})`;
+  if (weight === 1.0) {
+    newTag = word;
+  }
+  
+  const newText = text.substring(0, range.start) + newTag + text.substring(range.end);
+  textarea.value = newText;
+  
+  const newCursorPos = range.start + newTag.length;
+  textarea.setSelectionRange(newCursorPos, newCursorPos);
+  
+  textarea.dispatchEvent(new Event("input", { bubbles: true }));
+  textarea.dispatchEvent(new Event("change", { bubbles: true }));
+}

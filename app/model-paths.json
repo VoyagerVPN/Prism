@@ -1,0 +1,28 @@
+{
+  "prism": {
+    "base_path": "../../Data/Models",
+    "checkpoints": "StableDiffusion",
+    "diffusers": "Diffusers",
+    "loras": "Lora\nLyCORIS",
+    "clip": "TextEncoders",
+    "clip_vision": "ClipVision",
+    "embeddings": "Embeddings",
+    "vae": "VAE",
+    "vae_approx": "ApproxVAE",
+    "controlnet": "ControlNet\nT2IAdapter",
+    "gligen": "GLIGEN",
+    "upscale_models": "ESRGAN\nRealESRGAN\nSwinIR",
+    "hypernetworks": "Hypernetwork",
+    "ipadapter": "IpAdapter\nIpAdapters15\nIpAdaptersXl",
+    "prompt_expansion": "PromptExpansion",
+    "ultralytics": "Ultralytics",
+    "ultralytics_bbox": "Ultralytics/bbox",
+    "ultralytics_segm": "Ultralytics/segm",
+    "sams": "Sams",
+    "diffusion_models": "DiffusionModels",
+    "style_models": "StyleModels",
+    "audio_encoders": "AudioEncoders",
+    "model_patches": "ModelPatches",
+    "background_removal": "BackgroundRemoval"
+  }
+}

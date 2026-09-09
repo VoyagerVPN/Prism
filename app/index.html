@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prism — генерация изображений</title>
+  <meta name="application-name" content="Prism">
+  <meta name="theme-color" content="#101018">
+  <link rel="icon" type="image/x-icon" href="prism.ico" sizes="any">
+  <link rel="icon" type="image/svg+xml" href="prism.svg">
+  <link rel="stylesheet" href="vendor-select.css">
+  <link rel="stylesheet" href="index.css">
+  <link rel="stylesheet" href="controls.css">
+</head>
+<body>
+  <svg class="icon-sprite" aria-hidden="true"><defs><symbol id="icon-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol><symbol id="icon-check" viewBox="0 0 24 24"><path d="m20 6-11 11-5-5"/></symbol><symbol id="icon-save" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12l4 4v12a2 2 0 0 1-2 2Z"/><path d="M7 3v6h10V3M7 21v-8h10v8"/></symbol><symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M20 7a9 9 0 0 0-15-2L3 8m0-5v5h5M4 17a9 9 0 0 0 15 2l2-3m0 5v-5h-5"/></symbol><symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol><symbol id="icon-edit" viewBox="0 0 24 24"><path d="m16 3 5 5-12 12-6 1 1-6Z M14 5l5 5"/></symbol><symbol id="icon-delete" viewBox="0 0 24 24"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/></symbol><symbol id="icon-person" viewBox="0 0 24 24"><circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></symbol>
+<symbol id="icon-bulb" viewBox="0 0 24 24"><path d="M9 18h6m-5 3h4M8 14a7 7 0 1 1 8 0l-1 1v3H9v-3Z"/></symbol>
+<symbol id="icon-brush" viewBox="0 0 24 24"><path d="m14 6 4-4 4 4-11 11-4-4 7-7ZM7 13c-5 0-1 7-5 8 7 2 11-3 9-4"/></symbol>
+<symbol id="icon-shirt" viewBox="0 0 24 24"><path d="m8 3-6 4 3 5 3-2v11h8V10l3 2 3-5-6-4a4 4 0 0 1-8 0Z"/></symbol>
+<symbol id="icon-pose" viewBox="0 0 24 24"><circle cx="12" cy="4" r="2"/><path d="m4 8 8 2 8-2m-8 2v5m0 0-5 7m5-7 5 7"/></symbol>
+<symbol id="icon-cube" viewBox="0 0 24 24"><path d="m12 2 9 5v10l-9 5-9-5V7Zm0 10v10M3 7l9 5 9-5"/></symbol>
+<symbol id="icon-landscape" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="18" rx="2"/><circle cx="8" cy="8" r="2"/><path d="m2 18 6-6 4 4 4-6 6 8"/></symbol>
+<symbol id="icon-tool" viewBox="0 0 24 24"><path d="M14 6a6 6 0 0 0-7 8l-5 5 3 3 5-5a6 6 0 0 0 8-7l-4 4-4-4Z"/></symbol>
+<symbol id="icon-tag" viewBox="0 0 24 24"><path d="M3 3h8l11 11-8 8L3 11Z"/><circle cx="7" cy="7" r="1"/></symbol><symbol id="icon-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 1-4 2 2 0 0 1 1-4h3a3 3 0 0 0 3-3c0-4-4-7-9-7Z"/><circle cx="7" cy="10" r="1"/><circle cx="10" cy="7" r="1"/><circle cx="15" cy="7" r="1"/></symbol>
+<symbol id="icon-user-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="9" r="3"/><path d="M5 19a7 7 0 0 1 14 0"/></symbol>
+<symbol id="icon-keywords" viewBox="0 0 24 24"><path d="M9 3 7 21M17 3l-2 18M3 9h18M2 15h18"/></symbol></defs></svg>
+
+  <header>
+    <div class="logo-container">
+      <img src="prism.svg" class="logo-icon" alt="" width="24" height="24">
+      <h1>Prism</h1>
+      <div class="connection-status">
+        <div id="status-dot" class="status-dot disconnected"></div>
+        <span id="status-text">Подключение...</span>
+        <span id="queue-length" style="margin-left: 6px; opacity: 0.7;">В очереди: 0</span>
+      </div>
+    </div>
+
+    <div class="header-actions">
+      <div class="action-status-info">
+        <span id="progress-label" class="progress-label">Готов к генерации</span>
+        <span id="progress-sub" class="progress-sub">Настройте параметры и нажмите Запуск</span>
+      </div>
+      <button id="generate-btn" class="generate-btn" disabled>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="5 3 19 12 5 21 5 3"></polygon>
+        </svg>
+        Запуск
+      </button>
+          <button id="interrupt-btn" class="interrupt-btn">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right: 4px;">
+              <rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect>
+            </svg>
+            Прервать
+          </button>
+    </div>
+
+    <!-- Thin progress bar at the bottom of the header -->
+    <div id="progress-container" class="progress-bar-container">
+      <div id="progress-bar-fill" class="progress-bar-fill"></div>
+    </div>
+  </header>
+
+  <nav class="mobile-nav" aria-label="Разделы панели">
+    <button type="button" data-mobile-panel="generate" aria-pressed="true" aria-controls="generation-panel">Генерация</button>
+    <button type="button" data-mobile-panel="settings" aria-pressed="false" aria-controls="settings-panel">Параметры</button>
+  </nav>
+
+  <div id="dashboard-message" role="status" aria-live="polite" hidden></div>
+  <button id="reset-job-btn" class="header-meta-btn" hidden>Сбросить ожидание отсутствующего задания</button>
+
+  <main>
+    <!-- Left Sidebar: Settings Panel -->
+    <div class="sidebar" id="settings-panel">
+      <!-- Mode Tabs (Text-to-Image / Image-to-Image) -->
+
+
+      <nav class="settings-tabs" role="tablist" aria-label="Настройки изображения"><button type="button" role="tab" id="settings-tab-image" aria-controls="settings-image" aria-selected="true" tabindex="0">Изображение</button><button type="button" role="tab" id="settings-tab-processing" aria-controls="settings-processing" aria-selected="false" tabindex="-1">Обработка</button></nav><div class="settings-panels"><section class="settings-panel" id="settings-image" role="tabpanel" aria-labelledby="settings-tab-image"><div class="sidebar-tabs">
+        <button class="sidebar-tab active" id="tab-t2i">По описанию</button>
+        <button class="sidebar-tab" id="tab-i2i">Из изображения</button>
+      </div>
+
+          <div class="section-card" id="generation-model-card">
+            <div class="section-title">
+              <h3>Модель генерации</h3>
+              <button id="refresh-models-btn" class="icon-btn-sm" aria-label="Обновить список моделей" title="Найти новые файлы моделей на диске"><svg class="ui-icon" aria-hidden="true"><use href="#icon-refresh"/></svg></button>
+            </div>
+            <small id="model-scan-status" role="status" aria-live="polite"></small>
+            <div class="model-presets">
+              <label class="input-label" for="profile-select">Пресет модели</label>
+              <div class="profile-select-container"><select id="profile-select" aria-label="Пресет модели"><option value="default">Без пресета</option></select><button type="button" id="delete-profile-btn" class="icon-btn-sm" aria-label="Удалить пресет" title="Удалить пресет" disabled><svg class="ui-icon" aria-hidden="true"><use href="#icon-delete"/></svg></button></div>
+              <small id="preset-status" role="status" aria-live="polite">Загрузка пресетов…</small>
+              <div class="preset-actions">
+                <button type="button" id="update-profile-btn" disabled>Сохранить изменения</button>
+                <button type="button" id="reset-profile-btn" hidden>Вернуть сохранённые</button>
+                <button type="button" id="save-profile-btn" disabled>Сохранить как новый</button>
+
+              </div>
+              <small>Модель, шаги, CFG, семплер, шедулер, Clip Skip и VAE</small>
+            </div>
+            <div class="input-group">
+
+              <select id="checkpoint-select" aria-label="Модель генерации">
+                <option value="" disabled selected>Загрузка моделей…</option>
+              </select>
+            </div>
+            <!-- Steps & CFG Sliders -->
+            <div class="grid-2-col">
+              <div class="input-group">
+                <div style="display: flex; justify-content: space-between;">
+                  <label class="input-label" for="steps-slider">Шаги</label>
+                  <span id="steps-val" class="range-val">30</span>
+                </div>
+                <div class="range-container">
+                  <input type="range" id="steps-slider" min="10" max="60" step="1" value="30">
+                </div>
+              </div>
+              <div class="input-group">
+                <div style="display: flex; justify-content: space-between;">
+                  <label class="input-label" for="cfg-slider">CFG</label>
+                  <span id="cfg-val" class="range-val">6.0</span>
+                </div>
+                <div class="range-container">
+                  <input type="range" id="cfg-slider" min="0.0" max="15.0" step="0.5" value="6.0">
+                </div>
+              </div>
+            </div>
+            <!-- Sampler & Scheduler Selection -->
+            <div class="grid-2-col sampler-fields">
+              <div class="input-group">
+                <label class="input-label" for="sampler-select">Семплер</label>
+                <select id="sampler-select">
+                  <option value="dpmpp_2m_sde_gpu">dpmpp_2m_sde_gpu</option>
+                </select>
+              </div>
+              <div class="input-group">
+                <label class="input-label" for="scheduler-select">Шедулер</label>
+                <select id="scheduler-select">
+                  <option value="karras">karras</option>
+                </select>
+              </div>
+            </div>
+          <div class="section-card settings-subsection" id="advanced-card">
+            <div class="section-title">
+              <h3>Дополнительные параметры</h3>
+              <label class="switch">
+                <input type="checkbox" id="advanced-toggle" aria-label="Дополнительные настройки">
+                <span class="slider"></span>
+              </label>
+            </div>
+            <div class="card-body">
+              <div class="input-group">
+                <div style="display: flex; justify-content: space-between;">
+                  <label class="input-label" for="clip-skip">Clip Skip</label>
+                  <span id="clip-skip-val" class="range-val">2</span>
+                </div>
+                <div class="range-container">
+                  <input type="range" id="clip-skip" min="1" max="4" step="1" value="2">
+                </div>
+              </div>
+              <div class="input-group">
+                <label class="input-label" for="vae-select">Декодер VAE</label>
+                <select id="vae-select">
+                  <option value="None">Встроенный (None)</option>
+                </select>
+              </div>
+            </div>
+          </div></div><div class="section-card" id="output-settings-card"><div class="section-card mode-t2i-only settings-subsection format-section">
+            <div class="section-title">
+              <h3>Формат изображения</h3>
+            </div>
+            <div class="input-group">
+              <label class="input-label">Пропорции</label>
+              <div class="resolution-grid">
+                <button class="res-btn active" data-width="1024" data-height="1024" title="1024 × 1024 px"><span class="ratio-shape" style="--ratio:1024/1024" aria-hidden="true"></span><span>1:1</span></button>
+                <button class="res-btn" data-width="1152" data-height="896" title="1152 × 896 px"><span class="ratio-shape" style="--ratio:1152/896" aria-hidden="true"></span><span>9:7</span></button>
+                <button class="res-btn" data-width="896" data-height="1152" title="896 × 1152 px"><span class="ratio-shape" style="--ratio:896/1152" aria-hidden="true"></span><span>7:9</span></button>
+                <button class="res-btn" data-width="1280" data-height="720" title="1280 × 720 px"><span class="ratio-shape" style="--ratio:1280/720" aria-hidden="true"></span><span>16:9</span></button>
+                <button class="res-btn" data-width="720" data-height="1280" title="720 × 1280 px"><span class="ratio-shape" style="--ratio:720/1280" aria-hidden="true"></span><span>9:16</span></button>
+                <button class="res-btn" data-width="1344" data-height="768" title="1344 × 768 px"><span class="ratio-shape" style="--ratio:1344/768" aria-hidden="true"></span><span>7:4</span></button>
+              </div>
+            </div>
+            <!-- Custom Width/Height Sliders -->
+            <p id="current-format-ratio" class="format-ratio" aria-live="polite"></p>
+            <div class="grid-2-col">
+              <div class="input-group">
+                <div style="display: flex; justify-content: space-between;">
+                  <label class="input-label" for="width-slider">Ширина</label>
+                  <input type="number" id="width-val" class="dimension-input" aria-label="Ширина в пикселях" min="256" max="2048" step="8" value="1024" required>
+                </div>
+                <div class="range-container">
+                  <input type="range" id="width-slider" min="256" max="2048" step="8" value="1024">
+                </div>
+              </div>
+              <div class="input-group">
+                <div style="display: flex; justify-content: space-between;">
+                  <label class="input-label" for="height-slider">Высота</label>
+                  <input type="number" id="height-val" class="dimension-input" aria-label="Высота в пикселях" min="256" max="2048" step="8" value="1024" required>
+                </div>
+                <div class="range-container">
+                  <input type="range" id="height-slider" min="256" max="2048" step="8" value="1024">
+                </div>
+              </div>
+            </div>
+            <div class="input-group">
+              <label class="input-label" for="batch-count">Количество изображений</label>
+              <span id="batch-count-label" class="format-ratio">1 изображение</span>
+              <div class="range-container"><input type="range" id="batch-count" min="0" max="2" step="1" value="0" aria-valuetext="1 изображение"></div>
+              <div class="batch-stops" aria-hidden="true"><span>1</span><span>4</span><span>9</span></div>
+            </div>
+          </div><div class="section-card mode-i2i-only settings-subsection format-section" style="display: none;">
+            <div class="section-title">
+              <h3>Исходное изображение</h3>
+            </div>
+            <div class="input-group">
+              <label class="input-label">Исходное изображение</label>
+              <div id="i2i-dropzone" class="i2i-dropzone">
+                <svg class="dropzone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                  <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                  <polyline points="21 15 16 10 5 21"></polyline>
+                </svg>
+                <span class="dropzone-text">Перетащите картинку или кликните</span>
+                <input type="file" id="i2i-file-input" accept="image/*" style="display: none;">
+                <img id="i2i-preview" class="i2i-preview" style="display: none;">
+                <button id="i2i-clear-btn" class="i2i-clear-btn" style="display: none;">Удалить</button>
+              </div>
+            </div>
+            <div class="input-group">
+              <div style="display: flex; justify-content: space-between;">
+                <label class="input-label" for="i2i-denoise">Сила изменения (Denoise)</label>
+                <span id="i2i-denoise-val" class="range-val">0.60</span>
+              </div>
+              <div class="range-container">
+                <input type="range" id="i2i-denoise" min="0.0" max="1.0" step="0.05" value="0.60">
+              </div>
+            </div>
+            <div class="input-group">
+              <label class="input-label" for="i2i-batch-count">Количество изображений</label>
+              <span id="i2i-batch-count-label" class="format-ratio">1 изображение</span>
+              <div class="range-container"><input type="range" id="i2i-batch-count" min="0" max="2" step="1" value="0" aria-valuetext="1 изображение"></div>
+              <div class="batch-stops" aria-hidden="true"><span>1</span><span>4</span><span>9</span></div>
+            </div>
+          </div><div class="section-card seed-section settings-subsection">
+          <div class="section-title"><h3>Seed</h3></div>
+          <div class="seed-input-container">
+            <label class="visually-hidden" for="seed-input">Seed</label>
+            <input type="text" id="seed-input" value="random" placeholder="Случайный"><button id="seed-prev-btn" class="seed-btn" title="Предыдущий сид (-1)">-1</button><button id="seed-next-btn" class="seed-btn" title="Следующий сид (+1)">+1</button>
+          </div>
+          <div class="seed-btn-group">
+            <button id="seed-random-btn" class="seed-btn active" title="Случайный Seed">Случайный</button>
+            <button id="seed-lock-btn" class="seed-btn" title="Использовать seed последнего результата или сохранить введённый вручную">Фиксированный</button>
+
+
+          </div>
+          <details id="seed-variation" class="seed-variation">
+            <summary>Вариация</summary>
+            <div class="input-group">
+              <label class="input-label" for="variation-seed-input">Seed вариации</label>
+              <input type="text" id="variation-seed-input" value="random" placeholder="random — новый при каждом запуске">
+            </div>
+            <div class="input-group">
+              <label class="input-label" for="variation-strength">Сила <span id="variation-strength-val">0.00</span></label>
+              <div class="range-container"><input type="range" id="variation-strength" min="0" max="1" step="0.01" value="0"></div>
+              <p class="format-ratio">0 — исходный шум. Для небольших изменений начните с 0.05–0.15.</p>
+            </div>
+          </details>
+        </div></div>
+
+
+          <!-- Image Size & Batch Card (Visible in T2I mode) -->
+
+
+          <!-- Image-to-Image Upload & Settings Card (Visible in I2I mode) -->
+
+
+
+
+
+
+
+
+
+
+
+
+
+          <div class="section-card" id="character-card">
+            <div class="section-title">
+              <h3>Активный персонаж</h3>
+
+            </div>
+            <div class="input-group">
+
+              <select id="character-select" aria-label="Персонаж">
+                <option value="none">Без персонажа</option>
+              </select>
+              <small id="character-storage-status" role="status" aria-live="polite"></small>
+            </div>
+            <div class="character-empty empty-state"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="11" r="5"/><path d="M6 28v-3a10 10 0 0 1 20 0v3"/></svg><strong>Выберите образ</strong><p>Настройте персонажа в библиотеке LoRA и подключите нужный комплект одежды.</p></div><div id="character-details" class="character-details" style="display: none;">
+              <div class="input-group">
+                <label class="input-label" for="char-name-input">Имя персонажа</label>
+                <input type="text" id="char-name-input" placeholder="Имя...">
+              </div>
+              <div class="input-group">
+                <label class="input-label" for="char-lora-select">LoRA персонажа</label>
+                <select id="char-lora-select">
+                  <option value="None">None</option>
+                </select>
+              </div>
+              <div class="input-group">
+                <div style="display: flex; justify-content: space-between;">
+                  <label class="input-label" for="char-lora-strength">Вес LoRA</label>
+                  <span id="char-lora-strength-val" class="range-val">1.00</span>
+                </div>
+                <div class="range-container">
+                  <input type="range" id="char-lora-strength" min="-1.0" max="2.0" step="0.05" value="1.0">
+                </div>
+              </div>
+              <div class="input-group">
+                <label class="input-label" for="char-appearance-input">Описание внешности</label>
+                <textarea id="char-appearance-input" placeholder="Глаза, волосы, лицо..."></textarea>
+              </div>
+              <div class="input-group">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <label class="input-label" for="char-outfit-select">Комплект одежды</label>
+                  <label class="switch">
+                    <input type="checkbox" id="char-outfit-toggle" aria-label="Использовать одежду персонажа" checked>
+                    <span class="slider"></span>
+                  </label>
+                </div>
+                <!-- Ряд управления комплектами одежды -->
+                <div class="char-outfit-controls-row">
+                  <select id="char-outfit-select" title="Выбрать комплект одежды">
+                    <option value="default">По умолчанию</option>
+                  </select>
+                  <button id="add-outfit-btn" aria-label="Добавить комплект одежды" class="icon-btn-sm" title="Добавить новый комплект одежды"><svg class="ui-icon" aria-hidden="true"><use href="#icon-plus"/></svg></button>
+                  <button id="rename-outfit-btn" aria-label="Переименовать комплект" class="icon-btn-sm" title="Переименовать этот комплект"><svg class="ui-icon" aria-hidden="true"><use href="#icon-edit"/></svg></button>
+                  <button id="delete-outfit-btn" aria-label="Удалить комплект" class="icon-btn-sm" title="Удалить этот комплект" style="color: #ef4444;"><svg class="ui-icon" aria-hidden="true"><use href="#icon-delete"/></svg></button>
+                </div>
+                <textarea id="char-outfit-input" placeholder="Куртка, футболка, штаны..."></textarea>
+              </div>
+              <div class="character-actions-row">
+                <button id="save-character-btn" class="save-char-btn">Сохранить</button>
+                <button id="delete-character-btn" class="delete-char-btn">Удалить</button>
+              </div>
+            </div>
+          <button id="add-character-btn" class="add-lora-btn">Создать персонажа</button></div><!-- Characters Card -->
+
+
+          <div class="section-card" id="lora-card">
+            <div class="section-title">
+              <h3>LoRA</h3>
+
+            </div>
+            <div id="model-import-drop" hidden><strong>Перетащите файл сюда</strong><small>LoRA или модель · .safetensors</small></div>
+            <input type="file" id="model-import-file" accept=".safetensors" hidden>
+            <div id="lora-empty" class="empty-state"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="m16 3 13 8-13 8L3 11Z M3 17l13 8 13-8 M3 23l13 8 13-8"/></svg><strong>Добавьте стиль или эффект</strong><p>Подключите LoRA из библиотеки или импортируйте файл.</p></div><div id="lora-stack-container" class="lora-stack-container">
+              <!-- LoRA rows will dynamically append here -->
+            </div>
+          <div class="panel-card-actions"><button type="button" id="model-import-open" class="add-lora-btn" title="Импортировать LoRA или модель из файла .safetensors">Импорт</button><button id="add-lora-btn" class="add-lora-btn panel-primary">Добавить LoRA</button></div></div><!-- LoRA Stack Card -->
+
+
+        </section><section class="settings-panel" id="settings-processing" role="tabpanel" aria-labelledby="settings-tab-processing" hidden>
+
+        <div class="processing-grid">
+<div class="section-card" id="hires-card">
+            <div class="section-title">
+              <h3>Детализация изображения</h3>
+              <label class="switch">
+                <input type="checkbox" id="hires-toggle" aria-label="Hires fix">
+                <span class="slider"></span>
+              </label>
+            </div>
+            <p class="effect-description">Увеличивает изображение и повторно прорисовывает детали.</p><div class="card-body">
+              <div class="input-group">
+                <label class="input-label" for="hires-scale">Масштаб увеличения</label>
+                <select id="hires-scale">
+                  <option value="1.25">1.25x</option>
+                  <option value="1.5" selected>1.5x</option>
+                  <option value="2.0">2.0x</option>
+                </select>
+              </div>
+              <div class="input-group">
+                <div style="display: flex; justify-content: space-between;">
+                  <label class="input-label" for="hires-denoise">Сила шума (Denoise)</label>
+                  <span id="hires-denoise-val" class="range-val">0.40</span>
+                </div>
+                <div class="range-container">
+                  <input type="range" id="hires-denoise" min="0.0" max="1.0" step="0.05" value="0.4">
+                </div>
+              </div>
+            </div>
+          </div>
+<div class="section-card" id="face-card">
+            <div class="section-title">
+              <h3>Детализация лица</h3>
+              <label class="switch">
+                <input type="checkbox" id="face-toggle" aria-label="Face Detailer">
+                <span class="slider"></span>
+              </label>
+            </div>
+            <p class="effect-description">Находит лица и отдельно улучшает их детализацию.</p><div class="card-body">
+              <div class="grid-2-col">
+                <div class="input-group">
+                  <div style="display: flex; justify-content: space-between;">
+                    <label class="input-label" for="face-threshold">Порог детектора</label>
+                    <span id="face-threshold-val" class="range-val">0.50</span>
+                  </div>
+                  <div class="range-container">
+                    <input type="range" id="face-threshold" min="0.1" max="0.9" step="0.05" value="0.5">
+                  </div>
+                </div>
+                <div class="input-group">
+                  <div style="display: flex; justify-content: space-between;">
+                    <label class="input-label" for="face-steps">Шаги</label>
+                    <span id="face-steps-val" class="range-val">20</span>
+                  </div>
+                  <div class="range-container">
+                    <input type="range" id="face-steps" min="5" max="50" step="1" value="20">
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+<div class="section-card" id="reactor-card">
+            <div class="section-title">
+              <h3>Замена лица</h3>
+              <label class="switch">
+                <input type="checkbox" id="reactor-toggle" aria-label="Замена лица ReActor">
+                <span class="slider"></span>
+              </label>
+            </div>
+            <p class="effect-description">Переносит лицо с выбранной фотографии.</p><div class="card-body">
+              <!-- Source Image Upload for Face Swap -->
+              <div class="input-group">
+                <label class="input-label">Изображение лица (Source)</label>
+                <div id="reactor-dropzone" class="i2i-dropzone">
+                  <svg class="dropzone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="12" cy="7" r="4"></circle>
+                  </svg>
+                  <span class="dropzone-text">Перетащите лицо или кликните</span>
+                  <input type="file" id="reactor-file-input" accept="image/*" style="display: none;">
+                  <img id="reactor-preview" class="i2i-preview" style="display: none;">
+                  <button id="reactor-clear-btn" class="i2i-clear-btn" style="display: none;">Удалить</button>
+                </div>
+              </div>
+
+              <!-- Detection Method & Restore Model -->
+              <div class="grid-2-col">
+                <div class="input-group">
+                  <label class="input-label" for="reactor-detection">Детектор лиц</label>
+                  <select id="reactor-detection">
+                    <option value="retinaface_resnet50" selected>retinaface_resnet50</option>
+                    <option value="retinaface_mobile0.25">retinaface_mobile0.25</option>
+                    <option value="YOLOv5l">YOLOv5l</option>
+                    <option value="YOLOv5n">YOLOv5n</option>
+                  </select>
+                </div>
+                <div class="input-group">
+                  <label class="input-label" for="reactor-restore">Восстановление</label>
+                  <select id="reactor-restore">
+                    <option value="codeformer-v0.1.0.pth" selected>CodeFormer</option>
+                    <option value="GFPGANv1.4.pth">GFPGAN v1.4</option>
+                    <option value="none">Отсутствует (none)</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Visibility & Codeformer Weight -->
+              <div class="grid-2-col">
+                <div class="input-group">
+                  <div style="display: flex; justify-content: space-between;">
+                    <label class="input-label" for="reactor-visibility">Видимость восст.</label>
+                    <span id="reactor-visibility-val" class="range-val">1.00</span>
+                  </div>
+                  <div class="range-container">
+                    <input type="range" id="reactor-visibility" min="0.0" max="1.0" step="0.05" value="1.0">
+                  </div>
+                </div>
+                <div class="input-group" id="reactor-codeformer-weight-group">
+                  <div style="display: flex; justify-content: space-between;">
+                    <label class="input-label" for="reactor-codeformer-weight">Вес CodeFormer</label>
+                    <span id="reactor-codeformer-weight-val" class="range-val">0.60</span>
+                  </div>
+                  <div class="range-container">
+                    <input type="range" id="reactor-codeformer-weight" min="0.0" max="1.0" step="0.05" value="0.6">
+                  </div>
+                </div>
+              </div>
+
+              <!-- Face Indexes (Input / Source) -->
+              <div class="grid-2-col">
+                <div class="input-group">
+                  <label class="input-label" for="reactor-index-source">Индекс источника</label>
+                  <input type="text" id="reactor-index-source" value="0">
+                </div>
+                <div class="input-group">
+                  <label class="input-label" for="reactor-index-input">Индекс цели</label>
+                  <input type="text" id="reactor-index-input" value="0">
+                </div>
+              </div>
+            </div>
+          </div>
+<div class="section-card" id="upscale-card">
+            <div class="section-title">
+              <h3>Увеличение разрешения</h3>
+              <label class="switch">
+                <input type="checkbox" id="upscale-toggle" aria-label="Увеличение разрешения">
+                <span class="slider"></span>
+              </label>
+            </div>
+            <p class="effect-description">Увеличивает разрешение готового изображения моделью апскейла.</p><div class="card-body">
+              <div class="input-group">
+                <label class="input-label" for="upscale-select">Модель апскейла</label>
+                <select id="upscale-select">
+                  <option value="4x-UltraSharp.pth">4x-UltraSharp.pth</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section></div>
+    </div>
+
+    <!-- Right Workspace Area -->
+    <div class="workspace" id="generation-panel">
+
+      <!-- Prompts Area -->
+      <div class="prompts-container">
+        <div class="prompt-group positive-group">
+          <label class="input-label" for="positive-prompt">Описание изображения</label>
+          <textarea id="positive-prompt" class="prompt-textarea" placeholder="Напишите здесь ваше описание..."></textarea>
+        </div>
+        <div class="prompt-group negative-group">
+          <label class="input-label" for="negative-prompt">Что исключить</label>
+          <textarea id="negative-prompt" class="prompt-textarea" placeholder="worst quality, blurry, deformed..."></textarea>
+        </div>
+      </div>
+
+      <!-- Center Output Canvas -->
+      <div class="canvas-container">
+        <!-- Loader Spinner -->
+        <div id="image-loader" class="image-loader"></div>
+
+        <!-- Placeholder screen -->
+        <div id="canvas-placeholder" class="canvas-placeholder">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <circle cx="8.5" cy="8.5" r="1.5"></circle>
+            <polyline points="21 15 16 10 5 21"></polyline>
+          </svg>
+          <p>Здесь появится сгенерированное изображение</p>
+        </div>
+
+        <!-- Rendered Output Image -->
+        <img id="output-image" class="output-image" src="" alt="Сгенерированное изображение">
+        <div id="batch-grid" class="batch-grid" aria-label="Изображения серии"></div>
+
+        <!-- Controls overlay -->
+        <div class="image-overlay-controls">
+          <button id="fullscreen-btn" class="control-btn" title="На полный экран" style="display: none;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+            </svg>
+          </button>
+          <button id="download-btn" class="control-btn" title="Скачать изображение" disabled>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Batch thumbnails -->
+      <!-- Art Management Actions -->
+      <div class="header-art-actions">
+        <button id="repeat-btn" class="header-meta-btn" disabled title="Повторить весь сохранённый рецепт">Повторить</button>
+        <button id="apply-prompt-btn" class="header-meta-btn" disabled title="Перенести все настройки выбранной генерации в форму">Взять параметры</button>
+        <button id="apply-seed-btn" class="header-meta-btn" disabled title="Применить seed из выбранного кадра">Seed кадра</button>
+        <button id="apply-i2i-btn" class="header-meta-btn" disabled title="Передать выбранный кадр в Img2Img">В Img2Img</button>
+        <button id="hires-current-btn" class="header-meta-btn" disabled title="Улучшить выбранное изображение">Улучшить</button>
+      </div>
+      <div id="batch-thumbnails" class="batch-thumbnails" style="display: none;"></div>
+
+      <!-- Metadata bar for selected image -->
+      <div id="metadata-bar" class="metadata-bar">
+        <div class="metadata-info">
+          <span class="metadata-label">Кадр</span>
+          <span id="metadata-summary" class="metadata-summary">Изображение не выбрано</span>
+        </div>
+      </div>
+
+      <!-- Control Bar: Seed & Resources Monitor -->
+      <div class="control-bar">
+        <!-- Resources Monitor (VRAM / RAM) -->
+        <div class="control-section resources-section">
+          <div class="resource-indicator">
+            <div class="resource-header">
+              <span class="control-label">RAM (Система)</span>
+              <span id="ram-val" class="resource-val">--%</span>
+            </div>
+            <div class="resource-track">
+              <div id="ram-fill" class="resource-fill" style="width: 0%;"></div>
+            </div>
+          </div>
+          <div class="resource-indicator">
+            <div class="resource-header">
+              <span class="control-label">VRAM (Видеокарта)</span>
+              <span id="vram-val" class="resource-val">--%</span>
+            </div>
+            <div class="resource-track">
+              <div id="vram-fill" class="resource-fill" style="width: 0%;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Queue & Execution Control -->
+        <div class="control-section queue-section">
+
+          <button id="clear-queue-btn" class="clear-queue-btn" title="Убрать ожидающие задания со всех устройств; выполняющееся задание продолжится" disabled>Очистить очередь</button>
+        </div>
+      </div>
+
+      <!-- Bottom History Gallery Bar -->
+      <div class="gallery-bar" style="display: none;">
+        <span class="gallery-title">Недавние результаты</span>
+        <div id="gallery-items" class="gallery-items">
+          <!-- Gallery items will dynamically append here -->
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <div id="mobile-generation-controls" class="mobile-only" aria-label="Управление генерацией"></div>
+
+  <!-- Lightbox for fullscreen image viewing -->
+  <div id="lightbox" class="lightbox" style="display: none;">
+    <button id="lightbox-close" class="lightbox-close" title="Закрыть (Esc)">&times;</button>
+    <button id="lightbox-prev" class="lightbox-nav-btn prev-btn" title="Предыдущее изображение (←)">&#10094;</button>
+    <div class="lightbox-content">
+      <img id="lightbox-img" src="" alt="Полноэкранный просмотр">
+      <div id="lightbox-caption" class="lightbox-caption"></div>
+    </div>
+    <button id="lightbox-next" class="lightbox-nav-btn next-btn" title="Следующее изображение (→)">&#10095;</button>
+  </div>
+
+  <dialog id="model-import-dialog" aria-labelledby="model-import-title">
+    <form id="model-import-form">
+      <h2 id="model-import-title">Импорт в библиотеку</h2>
+      <p id="import-filename"></p>
+      <p id="import-status" role="status" aria-live="polite"></p>
+      <fieldset id="import-fields" disabled>
+        <label for="import-kind">Тип файла</label>
+        <select id="import-kind" required><option value="">Выберите тип</option><option value="loras">LoRA</option><option value="checkpoints">Checkpoint — полная модель</option><option value="diffusion_models">Diffusion model — отдельные веса</option></select>
+        <label for="import-base">Базовая модель</label><select id="import-base" required></select>
+        <label for="import-category">Назначение</label><select id="import-category" required></select>
+      </fieldset>
+      <details><summary>Что найдено в файле</summary><p id="import-evidence"></p></details>
+      <p id="import-destination"></p>
+      <progress id="import-progress" max="100" value="0" hidden aria-label="Загрузка файла"></progress>
+      <div class="import-actions"><button type="button" id="import-cancel">Отмена</button><button type="submit" id="import-save" disabled>Сохранить в библиотеку</button></div>
+    </form>
+  </dialog>
+  <script src="vendor-select.js"></script>
+  <script type="module" src="main.js"></script>
+</body>
+</html>

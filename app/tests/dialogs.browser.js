@@ -1,0 +1,21 @@
+(async () => {
+  const { askText, askConfirm, showNotice } = await import('./dialogs.js');
+  const tick = () => new Promise(resolve => setTimeout(resolve, 50));
+  const value = askText('Название', 'Исходное имя');
+  await tick();
+  const dialog = document.querySelector('#action-dialog');
+  if (!dialog?.open) throw new Error('Запрос имени не открылся внутри страницы');
+  dialog.querySelector('input').value = 'Новое имя';
+  dialog.querySelector('[type=submit]').click();
+  if (await value !== 'Новое имя') throw new Error('Имя не вернулось из диалога');
+  const cancelled = askConfirm('Удалить запись?');
+  await tick();
+  dialog.dispatchEvent(new Event('cancel', {cancelable:true}));
+  if (await cancelled !== false) throw new Error('Отмена подтверждает удаление');
+  const notice = showNotice('<img src=x onerror=alert(1)>');
+  await tick();
+  if (dialog.querySelector('img')) throw new Error('Текст диалога интерпретируется как HTML');
+  dialog.querySelector('[type=submit]').click();
+  await notice;
+  return 'Диалоги: ввод, отмена, уведомление и безопасный текст — OK';
+})();

@@ -1,0 +1,34 @@
+// Запуск на панели: проверяем настоящее событие drop без записи файла в библиотеку.
+(async () => {
+  const header = new TextEncoder().encode(JSON.stringify({__metadata__: {'modelspec.architecture': 'stable-diffusion-xl-v1-base/lora'}, 'lora_x.lora_down.weight': {dtype: 'F32', shape: [1], data_offsets: [0, 4]}}));
+  const prefix = new ArrayBuffer(8);
+  new DataView(prefix).setBigUint64(0, BigInt(header.length), true);
+  const transfer = new DataTransfer();
+  transfer.items.add(new File([prefix, header, new Uint8Array(4)], 'test.safetensors'));
+  const dropzone = document.querySelector('#model-import-open');
+  document.querySelector('#settings-tab-image').click();
+  if (!dropzone?.closest('.section-card')?.querySelector('#lora-stack-container')) throw new Error('Импорт должен находиться в блоке LoRA');
+  const hint = document.querySelector('#model-import-drop');
+  const card = dropzone.closest('.section-card');
+  const initialHeight = card.getBoundingClientRect().height;
+  if (!hint?.hidden) throw new Error('Зона DnD должна быть скрыта до перетаскивания');
+  dropzone.dispatchEvent(new DragEvent('dragenter', {bubbles: true, dataTransfer: transfer}));
+  if (hint.hidden) throw new Error('Зона DnD не появилась при перетаскивании файла');
+  if (card.getBoundingClientRect().height !== initialHeight) throw new Error('DnD сдвигает соседние настройки');
+  card.dispatchEvent(new DragEvent('dragover', {bubbles: true, cancelable: true, dataTransfer: transfer}));
+  if (!card.classList.contains('file-over')) throw new Error('Весь блок LoRA должен реагировать на наведение файла');
+  dropzone.dispatchEvent(new DragEvent('dragleave', {bubbles: true, dataTransfer: transfer}));
+  if (!hint.hidden) throw new Error('Зона DnD осталась после ухода файла');
+  dropzone.dispatchEvent(new DragEvent('dragenter', {bubbles: true, dataTransfer: transfer}));
+  dropzone.dispatchEvent(new DragEvent('drop', {bubbles: true, cancelable: true, dataTransfer: transfer}));
+  if (!hint.hidden) throw new Error('Зона DnD осталась после drop');
+  for (let i = 0; i < 100 && !document.querySelector('#model-import-dialog')?.open; i++) await new Promise(resolve => setTimeout(resolve, 50));
+  const dialog = document.querySelector('#model-import-dialog');
+  if (!dialog?.open) throw new Error('Перетаскивание не открыло импорт');
+  for (let i = 0; i < 100 && document.querySelector('#import-kind').value !== 'loras'; i++) await new Promise(resolve => setTimeout(resolve, 50));
+  if (document.querySelector('#import-base').value !== 'SDXL') throw new Error('База не распознана');
+  if (document.querySelector('#import-category').value !== '') throw new Error('Категория назначена без метаданных');
+  document.querySelector('#import-cancel').click();
+  if (dialog.open) throw new Error('Отмена не закрыла импорт');
+  return 'Drop распознаёт LoRA/SDXL, спрашивает категорию; отмена не сохраняет файл';
+})();

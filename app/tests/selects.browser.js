@@ -1,0 +1,53 @@
+(async () => {
+  const {readSettings, applySettings} = await import('./storage.js');
+  const {loraList} = await import('./api.js');
+  const original = readSettings();
+  const stored = localStorage.getItem('matrix_dashboard_v3');
+  const tick = () => new Promise(resolve => setTimeout(resolve, 80));
+  try {
+    applySettings({...original, loras:[{name:'None',strength:1,description:''}]});
+    document.querySelector('[data-mobile-panel=settings]').click();
+    document.querySelector('#settings-tab-image').click();
+    await tick();
+    const combo = document.querySelector('.lora-row [role=combobox]');
+    if (!combo) throw new Error('Нет кастомного выбора LoRA');
+    combo.click();
+    await tick();
+    const search = [...document.querySelectorAll('input[aria-label^="Поиск"]')].find(input => input.getBoundingClientRect().height > 0);
+    if (!search) throw new Error('Нет поиска в выпадающем списке');
+    const chosen = loraList.find(name => name !== 'None');
+    search.value = chosen.replace(/\\/g,'/').split('/').pop().replace(/\.safetensors$/i,'');
+    search.dispatchEvent(new Event('input', {bubbles:true}));
+    await tick();
+    const option = [...document.querySelectorAll('[role=option]')].find(option => option.dataset.value === chosen && option.getBoundingClientRect().height > 0);
+    if (!option) throw new Error('Поиск не нашёл модель');
+    const menu = option.closest('.ts-dropdown').getBoundingClientRect();
+    if (Math.abs(menu.width - combo.getBoundingClientRect().width) > 1) throw new Error('Список шире исходного поля');
+    if (getComputedStyle(search).boxShadow !== 'none') throw new Error('У поиска осталось свечение');
+    if (menu.left < 0 || menu.right > innerWidth + 1 || menu.top < 0 || menu.bottom > innerHeight + 1) throw new Error('Список выходит за экран');
+    search.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter',keyCode:13,bubbles:true}));
+    await tick();
+    if (readSettings().loras[0].name !== chosen) throw new Error('Выбранная LoRA не попала в настройки');
+    combo.click();
+    await tick();
+    search.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape',keyCode:27,bubbles:true}));
+    if (combo.getAttribute('aria-expanded') !== 'false') throw new Error('Escape не закрыл список');
+    applySettings({...original, sampler:'euler'});
+    await tick();
+    const sampler = document.querySelector('#sampler-select').nextElementSibling;
+    if (!sampler.textContent.includes('euler')) throw new Error('Восстановление настроек не обновляет контрол');
+    const fieldset = document.querySelector('#import-fields');
+    const importSelect = document.querySelector('#import-kind');
+    const wasDisabled = fieldset.disabled;
+    fieldset.disabled = true;
+    await tick();
+    fieldset.disabled = false;
+    await tick();
+    if (importSelect.disabled || importSelect.nextElementSibling.classList.contains('disabled')) throw new Error('Поле не включилось после окончания загрузки');
+    fieldset.disabled = wasDisabled;
+    return 'Кастомный select: поиск, выбор LoRA, сохранение значения и восстановление настроек — OK';
+  } finally {
+    applySettings(original);
+    if (stored === null) localStorage.removeItem('matrix_dashboard_v3'); else localStorage.setItem('matrix_dashboard_v3', stored);
+  }
+})();
