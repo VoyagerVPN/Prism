@@ -32,6 +32,7 @@
     <div class="logo-container">
       <img src="prism.svg" class="logo-icon" alt="" width="24" height="24">
       <h1>Prism</h1>
+      <button type="button" id="prism-settings-open" class="header-meta-btn" aria-label="Настройки Prism" title="Настройки Prism"><svg class="ui-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 17h16M8 4v6M16 14v6"/></svg></button>
       <div class="connection-status">
         <div id="status-dot" class="status-dot disconnected"></div>
         <span id="status-text">Подключение...</span>
@@ -75,7 +76,7 @@
   <main>
     <!-- Left Sidebar: Settings Panel -->
     <div class="sidebar" id="settings-panel">
-      <nav class="settings-tabs" role="tablist" aria-label="Настройки изображения"><button type="button" role="tab" id="settings-tab-image" aria-controls="settings-image" aria-selected="true" tabindex="0">Изображение</button><button type="button" role="tab" id="settings-tab-processing" aria-controls="settings-processing" aria-selected="false" tabindex="-1">Обработка</button></nav><div class="settings-panels"><section class="settings-panel" id="settings-image" role="tabpanel" aria-labelledby="settings-tab-image">
+      <div class="settings-panels"><section class="settings-panel" id="settings-image" aria-label="Настройки генерации">
 
           <div class="section-card" id="generation-model-card">
             <div class="section-title">
@@ -298,15 +299,10 @@
           <button id="add-character-btn" class="add-lora-btn">Создать персонажа</button></div><!-- Characters Card -->
 
 
-          <div id="lora-card" hidden>
-            <div id="model-import-drop" hidden><strong>Перетащите файл сюда</strong><small>LoRA или модель · .safetensors</small></div>
-            <input type="file" id="model-import-file" accept=".safetensors" hidden>
-            <div id="lora-stack-container" hidden></div>
-            <button type="button" id="model-import-open" title="Импортировать LoRA или модель из файла .safetensors">Импорт модели</button>
-          </div>
 
 
-        </section><section class="settings-panel" id="settings-processing" role="tabpanel" aria-labelledby="settings-tab-processing" hidden>
+
+        <section id="settings-processing" aria-labelledby="processing-title"><h3 id="processing-title">Обработка</h3>
 
         <div class="processing-grid">
 <div class="section-card" id="hires-card">
@@ -466,6 +462,13 @@
             </div>
           </div>
         </div>
+      </section>
+          <div id="lora-card" hidden>
+            <div id="model-import-drop" hidden><strong>Перетащите файл сюда</strong><small>LoRA или модель · .safetensors</small></div>
+            <input type="file" id="model-import-file" accept=".safetensors" hidden>
+            <div id="lora-stack-container" hidden></div>
+            <button type="button" id="model-import-open" title="Импортировать LoRA или модель из файла .safetensors">Импорт модели</button>
+          </div>
       </section></div>
     </div>
 

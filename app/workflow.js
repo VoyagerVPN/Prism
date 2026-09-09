@@ -81,7 +81,7 @@ export function compileWorkflow(settings) {
 
   let nodeCounter = 100;
 
-  const char = settings.character;
+  const char = settings.promptVersion===2||settings.positiveParts?.some(part=>part.type==='character')?null:settings.character;
   const charLora = char?.lora && char.lora !== "None" && Number(char.strength ?? 1) !== 0 ? char.lora : null;
   const charLoraStrength = Number(char?.strength ?? 1);
   const selectedAppearance=char?.appearances?.[char.activeAppearanceName ?? 'По умолчанию'] ?? char?.appearance ?? '';

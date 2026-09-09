@@ -7,10 +7,6 @@ export let activeLoras = [];
 
 export function addLora(name = 'None') {
   if(name==='None'||!loraList.includes(name)||activeLoras.some(lora=>loraKey(lora.name)===loraKey(name)))return;
-  const character=document.getElementById('character-select');
-  if(character?.value!=='none'&&document.getElementById('char-lora-select')?.value&&loraKey(document.getElementById('char-lora-select').value)===loraKey(name)){
-    window.dispatchEvent(new CustomEvent('dashboard-warning',{detail:'Эта LoRA уже подключена активным персонажем.'}));return;
-  }
   activeLoras.push({id:randomUuid(),name,strength:1});renderLoraStack();
   window.dispatchEvent(new Event('save-settings'));
 }

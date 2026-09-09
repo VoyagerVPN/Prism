@@ -5,7 +5,7 @@ import {batchSizes,syncBatchControls} from './batch.js';
 import { activeWidth, activeHeight, seedMode, reactorImageName, setReactorImageName, clearReactorFile, setActiveWidth, setActiveHeight, setSeedMode, updateAllExpansions } from './state.js';
 import { activeLoras, updateActiveLoras } from './lora.js';
 import { history, updateHistory, renderGallery, selectHistoryItem } from './gallery.js';
-import { getSavedCharacters, getActiveCharacterSnapshot, renderCharacterSelect, loadCharacterData } from './characters.js';
+import { renderCharacterSelect, loadCharacterData } from './characters.js';
 import { randomUuid } from './config.js';
 import { imageUrl } from './api.js';
 import { readPositiveParts, writePositiveParts } from './prompt_editor.js';
@@ -31,31 +31,13 @@ export function readSettings() {
   const settings = Object.fromEntries(Object.entries(fields).map(([name, input]) => [name,
     input.type === 'checkbox' ? input.checked : ['range', 'number'].includes(input.type) ? Number(input.value) : input.value
   ]));
-  const selectedCharacter = document.getElementById('character-select').value;
-  const saved = getSavedCharacters()[selectedCharacter];
-  let character = null;
-  if (selectedCharacter !== 'none') {
-    const snapshot=getActiveCharacterSnapshot();
-    character = structuredClone(snapshot?.name===selectedCharacter?snapshot:saved ?? {});
-    character.activeOutfitName = document.getElementById('char-outfit-select').value;
-    character.name = selectedCharacter;
-    character.lora = document.getElementById('char-lora-select').value;
-    character.strength = Number(document.getElementById('char-lora-strength').value);
-    character.appearance = document.getElementById('char-appearance-input').value;
-    character.trigger = document.getElementById('char-trigger-input')?.value ?? character.trigger ?? '';
-    character.activeAppearanceName = document.getElementById('char-appearance-select')?.value || 'По умолчанию';
-    character.appearances ??= {};
-    character.appearances[character.activeAppearanceName] = character.appearance;
-    character.outfitEnabled = document.getElementById('char-outfit-toggle').checked;
-    character.outfits ??= {};
-    character.outfits[character.activeOutfitName ?? 'По умолчанию'] = document.getElementById('char-outfit-input').value;
-  }
+  const character=positiveParts?.find(part=>part.type==='character')?.character??null;
   return {
     ...settings, recipe: 'checkpoint', width: activeWidth, height: activeHeight,
     batchCount: batchSizes[settings.batchCount], batchLayout:'square-v1',
     ...(positiveParts?{positiveParts,positive:resolvePromptParts(positiveParts).text}:{}),
     loras: positiveParts?resolvePromptParts(positiveParts).loras:activeLoras.map(({ name, strength, description }) => ({ name, strength: Number(strength), description: description ?? '' })),
-    character, selectedCharacter, seedMode, seedInput: el.seedInput.value,
+    promptVersion:2,character,selectedCharacter:character?.name??'none', seedMode, seedInput: el.seedInput.value,
     reactorImageName,
   };
 }
@@ -91,7 +73,10 @@ export function applySettings(settings, { restoreCharacterSnapshot = true, parti
     if (Array.isArray(settings.loras)) {
       updateActiveLoras(settings.loras.map(lora => ({ ...lora, id: randomUuid() })));
     }
-    if(settings.positiveParts!==undefined||settings.positive!==undefined||Array.isArray(settings.loras))writePositiveParts(promptPartsFromSettings({...settings,positive:settings.positive??el.positiveTextarea.value,loras:settings.loras??activeLoras}));
+    if(settings.positiveParts!==undefined||settings.positive!==undefined||Array.isArray(settings.loras)||settings.character){
+      const characterOnly=settings.character&&settings.positiveParts===undefined&&settings.positive===undefined&&!Array.isArray(settings.loras);
+      writePositiveParts(promptPartsFromSettings({...settings,...(characterOnly?{positiveParts:(readPositiveParts()??[]).filter(part=>part.type!=='character'),promptVersion:1}:{}),positive:settings.positive??el.positiveTextarea.value,loras:settings.loras??activeLoras}));
+    }
     if (settings.seedMode) setSeedMode(settings.seedMode);
     document.getElementById('variation-strength-val').textContent = Number(el.variationStrength.value).toFixed(2);
     document.getElementById('seed-variation').open = Number(el.variationStrength.value) > 0;

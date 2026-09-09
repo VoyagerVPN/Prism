@@ -3,6 +3,17 @@ import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { promptPartsFromSettings, resolvePromptParts } from '../prompt_parts.js';
 
+test('Плашки LoRA показывают значки своих категорий',async()=>{
+  const dom=new JSDOM('<textarea></textarea>');
+  const {createPromptEditor}=await import('../prompt_editor.js');
+  const editor=createPromptEditor(dom.window.document.querySelector('textarea'));
+  try{
+    const categories={Character:'person',Concept:'bulb',Style:'brush',Clothing:'shirt',Pose:'pose',Object:'cube',Background:'landscape',Utility:'tool',Other:'tag'};
+    editor.write(Object.keys(categories).map(category=>({type:'lora',name:`${category}/test.safetensors`,strength:1})));
+    for(const token of editor.root.querySelectorAll('.prompt-lora'))assert.equal(token.querySelector('use')?.getAttribute('href'),'#icon-'+categories[token.dataset.name.split('/')[0]]);
+  }finally{editor.destroy();dom.window.close();}
+});
+
 test('Последний пробел перед LoRA удаляется без браузерного переноса строки',async()=>{
   const dom=new JSDOM('<textarea></textarea>',{pretendToBeVisual:true});
   const {createPromptEditor}=await import('../prompt_editor.js');

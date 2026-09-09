@@ -2,14 +2,12 @@ import { getSavedCharacters } from './characters.js';
 import { parsePrism, resolveCharacterLora, MAX_PRISM_BYTES } from './character_format.js';
 import { addLora, activeLoras } from './lora.js';
 import { askText } from './dialogs.js';
-import { openCharacterSetup, isCharacterLora, charactersForLora } from './character_library.js';
+import { openCharacterSetup, isCharacterLora, charactersForLora, useLibraryCharacter } from './character_library.js';
 import { syncSelectControls } from './controls.js';
 import { setPromptLoraCatalog } from './prompt_editor.js';
+import {categories,categoryIcons,categoryOf} from './lora_categories.js';
 
 let items = [], initialized = false, category = 'all';
-const categories = {Character:'Персонажи',Concept:'Концепты',Style:'Стили',Clothing:'Одежда',Pose:'Позы',Object:'Объекты',Background:'Фоны',Utility:'Инструменты',Other:'Прочее'};
-const categoryIcons = {Character:'person',Concept:'bulb',Style:'brush',Clothing:'shirt',Pose:'pose',Object:'cube',Background:'landscape',Utility:'tool',Other:'tag'};
-const categoryOf = item => {const parts=item.name.replaceAll('\\','/').split('/');return parts.length>1?parts[0]:'Other';};
 const $ = id => document.getElementById(id);
 const node = (tag,text,className) => {const el=document.createElement(tag);el.textContent=text;if(className)el.className=className;return el;};
 
@@ -36,15 +34,13 @@ function preview(item) {
 }
 
 function addButton(item, compact = false) {
-  const selected=document.getElementById('character-select').value;
-  const activeCharacter=selected!=='none'&&document.getElementById('char-lora-select').value.replaceAll('\\','/')===item.name.replaceAll('\\','/');
-  const added=activeCharacter||activeLoras.some(lora=>lora.name.replaceAll('\\','/')===item.name.replaceAll('\\','/'));
+  const added=activeLoras.some(lora=>lora.name.replaceAll('\\','/')===item.name.replaceAll('\\','/'));
   const label='Добавить LoRA';
   const button=node('button',added?'Подключено':label,'library-add');
   button.type='button';button.dataset.loraName=item.name;button.disabled=added;
   if(compact){button.classList.add('library-add-icon');button.innerHTML=`<svg class="ui-icon" aria-hidden="true"><use href="#icon-${added?'check':'plus'}"/></svg>`;}
   button.title=added?'Подключено':label;button.setAttribute('aria-label',`${button.title}: ${item.title}`);
-  button.onclick=()=>{addLora(item.name);document.getElementById('positive-prompt-editor')?.focus();};
+  button.onclick=async()=>{try{const profiles=charactersForLora(item.name);if(profiles.length===1)await useLibraryCharacter(profiles[0][0]);else if(profiles.length>1){showDetails(item);return;}else addLora(item.name);document.getElementById('positive-prompt-editor')?.focus();}catch(error){window.dispatchEvent(new CustomEvent('dashboard-warning',{detail:error.message}));}};
   return button;
 }
 
@@ -151,7 +147,10 @@ function syncFilters() {
 }
 
 export async function loadLoraLibrary() {
-  const syncPromptNames=()=>setPromptLoraCatalog(()=>items.map(item=>({name:item.name,title:charactersForLora(item.name).map(([name])=>name).join(' / ')||item.title})));
+  const syncPromptNames=()=>setPromptLoraCatalog(()=>[
+    ...Object.entries(getSavedCharacters()).map(([name,character])=>({name:character.lora,title:name,character:{...character,name}})),
+    ...items.filter(item=>!charactersForLora(item.name).length).map(item=>({name:item.name,title:item.title}))
+  ]);
   if(!initialized) {
     initialized=true;
     const root=node('section','','lora-library');root.id='lora-library';root.setAttribute('aria-labelledby','lora-library-title');
@@ -192,7 +191,7 @@ export async function loadLoraLibrary() {
     $('lora-library-search').addEventListener('input',render);$('lora-library-base').addEventListener('change',render);
     const syncAdded=()=>{for(const button of document.querySelectorAll('.library-add')){
       const key=button.dataset.loraName.replaceAll('\\','/');
-      button.disabled=($('character-select').value!=='none'&&$('char-lora-select').value.replaceAll('\\','/')===key)||activeLoras.some(lora=>lora.name.replaceAll('\\','/')===key);
+      button.disabled=activeLoras.some(lora=>lora.name.replaceAll('\\','/')===key);
       const label=button.disabled?'Подключено':'Добавить LoRA';
       const icon=button.querySelector('use');if(icon)icon.setAttribute('href',button.disabled?'#icon-check':'#icon-plus');else button.textContent=label;
       button.title=label;button.setAttribute('aria-label',`${label}: ${button.dataset.loraName}`);

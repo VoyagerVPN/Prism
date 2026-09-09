@@ -1,6 +1,6 @@
 import { loraList } from './api.js';
 import { selectCharacterVariant, toggleCharacterVariantLink, renderVariantLink, variantOptionLabel } from './character_variants.js';
-import { activeLoras, updateActiveLoras, renderLoraStack } from './lora.js';
+import {insertPromptCharacter} from './prompt_editor.js';
 
 let characters = {};
 let activeCharacterSnapshot=null;
@@ -46,7 +46,7 @@ export async function initCharacters() {
       if(!await saveCharactersDatabase(legacy?JSON.parse(legacy):{}))throw new Error(status.textContent);
     }
     status.textContent='';card.inert=false;
-  }catch(error){status.textContent=`Персонажи недоступны: ${error.message}. Обновите страницу для повтора.`;return;}
+  }catch(error){status.textContent=`Персонажи недоступны: ${error.message}. Обновите страницу для повтора.`;window.dispatchEvent(new CustomEvent('dashboard-warning',{detail:status.textContent}));return;}
   updateCharLoraList();renderCharacterSelect();
   $('character-select').onchange=()=>activateCharacter($('character-select').value);
   $('char-lora-strength').oninput=()=>{$('char-lora-strength-val').textContent=Number($('char-lora-strength').value).toFixed(2);};
@@ -213,9 +213,7 @@ export function activateCharacter(name, snapshot) {
   document.getElementById('character-details').style.display=selected==='none'?'none':'flex';
   if(selected!=='none') {
     loadCharacterData(selected,snapshot);
-    const lora=document.getElementById('char-lora-select').value.replaceAll('\\','/');
-    updateActiveLoras(activeLoras.filter(item=>item.name.replaceAll('\\','/')!==lora));
-    renderLoraStack();
+    insertPromptCharacter({...structuredClone(snapshot??getSavedCharacters()[selected]),name:selected});
   }
   syncCharacterSummary();
   window.dispatchEvent(new CustomEvent('save-settings'));

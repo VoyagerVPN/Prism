@@ -7,6 +7,7 @@ import { applyProfile, saveCustomProfile } from './presets.js';
 import { updateCharLoraList } from './characters.js';
 import { initImageFormats } from './formats.js';
 import {syncBatchControls} from './batch.js';
+import {setupPreferences} from './preferences.js';
 
 export function syncModelLists() {
   populateSelect(checkpointSelect, modelList, "epicrealismXL_pureFix.safetensors");
@@ -40,6 +41,7 @@ function populateSelect(selectEl, list, defaultVal) {
 }
 
 export function setupUIEventListeners() {
+  setupPreferences();
   const promptEditor=setupPromptEditor();
   const adjustInlineWeight=isIncrement=>promptEditor.transformTextAtCaret((text,position)=>{
     const field=document.createElement('textarea');field.value=text;field.setSelectionRange(position,position);
@@ -55,7 +57,6 @@ export function setupUIEventListeners() {
     if(!event.defaultPrevented&&event.ctrlKey){event.preventDefault();adjustInlineWeight(event.deltaY<0);}
   },{passive:false});
   setupMobileLayout();
-  setupSettingsTabs();
   syncBatchControls();
   batchCountInput.addEventListener('input',syncBatchControls);
   document.addEventListener('wheel', event => {
@@ -239,29 +240,6 @@ export function setupUIEventListeners() {
   };
   reactorRestore.addEventListener("change", syncCodeformerSlider);
   syncCodeformerSlider();
-}
-
-function setupSettingsTabs() {
-  const tabs = [...document.querySelectorAll('.settings-tabs [role="tab"]')];
-  const show = tab => {
-    for (const item of tabs) {
-      const active = item === tab;
-      item.setAttribute('aria-selected', String(active));
-      item.tabIndex = active ? 0 : -1;
-      document.getElementById(item.getAttribute('aria-controls')).hidden = !active;
-    }
-  };
-  for (const [index, tab] of tabs.entries()) {
-    tab.addEventListener('click', () => show(tab));
-    tab.addEventListener('keydown', event => {
-      const target = event.key === 'ArrowRight' ? (index + 1) % tabs.length : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : -1;
-      if (target < 0) return;
-      event.preventDefault();
-      show(tabs[target]);
-      tabs[target].focus();
-    });
-  }
-  window.addEventListener('show-content-settings', () => show(tabs[0]));
 }
 
 function setupMobileLayout() {
