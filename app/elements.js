@@ -37,7 +37,6 @@ export const i2iDenoiseVal = document.getElementById("i2i-denoise-val");
 export const i2iBatchCountInput = document.getElementById("i2i-batch-count");
 
 // LoRA dynamic stack
-export const addLoraBtn = document.getElementById("add-lora-btn");
 export const loraStackContainer = document.getElementById("lora-stack-container");
 
 // Improvements

@@ -1,5 +1,6 @@
 import { loadModel } from './model_loader.js';
 import {batchSizes,frameSettings} from './batch.js';
+import { normalizePromptParts, resolvePromptParts, loraKey } from './prompt_parts.js';
 
 function numeric(value, fallback, label, min, max, integer = false) {
   const n = Number(value ?? fallback);
@@ -34,7 +35,8 @@ export function compileWorkflow(settings) {
   const cfgValNum = numeric(settings.cfg, 6, 'CFG', 0, 100);
   const samplerVal = settings.sampler ?? 'euler';
   const schedulerVal = settings.scheduler ?? 'normal';
-  const positivePromptBase = settings.positive ?? '';
+  const inline=settings.positiveParts===undefined?null:resolvePromptParts(normalizePromptParts(settings.positiveParts));
+  const positivePromptBase = inline?.text ?? settings.positive ?? '';
   const negativePromptBase = settings.negative ?? '';
   if (typeof positivePromptBase !== 'string' || typeof negativePromptBase !== 'string') throw new Error('Промпты должны быть текстом.');
   const widthValNum = numeric(settings.width, 1024, 'Ширина', 16, 16384, true);
@@ -87,7 +89,8 @@ export function compileWorkflow(settings) {
   const char = settings.character;
   const charLora = char?.lora && char.lora !== "None" && Number(char.strength ?? 1) !== 0 ? char.lora : null;
   const charLoraStrength = Number(char?.strength ?? 1);
-  const charAppearance = char?.appearance ?? "";
+  const selectedAppearance=char?.appearances?.[char.activeAppearanceName ?? 'По умолчанию'] ?? char?.appearance ?? '';
+  const charAppearance = [char?.trigger,selectedAppearance].filter(Boolean).join(', ');
   const charOutfit = char?.outfits?.[char.activeOutfitName ?? "По умолчанию"] ?? char?.outfit ?? "";
   const charOutfitEnabled = char?.outfitEnabled ?? true;
 
@@ -107,7 +110,8 @@ export function compileWorkflow(settings) {
     lastClipLink = [nodeId, 1];
   }
 
-  const targetLoras = settings.loras ?? [];
+  const seenLoras=new Set(charLora?[loraKey(charLora)]:[]);
+  const targetLoras = (inline?.loras??settings.loras??[]).filter(lora=>{const key=loraKey(lora.name||'');if(seenLoras.has(key))return false;seenLoras.add(key);return true;});
   targetLoras.forEach(lora => {
     if (lora.name && lora.name !== "None" && lora.strength !== 0) {
       const nodeId = `lora_${nodeCounter++}`;

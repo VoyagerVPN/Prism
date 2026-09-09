@@ -9,6 +9,41 @@ const base = {
   positive: 'portrait', negative: 'blurry', loras: [], character: null,
 };
 
+test('Inline LoRA отделяются от текста, сохраняют веса и не дублируют LoRA персонажа',()=>{
+  const graph=compileWorkflow({...base,positive:'stale',loras:[{name:'stale.safetensors',strength:1}],positiveParts:[{type:'text',text:'portrait '},{type:'lora',name:'Style/light.safetensors',strength:-0.4},{type:'text',text:'at night'},{type:'lora',name:'Character/hero.safetensors',strength:0.9}],character:{lora:'Character\\hero.safetensors',strength:0.6}});
+  assert.equal(graph['5'].inputs.text,'portrait at night');assert.equal(graph['6'].inputs.text,'blurry');
+  const loaders=Object.values(graph).filter(node=>node.class_type==='LoraLoader');
+  assert.equal(loaders.length,2);assert.equal(loaders[0].inputs.strength_model,0.6);assert.equal(loaders[1].inputs.strength_model,-0.4);
+  assert.equal(loaders[1].inputs.strength_clip,-0.4);assert.equal(loaders[1].inputs.lora_name,'Style/light.safetensors');
+  for(const part of [{type:'lora',name:'x',strength:NaN},{type:'lora',name:'../x',strength:1},{type:'text',text:42}])assert.throws(()=>compileWorkflow({...base,positiveParts:[part]}));
+});
+
+test('Варианты внешности и одежды независимы, общий триггер остаётся в каждом промпте',()=>{
+  const character={name:'Герой',trigger:'hero_token',appearance:'old fallback',appearances:{День:'green eyes',Вечер:'red eyes'},activeAppearanceName:'День',outfits:{Обычный:'blue coat',Праздник:'red dress'},activeOutfitName:'Обычный',lora:'None'};
+  for(const activeAppearanceName of ['День','Вечер'])for(const outfitEnabled of [true,false]) {
+    const text=compileWorkflow({...base,character:{...character,activeAppearanceName,outfitEnabled}})['5'].inputs.text;
+    assert.equal(text.split('hero_token').length-1,1);assert.match(text,activeAppearanceName==='День'?/green eyes/:/red eyes/);
+    assert.doesNotMatch(text,activeAppearanceName==='День'?/red eyes|old fallback/:/green eyes|old fallback/);
+    if(outfitEnabled)assert.match(text,/blue coat/);else assert.doesNotMatch(text,/blue coat/);
+    assert.doesNotMatch(text,/red dress/);
+  }
+});
+
+test('Персонаж с LoRA и без неё использует одинаковые внешность и выбранную одежду', () => {
+  const character={name:'Персонаж',universe:'Neverland',description:'Secret notes',lora:'None',strength:0.7,appearance:'green eyes',outfits:{День:'blue coat',Вечер:'red dress'},activeOutfitName:'День',outfitEnabled:true};
+  for(const lora of ['None','Character/test.safetensors']) {
+    const graph=compileWorkflow({...base,character:{...character,lora}});
+    assert.match(graph['5'].inputs.text,/green eyes/);
+    assert.match(graph['5'].inputs.text,/blue coat/);
+    assert.doesNotMatch(graph['5'].inputs.text,/red dress/);
+    assert.doesNotMatch(graph['5'].inputs.text,/Neverland|Secret notes/);
+    assert.equal(Object.values(graph).filter(node=>node.class_type==='LoraLoader').length,lora==='None'?0:1);
+    const withoutOutfit=compileWorkflow({...base,character:{...character,lora,outfitEnabled:false}});
+    assert.match(withoutOutfit['5'].inputs.text,/green eyes/);
+    assert.doesNotMatch(withoutOutfit['5'].inputs.text,/blue coat|red dress/);
+  }
+});
+
 test('Серия 1/4/9 содержит независимые кадры с воспроизводимыми seed', () => {
   for (const count of [1,4,9]) {
     const graph = compileWorkflow({...base,batchCount:count});

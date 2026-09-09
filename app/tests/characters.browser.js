@@ -1,68 +1,22 @@
-// Запустить в консоли загруженной панели. Создаёт и удаляет только своего тестового персонажа.
-(async () => {
-  const until = async predicate => {
-    const deadline = Date.now() + 10000;
-    while (!predicate()) {
-      if (Date.now() > deadline) throw new Error('Сохранение персонажа не завершилось');
-      await new Promise(resolve => setTimeout(resolve, 20));
-    }
-  };
-  const status = document.querySelector('#character-storage-status');
-  const select = document.querySelector('#character-select');
-  const originalFetch = window.fetch;
-  let testName;
-  try {
-    window.fetch = async (url, options) => {
-      if (url === '/dashboard/characters' && options?.method === 'POST') await new Promise(resolve => setTimeout(resolve, 100));
-      return originalFetch(url, options);
-    };
-    document.querySelector('#add-character-btn').click();
-    await until(() => select.value !== 'none' && status.textContent === 'Изменения сохранены');
-    testName = select.value;
-    for (const [id, value] of [['char-appearance-input', 'Проверка быстрой записи'], ['char-outfit-input', 'Куртка']]) {
-      const input = document.getElementById(id);
-      input.value = value;
-      input.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-    document.querySelector('#save-character-btn').click();
-    await until(() => document.querySelector('#save-character-btn').textContent.includes('Сохранено'));
-    const response = await originalFetch('/dashboard/characters');
-    const saved = (await response.json()).characters[testName];
-    if (saved.appearance !== 'Проверка быстрой записи' || saved.outfits['По умолчанию'] !== 'Куртка') throw new Error('Быстрый ввод потерял изменения');
-    document.querySelector('#close-character-editor').click();
-    const weight = document.querySelector('#char-lora-strength');
-    if (!document.querySelector('#character-card').contains(weight)) throw new Error('Вес LoRA остался в редакторе');
-    weight.value = '.65';
-    weight.dispatchEvent(new Event('input', {bubbles:true}));
-    weight.dispatchEvent(new Event('change', {bubbles:true}));
-    await until(() => status.textContent === 'Изменения сохранены');
-    if ((await (await originalFetch('/dashboard/characters')).json()).characters[testName].strength !== .65) throw new Error('Вес LoRA не сохранён');
-    document.querySelector('#add-outfit-btn').click();
-    await until(() => document.querySelector('#action-dialog')?.open);
-    const dialog = document.querySelector('#action-dialog');
-    dialog.querySelector('input').value = 'Вечерний';
-    dialog.querySelector('[type=submit]').click();
-    const outfitSelect = document.querySelector('#char-outfit-select');
-    await until(() => outfitSelect.value === 'Вечерний' && status.textContent === 'Изменения сохранены');
-    const outfitInput = document.querySelector('#char-outfit-input');
-    outfitInput.value = 'Платье';
-    outfitInput.dispatchEvent(new Event('change', {bubbles:true}));
-    await until(() => status.textContent === 'Изменения сохранены');
-    outfitSelect.tomselect.setValue('По умолчанию');
-    await until(() => outfitInput.value === 'Куртка' && status.textContent === 'Изменения сохранены');
-    outfitSelect.tomselect.setValue('Вечерний');
-    await until(() => outfitInput.value === 'Платье' && status.textContent === 'Изменения сохранены');
-    const updated = (await (await originalFetch('/dashboard/characters')).json()).characters[testName];
-    if (updated.appearance !== saved.appearance || updated.outfits['Вечерний'] !== 'Платье' || updated.activeOutfitName !== 'Вечерний') throw new Error('Смена одежды потеряла данные');
-    if (document.querySelector('#character-editor').open) throw new Error('Смена одежды требует редактора');
-    return 'Сохранение и смена комплектов без изменения внешности через HTTP: OK';
-  } finally {
-    window.fetch = originalFetch;
-    if (testName) {
-      const current = await (await originalFetch('/dashboard/characters')).json();
-      delete current.characters[testName];
-      const response = await originalFetch('/dashboard/characters', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(current) });
-      if (!response.ok) throw new Error('Не удалось удалить тестового персонажа: обновите список и удалите его вручную');
-    }
-  }
-})();
+// Ручной запуск в консоли панели. Изменяет только собственную тестовую запись.
+(async()=>{
+ const {readSettings,applySettings}=await import('./storage.js');
+ const original=readSettings(),stored=localStorage.getItem('matrix_dashboard_v3'),name='__character_'+Date.now();
+ const $=id=>document.getElementById(id),wait=async predicate=>{const end=Date.now()+15000;while(!predicate()){if(Date.now()>end)throw new Error('Ожидание сохранения');await new Promise(r=>setTimeout(r,30));}};
+ await(await import('./library.js')).loadLoraLibrary();
+ try{
+  $('add-character-btn').click();$('profile-character-name').value=name;$('profile-character-base').value='green eyes';$('profile-outfit-text').value='blue coat';
+  $('profile-use-character').click();await wait(()=>$('character-select').value===name&&!$('lora-library-details').open);
+  const saved=(await(await fetch('/dashboard/characters')).json()).characters[name];
+  if(saved.lora!=='None'||saved.appearance!=='green eyes'||saved.outfits['По умолчанию']!=='blue coat')throw new Error('Неверно сохранён персонаж без LoRA');
+  $('edit-character-btn').click();if(!$('library-character-editor')||$('profile-character-name').value!==name)throw new Error('Использован другой редактор');
+  $('profile-character-base').value='discard';$('library-character-editor').querySelector('.close-profile-editor').click();
+  if((await(await fetch('/dashboard/characters')).json()).characters[name].appearance!=='green eyes')throw new Error('Отмена сохранила черновик');
+  $('edit-character-btn').click();$('profile-delete-character').click();await wait(()=>$('action-dialog')?.open);$('action-dialog').querySelector('[type=submit]').click();await wait(()=>$('character-select').value==='none');
+  return 'Персонаж без LoRA: единый редактор, сохранение через HTTP, отмена и удаление — OK';
+ }finally{
+  $('lora-library-details').close();const current=await(await fetch('/dashboard/characters')).json();
+  if(current.characters[name]){delete current.characters[name];const result=await fetch('/dashboard/characters',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(current)});if(!result.ok)throw new Error('Не удалось удалить тестовую запись');}
+  applySettings(original);if(stored===null)localStorage.removeItem('matrix_dashboard_v3');else localStorage.setItem('matrix_dashboard_v3',stored);
+ }
+})()

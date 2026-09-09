@@ -1,6 +1,7 @@
-import { checkpointSelect, stepsSlider, stepsVal, cfgSlider, cfgVal, samplerSelect, schedulerSelect, positiveTextarea, negativeTextarea, widthSlider, heightSlider, batchCountInput, i2iBatchCountInput, i2iDenoiseSlider, i2iDenoiseVal, hiresToggle, hiresScaleSelect, hiresDenoiseSlider, hiresDenoiseVal, faceToggle, faceThresholdSlider, faceThresholdVal, faceStepsSlider, faceStepsVal, upscaleToggle, upscaleSelect, advancedToggle, clipSkipSlider, clipSkipVal, vaeSelect, generateBtn, downloadBtn, seedInput, seedRandomBtn, seedLockBtn, seedPrevBtn, seedNextBtn, interruptBtn, clearQueueBtn, profileSelect, saveProfileBtn, tabT2I, tabI2I, i2iDropzone, i2iFileInput, i2iClearBtn, outputImage, addLoraBtn, reactorToggle, reactorDropzone, reactorFileInput, reactorClearBtn, reactorDetection, reactorRestore, reactorVisibility, reactorVisibilityVal, reactorCodeformerWeight, reactorCodeformerWeightVal, reactorIndexSource, reactorIndexInput } from './elements.js';
+import { checkpointSelect, stepsSlider, stepsVal, cfgSlider, cfgVal, samplerSelect, schedulerSelect, positiveTextarea, negativeTextarea, widthSlider, heightSlider, batchCountInput, i2iBatchCountInput, i2iDenoiseSlider, i2iDenoiseVal, hiresToggle, hiresScaleSelect, hiresDenoiseSlider, hiresDenoiseVal, faceToggle, faceThresholdSlider, faceThresholdVal, faceStepsSlider, faceStepsVal, upscaleToggle, upscaleSelect, advancedToggle, clipSkipSlider, clipSkipVal, vaeSelect, generateBtn, downloadBtn, seedInput, seedRandomBtn, seedLockBtn, seedPrevBtn, seedNextBtn, interruptBtn, clearQueueBtn, profileSelect, saveProfileBtn, tabT2I, tabI2I, i2iDropzone, i2iFileInput, i2iClearBtn, outputImage, reactorToggle, reactorDropzone, reactorFileInput, reactorClearBtn, reactorDetection, reactorRestore, reactorVisibility, reactorVisibilityVal, reactorCodeformerWeight, reactorCodeformerWeightVal, reactorIndexSource, reactorIndexInput } from './elements.js';
 import { switchMode, handleI2IFile, clearI2IFile, setSeedMode, offsetSeed, handleReactorFile, clearReactorFile } from './state.js';
-import { activeLoras, renderLoraStack, addLora } from './lora.js';
+import { renderLoraStack } from './lora.js';
+import { setupPromptEditor } from './prompt_editor.js';
 import { modelList, loraList, upscaleModelList, samplerList, schedulerList, vaeList } from './api.js';
 import { applyProfile, saveCustomProfile } from './presets.js';
 import { updateCharLoraList } from './characters.js';
@@ -39,6 +40,20 @@ function populateSelect(selectEl, list, defaultVal) {
 }
 
 export function setupUIEventListeners() {
+  const promptEditor=setupPromptEditor();
+  const adjustInlineWeight=isIncrement=>promptEditor.transformTextAtCaret((text,position)=>{
+    const field=document.createElement('textarea');field.value=text;field.setSelectionRange(position,position);
+    adjustTagWeight(field,isIncrement);
+    return {text:field.value,position:field.selectionStart};
+  });
+  promptEditor.root.addEventListener('keydown',event=>{
+    if(!event.defaultPrevented&&event.ctrlKey&&['+','=','-','_','ArrowUp','ArrowDown'].includes(event.key)){
+      event.preventDefault();adjustInlineWeight(['+','=','ArrowUp'].includes(event.key));
+    }
+  });
+  promptEditor.root.addEventListener('wheel',event=>{
+    if(!event.defaultPrevented&&event.ctrlKey){event.preventDefault();adjustInlineWeight(event.deltaY<0);}
+  },{passive:false});
   setupMobileLayout();
   setupSettingsTabs();
   syncBatchControls();
@@ -150,9 +165,6 @@ export function setupUIEventListeners() {
   setupCardToggle(advancedToggle, "#advanced-card");
   setupCardToggle(reactorToggle, "#reactor-card");
 
-  addLoraBtn.addEventListener("click", () => {
-    addLora(loraList[0] || 'None');
-  });
 
   generateBtn.addEventListener('click', () => window.dispatchEvent(new CustomEvent('generate-image')));
   
@@ -214,9 +226,9 @@ export function setupUIEventListeners() {
     }, { passive: false });
     
     textarea.addEventListener("keydown", (e) => {
-      if (e.ctrlKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+        if (e.ctrlKey && ['+','=','-','_','ArrowUp','ArrowDown'].includes(e.key)) {
         e.preventDefault();
-        adjustTagWeight(textarea, e.key === "ArrowUp");
+          adjustTagWeight(textarea, ['+','=','ArrowUp'].includes(e.key));
       }
     });
   };

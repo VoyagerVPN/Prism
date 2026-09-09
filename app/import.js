@@ -124,7 +124,7 @@ export function setupModelImport(refresh) {
   dropzone.addEventListener('click', () => input.click());
   document.addEventListener('dragenter', event => {
     if (!dialog.open && [...event.dataTransfer.types].includes('Files')) {
-      if (dragDepth === 0) window.dispatchEvent(new Event('show-content-settings'));
+      if (dragDepth === 0) window.dispatchEvent(new Event('browse-loras'));
       dragDepth++; dropHint.hidden = false; updateDropHint(event);
     }
   });

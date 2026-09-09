@@ -9,20 +9,20 @@
   const item=items.find(i=>i.name.startsWith('Character')&&i.triggers.length);
   fixture={name:'__library_'+Date.now(),lora:item.name,original:readSettings(),stored:localStorage.getItem('matrix_dashboard_v3'),source:item.triggers};sessionStorage.setItem(key,JSON.stringify(fixture));
   const card=[...document.querySelectorAll('.library-card')].find(c=>c.dataset.name===item.name);card.querySelector('.library-open').click();
-  const section=$('lora-library-details').querySelector('.library-character');
-  const newButton=section.querySelector('.new-character-profile');(newButton.hidden?section.querySelector('.configure-character'):newButton).click();
+  if(!$('library-character-editor'))throw new Error('Карточка не открыла редактор сразу');
+  $('lora-library-details').close();$('add-character-btn').click();$('profile-character-lora').value=item.name;$('profile-character-lora').dispatchEvent(new Event('change'));
   const editor=$('library-character-editor');if(!editor?.isConnected || !editor.closest('#lora-library-details') || document.querySelectorAll('dialog[open]').length!==1)throw new Error('Редактор должен находиться в одном попапе LoRA');
   const sectionIcons=[...editor.querySelectorAll('.profile-section-title use')].map(icon=>icon.getAttribute('href'));
   for(const icon of ['#icon-person','#icon-palette','#icon-shirt','#icon-keywords'])if(!sectionIcons.includes(icon))throw new Error(`В редакторе нет секции ${icon}`);
   fill('profile-character-name',fixture.name);
-  const first=$('profile-source-tags').querySelector('input');fixture.base=first.value;first.click();$('profile-tags-base').click();
+  const first=$('profile-source-tags').querySelector('button[data-word]');fixture.base=first.dataset.word;document.querySelector('.tag-targets button[data-tag-kind=appearance]').click();first.click();
   if($('profile-character-base').value!==fixture.base)throw new Error('Тег не добавлен в основу');
   fill('profile-outfit-text','blue coat');
-  $('profile-add-outfit').click();await wait(()=>$('action-dialog')?.open);$('action-input').value='Вечерний';$('action-dialog').querySelector('[type=submit]').click();await wait(()=>$('profile-outfit-select').value==='Вечерний');
+  $('profile-add-outfit').click();$('profile-outfit-name').value='Вечерний';$('profile-outfit-name').dispatchEvent(new Event('change'));await wait(()=>$('profile-outfit-select').value==='Вечерний');
   fill('profile-outfit-text','red dress');
   const before=(await(await fetch('/dashboard/characters')).json()).characters;
   if(before[fixture.name]||readSettings().selectedCharacter!==fixture.original.selectedCharacter)throw new Error('Черновик сохранился или подключился до подтверждения');
-  $('profile-save-character').click();await wait(()=>!editor.isConnected);
+  $('profile-save-character').click();await wait(()=>$('profile-editor-status').textContent==='Персонаж сохранён');
   const saved=(await(await fetch('/dashboard/characters')).json()).characters[fixture.name];
   if(saved.appearance!==fixture.base||saved.outfits['По умолчанию']!=='blue coat'||saved.outfits['Вечерний']!=='red dress'||saved.lora!==fixture.lora)throw new Error('Сохранён неверный образ/комплекты');
   if(readSettings().selectedCharacter!==fixture.original.selectedCharacter)throw new Error('Сохранение подключило образ без команды');
@@ -33,10 +33,11 @@
  }
  try{
   const card=[...document.querySelectorAll('.library-card')].find(c=>c.dataset.name===fixture.lora);card.querySelector('.library-open').click();
-  const section=$('lora-library-details').querySelector('.library-character');section.querySelector('.library-character-select').tomselect.setValue(fixture.name);section.querySelector('.library-character-outfit').tomselect.setValue('По умолчанию');
+  const picker=document.querySelector('[aria-label="Сохранённый персонаж"]');if(picker){picker.value=fixture.name;picker.dispatchEvent(new Event('change'));}
+  $('profile-outfit-select').value='По умолчанию';$('profile-outfit-select').dispatchEvent(new Event('change'));
   const extra=items.find(i=>i.name.startsWith('Utility'));
   applySettings({...fixture.original,positive:'Scene',loras:[{name:fixture.lora,strength:.4,description:''},{name:extra.name,strength:.7,description:''}]});
-  section.querySelector('.use-character').click();await wait(()=>readSettings().selectedCharacter===fixture.name);
+  $('profile-use-character').click();await wait(()=>readSettings().selectedCharacter===fixture.name);
   if(readSettings().loras.length!==1||readSettings().loras[0].name!==extra.name)throw new Error('LoRA персонажа продублирована или удалена другая LoRA');
   let settings=readSettings(),graph=compileWorkflow({...settings,seed:123,batchCount:1});
   if(!graph['5'].inputs.text.includes('blue coat')||graph['5'].inputs.text.includes('red dress')||!graph['5'].inputs.text.includes(fixture.base))throw new Error('Неверный промпт из основы и одежды');
@@ -51,9 +52,9 @@
   if($('profile-character-name').value!==fixture.name||$('profile-outfit-text').value!=='red dress')throw new Error('Активный блок открыл чужой редактор');
   fill('profile-character-base','несохранённый черновик');$('library-character-editor').querySelector('.close-profile-editor').click();
   if(readSettings().character.appearance!==fixture.base)throw new Error('Отмена изменила активную основу');
-  $('lora-library-details').querySelector('.configure-character').click();$('profile-delete-character').click();await wait(()=>$('action-dialog')?.open);$('action-dialog').querySelector('[type=submit]').click();await wait(()=>!$('library-character-editor'));
+  $('edit-character-btn').click();$('profile-delete-character').click();await wait(()=>$('action-dialog')?.open);$('action-dialog').querySelector('[type=submit]').click();await wait(()=>!$('library-character-editor'));
   if((await(await fetch('/dashboard/characters')).json()).characters[fixture.name])throw new Error('Образ не удалён');
-  if(!$('lora-library-details').open||!items.some(i=>i.name===fixture.lora))throw new Error('Удаление образа убрало LoRA');
+  if(!items.some(i=>i.name===fixture.lora))throw new Error('Удаление образа убрало LoRA');
   return `Перезагрузка, активация без дублей, смена/отключение одежды, отмена и удаление: OK (${innerWidth}×${innerHeight})`;
  } finally{
   for(const id of ['library-character-editor','lora-library-details'])if($(id)?.open)$(id).close();

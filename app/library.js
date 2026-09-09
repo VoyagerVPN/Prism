@@ -1,7 +1,10 @@
+import { getSavedCharacters } from './characters.js';
+import { parsePrism, resolveCharacterLora, MAX_PRISM_BYTES } from './character_format.js';
 import { addLora, activeLoras } from './lora.js';
 import { askText } from './dialogs.js';
-import { characterSection, isCharacterLora, charactersForLora, useLibraryCharacter } from './character_library.js';
+import { openCharacterSetup, isCharacterLora, charactersForLora } from './character_library.js';
 import { syncSelectControls } from './controls.js';
+import { setPromptLoraCatalog } from './prompt_editor.js';
 
 let items = [], initialized = false, category = 'all';
 const categories = {Character:'Персонажи',Concept:'Концепты',Style:'Стили',Clothing:'Одежда',Pose:'Позы',Object:'Объекты',Background:'Фоны',Utility:'Инструменты',Other:'Прочее'};
@@ -33,21 +36,15 @@ function preview(item) {
 }
 
 function addButton(item, compact = false) {
-  const managed=isCharacterLora(item);
   const selected=document.getElementById('character-select').value;
   const activeCharacter=selected!=='none'&&document.getElementById('char-lora-select').value.replaceAll('\\','/')===item.name.replaceAll('\\','/');
-  const added=managed?activeCharacter:activeLoras.some(lora=>lora.name===item.name);
-  const label=managed?(charactersForLora(item.name).length?'Использовать персонажа':'Настроить персонажа'):'Добавить LoRA';
+  const added=activeCharacter||activeLoras.some(lora=>lora.name.replaceAll('\\','/')===item.name.replaceAll('\\','/'));
+  const label='Добавить LoRA';
   const button=node('button',added?'Подключено':label,'library-add');
-  button.type='button';button.dataset.loraName=item.name;button.dataset.character=String(managed);button.disabled=added;
+  button.type='button';button.dataset.loraName=item.name;button.disabled=added;
   if(compact){button.classList.add('library-add-icon');button.innerHTML=`<svg class="ui-icon" aria-hidden="true"><use href="#icon-${added?'check':'plus'}"/></svg>`;}
   button.title=added?'Подключено':label;button.setAttribute('aria-label',`${button.title}: ${item.title}`);
-  button.onclick=async()=>{
-    if(!managed){addLora(item.name);return;}
-    const profiles=charactersForLora(item.name);
-    if(profiles.length!==1){showDetails(item);return;}
-    try{await useLibraryCharacter(profiles[0][0]);}catch(error){window.dispatchEvent(new CustomEvent('dashboard-warning',{detail:error.message}));}
-  };
+  button.onclick=()=>{addLora(item.name);document.getElementById('positive-prompt-editor')?.focus();};
   return button;
 }
 
@@ -75,11 +72,12 @@ function copyButton(item) {
   return button;
 }
 
-function showDetails(item, preferredName) {
+function showDetails(item, preferredName, importedCharacter=null) {
   const dialog=$('lora-library-details');dialog.onclose=null;dialog.classList.remove('editing-character');dialog.replaceChildren();
   const heading=node('header','','dialog-heading'),title=node('h2',item.title);title.id='library-detail-title';
   const close=node('button','Закрыть');close.type='button';close.onclick=()=>dialog.close();heading.append(iconNode(categoryIcons[categoryOf(item)]||'tag'),title,close);
-  const body=node('div','','library-detail-body');body.append(preview(item));
+  const body=node('div','','library-detail-body');if(item.name!=='None')body.append(preview(item));
+  dialog.classList.toggle('character-without-lora',item.name==='None');
   const meta=node('div','','library-detail-text');
   const details=node('div','','library-detail-meta');
   details.append(cardRow('p',[item.base,item.version].filter(Boolean).join(' · '),'palette','Базовая модель и версия'));
@@ -87,7 +85,7 @@ function showDetails(item, preferredName) {
   const file=cardRow('a',item.name,'cube','Файл модели','library-file-link');file.href='/dashboard/lora-library/reveal?'+new URLSearchParams({name:item.name});file.title='Показать файл в Проводнике';
   details.append(file);
   if(item.tags.length)details.append(cardRow('p',item.tags.join(' · '),'tag','Теги','library-tags'));
-  meta.append(details);
+  if(item.name!=='None')meta.append(details);
   if(item.triggers.length) {
     const heading=node('div','','library-keywords-row');heading.append(cardRow('h3','Триггеры','keywords','Триггеры'),copyButton(item));meta.append(heading);
     const tags=node('div','','library-trigger-list');
@@ -96,13 +94,23 @@ function showDetails(item, preferredName) {
   }
   if(item.description)meta.append(cardRow('p',item.description,'document','Описание','library-description'));
   if(item.url){const link=node('a','','library-civitai-link');link.href=item.url;link.target='_blank';link.rel='noopener noreferrer';link.title='Открыть на Civitai';link.setAttribute('aria-label',link.title);link.append(iconNode('civitai'));meta.append(link);}
-  if(isCharacterLora(item))meta.prepend(characterSection(item,preferredName));else meta.append(addButton(item));
-  body.append(meta);dialog.append(heading,body);syncSelectControls();dialog.showModal();
+  if(!importedCharacter&&!isCharacterLora(item)&&item.name!=='None')meta.append(addButton(item));
+  body.append(meta);dialog.append(heading,body);
+  if(importedCharacter||isCharacterLora(item)||item.name==='None') {
+    const profiles=charactersForLora(item.name),active=$('character-select').value;
+    const name=preferredName??(profiles.find(([key])=>key===active)?.[0]||profiles[0]?.[0]||'');
+    openCharacterSetup(item,name,selected=>showDetails(item,selected),items,importedCharacter);
+  }
+  syncSelectControls();if(!dialog.open)dialog.showModal();
+}
+
+function itemForCharacter(character) {
+  return items.find(item=>item.name.replaceAll('\\','/')===(character.lora||'None').replaceAll('\\','/'))||{name:character.lora||'None',title:character.name||'Новый персонаж',base:'',version:'',author:'',tags:[],triggers:[],description:'',url:'',...character.source,preview:''};
 }
 
 function render() {
   const query=$('lora-library-search').value.toLocaleLowerCase().trim(),base=$('lora-library-base').value;
-  const visible=items.filter(item=>(category==='all'||categoryOf(item)===category)&&(base==='all'||item.base===base)&&[item.title,item.name,item.author,...item.tags,...item.triggers].join(' ').toLocaleLowerCase().includes(query));
+  const visible=items.filter(item=>(category==='all'||categoryOf(item)===category)&&(base==='all'||item.base===base)&&[item.title,item.name,item.author,...item.tags,...item.triggers,...charactersForLora(item.name).flatMap(([name,char])=>[name,char.universe||''])].join(' ').toLocaleLowerCase().includes(query));
   const grid=$('lora-library-grid');grid.replaceChildren();
   for(const item of visible) {
     const card=node('article','','library-card');card.dataset.name=item.name;
@@ -143,33 +151,55 @@ function syncFilters() {
 }
 
 export async function loadLoraLibrary() {
+  const syncPromptNames=()=>setPromptLoraCatalog(()=>items.map(item=>({name:item.name,title:charactersForLora(item.name).map(([name])=>name).join(' / ')||item.title})));
   if(!initialized) {
     initialized=true;
     const root=node('section','','lora-library');root.id='lora-library';root.setAttribute('aria-labelledby','lora-library-title');
     root.innerHTML='<div class="library-heading"><h3 id="lora-library-title">Библиотека LoRA</h3><small id="lora-library-status" role="status" aria-live="polite"></small></div><div id="lora-library-categories" role="group" aria-label="Категория LoRA"></div><div class="library-filters"><input type="search" id="lora-library-search" placeholder="Название, автор или триггер…" aria-label="Поиск LoRA"><select id="lora-library-base" aria-label="Базовая модель LoRA"><option value="all">Все базовые модели</option></select></div><div id="lora-library-grid"></div>';
     $('lora-card').append(root);
-    const standalone=$('add-character-btn');standalone.textContent='Персонаж без LoRA';standalone.title='Создать независимый образ без привязки к LoRA';root.querySelector('.library-heading').append(standalone);
+    $('lora-card').hidden=false;
+    const actions=node('details','','library-actions'),summary=node('summary','+');summary.title='Действия библиотеки';summary.setAttribute('aria-label','Действия библиотеки');actions.append(summary);
+    const menu=node('div','','library-actions-menu');actions.append(menu);root.querySelector('.library-heading').append(actions);
+    const standalone=$('add-character-btn');standalone.textContent='Создать персонажа';standalone.title='Создать персонажа с LoRA или без неё';menu.append(standalone,$('model-import-open'));
+    const importButton=node('button','Импорт .prism'),file=document.createElement('input');importButton.type='button';file.type='file';file.accept='.prism';file.hidden=true;file.id='prism-import-input';
+    importButton.onclick=()=>file.click();
+    file.onchange=async()=>{
+      const selected=file.files[0];if(!selected)return;
+      try{
+        if(selected.size>MAX_PRISM_BYTES)throw new Error('Карточка превышает 2 МБ.');
+        const character=parsePrism(await selected.text()),db=getSavedCharacters(),original=character.name;
+        for(let index=2;Object.hasOwn(db,character.name);index++)character.name=original.slice(0,185)+` (${index})`;
+        character.lora=resolveCharacterLora(character.lora,items)??character.lora;
+        showDetails(itemForCharacter(character),'',character);
+        $('profile-editor-status').textContent=character.name===original?'Карточка открыта как черновик. Нажмите «Сохранить», чтобы добавить персонажа.':`Имя уже занято. Карточка открыта как черновик с именем «${character.name}».`;
+      }catch(error){$('lora-library-status').textContent=`Не удалось импортировать .prism: ${error.message}`;}finally{file.value='';}
+    };
+    menu.append(importButton,file);menu.addEventListener('click',event=>{if(event.target.closest('button'))actions.open=false;});
+    window.addEventListener('browse-loras',()=>{
+      window.dispatchEvent(new Event('show-content-settings'));$('lora-library-search').value='';$('lora-library-base').value='all';category='all';syncFilters();render();root.scrollIntoView({block:'start'});$('lora-library-search').focus();
+    });
     window.addEventListener('browse-characters',()=>{
       $('lora-library-search').value='';$('lora-library-base').value='all';category=items.some(item=>categoryOf(item)==='Character')?'Character':'all';syncFilters();render();
-      document.querySelector('[data-mobile-panel=settings]').click();$('settings-tab-image').click();root.scrollIntoView({block:'start'});
+      window.dispatchEvent(new Event('show-content-settings'));root.scrollIntoView({block:'start'});$('lora-library-search').focus();
     });
     window.addEventListener('edit-library-character',event=>{
       const {name,lora}=event.detail;const item=items.find(item=>item.name.replaceAll('\\','/')===lora.replaceAll('\\','/'));
-      if(!item){window.dispatchEvent(new CustomEvent('dashboard-warning',{detail:'LoRA персонажа не найдена в библиотеке. Обновите список моделей.'}));return;}
-      showDetails(item,name);$('lora-library-details').querySelector('.configure-character').click();
+      const existing=getSavedCharacters()[name];
+      showDetails(item||itemForCharacter(existing||{lora,name:'Новый персонаж'}),name);
+
     });
     const dialog=document.createElement('dialog');dialog.id='lora-library-details';dialog.className='app-dialog';dialog.setAttribute('aria-labelledby','library-detail-title');document.body.append(dialog);
     $('lora-library-search').addEventListener('input',render);$('lora-library-base').addEventListener('change',render);
     const syncAdded=()=>{for(const button of document.querySelectorAll('.library-add')){
-      const managed=button.dataset.character==='true';
-      button.disabled=managed?$('character-select').value!=='none'&&$('char-lora-select').value.replaceAll('\\','/')===button.dataset.loraName.replaceAll('\\','/'):activeLoras.some(lora=>lora.name===button.dataset.loraName);
-      const label=button.disabled?'Подключено':managed?(charactersForLora(button.dataset.loraName).length?'Использовать персонажа':'Настроить персонажа'):'Добавить LoRA';
+      const key=button.dataset.loraName.replaceAll('\\','/');
+      button.disabled=($('character-select').value!=='none'&&$('char-lora-select').value.replaceAll('\\','/')===key)||activeLoras.some(lora=>lora.name.replaceAll('\\','/')===key);
+      const label=button.disabled?'Подключено':'Добавить LoRA';
       const icon=button.querySelector('use');if(icon)icon.setAttribute('href',button.disabled?'#icon-check':'#icon-plus');else button.textContent=label;
       button.title=label;button.setAttribute('aria-label',`${label}: ${button.dataset.loraName}`);
     }};
-    window.addEventListener('save-settings',syncAdded);window.addEventListener('settings-applied',syncAdded);
+    window.addEventListener('save-settings',()=>{syncAdded();syncPromptNames();});window.addEventListener('settings-applied',()=>{syncAdded();syncPromptNames();});
   }
   $('lora-library-status').textContent='Загрузка библиотеки…';
-  try {const response=await fetch('/dashboard/lora-library',{cache:'no-store',signal:AbortSignal.timeout(20000)});const data=await response.json();if(!response.ok)throw new Error(data.error||`HTTP ${response.status}`);items=data.items;syncFilters();render();}
+  try {const response=await fetch('/dashboard/lora-library',{cache:'no-store',signal:AbortSignal.timeout(20000)});const data=await response.json();if(!response.ok)throw new Error(data.error||`HTTP ${response.status}`);items=data.items;syncPromptNames();syncFilters();render();}
   catch(error){$('lora-library-status').textContent=`Библиотека недоступна: ${error.message}`;}
 }

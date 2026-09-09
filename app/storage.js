@@ -3,11 +3,13 @@ import { syncSelectControls } from './controls.js';
 import { syncImageFormats } from './formats.js';
 import {batchSizes,syncBatchControls} from './batch.js';
 import { currentMode, activeWidth, activeHeight, seedMode, i2iImageName, i2iWidth, i2iHeight, reactorImageName, setI2IImage, setReactorImageName, clearI2IFile, clearReactorFile, switchMode, setActiveWidth, setActiveHeight, setSeedMode, updateAllExpansions } from './state.js';
-import { activeLoras, updateActiveLoras, renderLoraStack } from './lora.js';
+import { activeLoras, updateActiveLoras } from './lora.js';
 import { history, updateHistory, renderGallery, selectHistoryItem } from './gallery.js';
-import { getSavedCharacters, renderCharacterSelect, loadCharacterData } from './characters.js';
+import { getSavedCharacters, getActiveCharacterSnapshot, renderCharacterSelect, loadCharacterData } from './characters.js';
 import { randomUuid } from './config.js';
 import { imageUrl } from './api.js';
+import { readPositiveParts, writePositiveParts } from './prompt_editor.js';
+import { promptPartsFromSettings, resolvePromptParts } from './prompt_parts.js';
 
 const fields = {
   variationSeedInput: el.variationSeedInput, variationStrength: el.variationStrength,
@@ -25,6 +27,7 @@ const fields = {
 let restoring = false;
 
 export function readSettings() {
+  const positiveParts=readPositiveParts();
   const settings = Object.fromEntries(Object.entries(fields).map(([name, input]) => [name,
     input.type === 'checkbox' ? input.checked : ['range', 'number'].includes(input.type) ? Number(input.value) : input.value
   ]));
@@ -32,12 +35,17 @@ export function readSettings() {
   const saved = getSavedCharacters()[selectedCharacter];
   let character = null;
   if (selectedCharacter !== 'none') {
-    character = structuredClone(saved ?? {});
+    const snapshot=getActiveCharacterSnapshot();
+    character = structuredClone(snapshot?.name===selectedCharacter?snapshot:saved ?? {});
     character.activeOutfitName = document.getElementById('char-outfit-select').value;
     character.name = selectedCharacter;
     character.lora = document.getElementById('char-lora-select').value;
     character.strength = Number(document.getElementById('char-lora-strength').value);
     character.appearance = document.getElementById('char-appearance-input').value;
+    character.trigger = document.getElementById('char-trigger-input')?.value ?? character.trigger ?? '';
+    character.activeAppearanceName = document.getElementById('char-appearance-select')?.value || 'По умолчанию';
+    character.appearances ??= {};
+    character.appearances[character.activeAppearanceName] = character.appearance;
     character.outfitEnabled = document.getElementById('char-outfit-toggle').checked;
     character.outfits ??= {};
     character.outfits[character.activeOutfitName ?? 'По умолчанию'] = document.getElementById('char-outfit-input').value;
@@ -46,7 +54,8 @@ export function readSettings() {
     ...settings, recipe: 'checkpoint', mode: currentMode, width: activeWidth, height: activeHeight,
     batchCount: batchSizes[currentMode === 'i2i' ? settings.i2iBatchCount : settings.batchCount],
     t2iBatchCount: batchSizes[settings.batchCount], i2iBatchCount:batchSizes[settings.i2iBatchCount],batchLayout:'square-v1',
-    loras: activeLoras.map(({ name, strength, description }) => ({ name, strength: Number(strength), description: description ?? '' })),
+    ...(positiveParts?{positiveParts,positive:resolvePromptParts(positiveParts).text}:{}),
+    loras: positiveParts?resolvePromptParts(positiveParts).loras:activeLoras.map(({ name, strength, description }) => ({ name, strength: Number(strength), description: description ?? '' })),
     character, selectedCharacter, seedMode, seedInput: el.seedInput.value,
     inputImageName: i2iImageName, inputWidth: i2iWidth, inputHeight: i2iHeight, reactorImageName,
   };
@@ -83,8 +92,8 @@ export function applySettings(settings, { restoreCharacterSnapshot = true, parti
     }
     if (Array.isArray(settings.loras)) {
       updateActiveLoras(settings.loras.map(lora => ({ ...lora, id: randomUuid() })));
-      renderLoraStack();
     }
+    if(settings.positiveParts!==undefined||settings.positive!==undefined||Array.isArray(settings.loras))writePositiveParts(promptPartsFromSettings({...settings,positive:settings.positive??el.positiveTextarea.value,loras:settings.loras??activeLoras}));
     if (settings.mode) switchMode(settings.mode === 'i2i' ? 'i2i' : 't2i');
     if (settings.seedMode) setSeedMode(settings.seedMode);
     document.getElementById('variation-strength-val').textContent = Number(el.variationStrength.value).toFixed(2);

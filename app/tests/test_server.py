@@ -69,7 +69,7 @@ class Checks(unittest.IsolatedAsyncioTestCase):
     async def save(data):
      async def body():return data
      return await dashboard.post_characters(types.SimpleNamespace(json=body))
-    chars={'Тест':{'name':'Тест','lora':'None','strength':1.0,'appearance':'Описание','outfits':{'Обычный':'Куртка'},'activeOutfitName':'Обычный','outfitEnabled':True}}
+    chars={'Тест':{'name':'Тест','universe':'Тестовый мир','description':'Заметки','lora':'None','strength':1.0,'appearance':'Описание','outfits':{'Обычный':'Куртка'},'activeOutfitName':'Обычный','outfitEnabled':True,'source':{'author':'Автор','url':'https://example.com/model','triggers':['hero']}}}
     response=await save({'revision':initial['revision'],'characters':chars})
     self.assertEqual(response.status,200)
     self.assertEqual(json.loads((await dashboard.get_characters(None)).text)['characters'],chars)

@@ -29,12 +29,12 @@ export function syncSelectControls() {
     for (const [select, entry] of controls) {
       if (!select.isConnected) { entry.control.destroy(); controls.delete(select); }
     }
-    for (const select of document.querySelectorAll('select')) {
+    for (const select of document.querySelectorAll('select:not([data-native="true"])')) {
       let entry = controls.get(select);
       if (!entry) {
-        const label = select.labels?.[0]?.textContent.trim() || select.getAttribute('aria-label') || select.title || 'Выбор значения';
+        const label = select.getAttribute('aria-label') || select.labels?.[0]?.textContent.trim() || select.title || 'Выбор значения';
         const control = new TomSelect(select, {
-          plugins: ['dropdown_input'], create: false, allowEmptyOption: false, placeholder:'Выбрать…',
+          plugins: ['dropdown_input'], create:false, placeholder:'Выбрать…',
           maxOptions: null, searchField: ['text', 'value'], refreshThrottle: 0,
           dropdownParent: select.closest('dialog') || document.body,
           onDelete: () => false,
