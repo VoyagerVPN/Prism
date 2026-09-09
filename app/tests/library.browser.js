@@ -17,9 +17,14 @@
   card.scrollIntoView({block:'center'});await tick();
   const image=card.querySelector('img');await image.decode();if(!image.naturalWidth)throw new Error('Превью не загрузилось');
   card.querySelector('.library-open').click();await tick();
-  if(!dialog.open||!dialog.textContent.includes(item.triggers[0])||dialog.querySelector('a').href!==item.url)throw new Error('Подробности не открылись');
+  if(!dialog.open||!dialog.textContent.includes(item.triggers[0])||dialog.querySelector('.library-civitai-link').href!==item.url)throw new Error('Подробности не открылись');
   const detailIcons=[...dialog.querySelectorAll('.library-detail-meta .ui-icon use')].map(icon=>icon.getAttribute('href'));
-  for(const icon of ['#icon-palette','#icon-user-circle','#icon-cube','#icon-tag','#icon-bulb'])if(!detailIcons.includes(icon))throw new Error(`В подробностях LoRA нет иконки ${icon}`);
+  for(const icon of ['#icon-palette','#icon-user-circle','#icon-cube','#icon-tag'])if(!detailIcons.includes(icon))throw new Error(`В подробностях LoRA нет иконки ${icon}`);
+  if(dialog.querySelector('[data-detail=author] span').textContent!==item.author)throw new Error('К имени автора добавлен лишний префикс');
+  if(dialog.querySelector('.library-description use')?.getAttribute('href')!=='#icon-document')throw new Error('У описания нет иконки документа');
+  if(dialog.querySelector('.library-keywords-row h3 use')?.getAttribute('href')!=='#icon-keywords')throw new Error('У заголовка триггеров нет иконки');
+  if(dialog.querySelector('.library-civitai-link use')?.getAttribute('href')!=='#icon-civitai')throw new Error('У ссылки Civitai нет логотипа');
+  const fileLink=dialog.querySelector('.library-file-link');if(fileLink?.textContent!==item.name||fileLink.tagName!=='A'||!fileLink.href.includes('/dashboard/lora-library/reveal?'))throw new Error('Файл LoRA не открывается обычной ссылкой');
   const titleBox=dialog.querySelector('h2').getBoundingClientRect(),closeBox=dialog.querySelector('.dialog-heading button').getBoundingClientRect();
   if(titleBox.right>closeBox.left+1 || titleBox.bottom>dialog.querySelector('.dialog-heading').getBoundingClientRect().bottom+1)throw new Error('Заголовок перекрывает закрытие');
   dialog.querySelector('.dialog-heading button').click();

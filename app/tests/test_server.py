@@ -1,5 +1,6 @@
 import sys,types,importlib.util,unittest,tempfile,struct,json
 from pathlib import Path
+from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 class Routes:
  def get(self,*a):return lambda f:f
@@ -41,6 +42,22 @@ class Checks(unittest.IsolatedAsyncioTestCase):
      self.assertEqual((await upload(b'broken')).status,400)
      self.assertEqual((Path(directory)/'Character/SDXL/test.safetensors').read_bytes(),binary)
      self.assertEqual(list(Path(directory).glob('*.part')),[])
+   finally:dashboard.folder_paths=original
+ async def test_reveal_lora_opens_only_registered_file(self):
+  with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[1]/'.cache') as directory:
+   path=Path(directory)/'Character'/'test.safetensors';path.parent.mkdir();path.write_bytes(b'test')
+   original=dashboard.folder_paths
+   dashboard.folder_paths=types.SimpleNamespace(
+    get_filename_list=lambda kind:['Character/test.safetensors'],
+    get_full_path=lambda kind,name:str(path) if name=='Character/test.safetensors' else None,
+   )
+   async def request(name):
+    return await dashboard.reveal_lora_file(types.SimpleNamespace(query={'name':name}))
+   try:
+    with patch.object(dashboard.subprocess,'Popen') as launch:
+     self.assertEqual((await request('Character/test.safetensors')).status,204)
+     launch.assert_called_once_with(['explorer.exe',f'/select,{path}'])
+     self.assertEqual((await request('../prism.json')).status,400)
    finally:dashboard.folder_paths=original
  async def test_characters_persist_and_reject_stale_writes(self):
   cache=Path(__file__).resolve().parents[1]/'.cache';cache.mkdir(exist_ok=True)

@@ -12,6 +12,8 @@
   const section=$('lora-library-details').querySelector('.library-character');
   const newButton=section.querySelector('.new-character-profile');(newButton.hidden?section.querySelector('.configure-character'):newButton).click();
   const editor=$('library-character-editor');if(!editor?.isConnected || !editor.closest('#lora-library-details') || document.querySelectorAll('dialog[open]').length!==1)throw new Error('Редактор должен находиться в одном попапе LoRA');
+  const sectionIcons=[...editor.querySelectorAll('.profile-section-title use')].map(icon=>icon.getAttribute('href'));
+  for(const icon of ['#icon-person','#icon-palette','#icon-shirt','#icon-keywords'])if(!sectionIcons.includes(icon))throw new Error(`В редакторе нет секции ${icon}`);
   fill('profile-character-name',fixture.name);
   const first=$('profile-source-tags').querySelector('input');fixture.base=first.value;first.click();$('profile-tags-base').click();
   if($('profile-character-base').value!==fixture.base)throw new Error('Тег не добавлен в основу');

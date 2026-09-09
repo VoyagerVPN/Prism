@@ -5,6 +5,7 @@ import json
 import hashlib
 import math
 import tempfile
+import subprocess
 from pathlib import Path
 from server import PromptServer
 from aiohttp import web
@@ -358,6 +359,17 @@ async def get_lora_preview(request):
         return web.FileResponse(path)
     except (ValueError, OSError):
         return web.Response(status=404)
+
+@routes.get('/dashboard/lora-library/reveal')
+async def reveal_lora_file(request):
+    try:
+        name = request.query.get('name','')
+        if not name: raise ValueError('Не указано имя LoRA')
+        path = library_file(name)
+        subprocess.Popen(['explorer.exe',f'/select,{path}'])
+        return web.Response(status=204)
+    except (ValueError, OSError) as error:
+        return web.json_response({'error':str(error)},status=400)
 
 # ponytail: один запрос Civitai за раз; очередь по файлам нужна только для массового обновления.
 library_lookup_lock = asyncio.Lock()

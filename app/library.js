@@ -10,12 +10,16 @@ const categoryOf = item => {const parts=item.name.replaceAll('\\','/').split('/'
 const $ = id => document.getElementById(id);
 const node = (tag,text,className) => {const el=document.createElement(tag);el.textContent=text;if(className)el.className=className;return el;};
 
+function iconNode(name, label = '') {
+  const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');icon.classList.add('ui-icon');
+  if(label){icon.setAttribute('role','img');icon.setAttribute('aria-label',label);const tooltip=document.createElementNS(icon.namespaceURI,'title');tooltip.textContent=label;icon.append(tooltip);}
+  else icon.setAttribute('aria-hidden','true');
+  const use=document.createElementNS(icon.namespaceURI,'use');use.setAttribute('href',`#icon-${name}`);icon.append(use);return icon;
+}
+
 function cardRow(tag, text, iconName, label, className = '') {
   const row=node(tag,'',`library-card-row ${className}`);
-  const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');icon.classList.add('ui-icon');icon.setAttribute('role','img');icon.setAttribute('aria-label',label);
-  const tooltip=document.createElementNS(icon.namespaceURI,'title');tooltip.textContent=label;
-  const use=document.createElementNS(icon.namespaceURI,'use');use.setAttribute('href',`#icon-${iconName}`);icon.append(tooltip,use);
-  row.append(icon,node('span',text));return row;
+  row.append(iconNode(iconName,label),node('span',text));return row;
 }
 
 function preview(item) {
@@ -74,23 +78,24 @@ function copyButton(item) {
 function showDetails(item, preferredName) {
   const dialog=$('lora-library-details');dialog.onclose=null;dialog.classList.remove('editing-character');dialog.replaceChildren();
   const heading=node('header','','dialog-heading'),title=node('h2',item.title);title.id='library-detail-title';
-  const close=node('button','Закрыть');close.type='button';close.onclick=()=>dialog.close();heading.append(title,close);
+  const close=node('button','Закрыть');close.type='button';close.onclick=()=>dialog.close();heading.append(iconNode(categoryIcons[categoryOf(item)]||'tag'),title,close);
   const body=node('div','','library-detail-body');body.append(preview(item));
   const meta=node('div','','library-detail-text');
   const details=node('div','','library-detail-meta');
   details.append(cardRow('p',[item.base,item.version].filter(Boolean).join(' · '),'palette','Базовая модель и версия'));
-  if(item.author)details.append(cardRow('p',`Автор: ${item.author}`,'user-circle','Автор'));
-  details.append(cardRow('small',item.name,'cube','Файл модели'));
+  if(item.author){const author=cardRow('p',item.author,'user-circle','Автор');author.dataset.detail='author';details.append(author);}
+  const file=cardRow('a',item.name,'cube','Файл модели','library-file-link');file.href='/dashboard/lora-library/reveal?'+new URLSearchParams({name:item.name});file.title='Показать файл в Проводнике';
+  details.append(file);
   if(item.tags.length)details.append(cardRow('p',item.tags.join(' · '),'tag','Теги','library-tags'));
   meta.append(details);
   if(item.triggers.length) {
-    const heading=node('div','','library-keywords-row');heading.append(node('h3','Триггеры'),copyButton(item));meta.append(heading);
+    const heading=node('div','','library-keywords-row');heading.append(cardRow('h3','Триггеры','keywords','Триггеры'),copyButton(item));meta.append(heading);
     const tags=node('div','','library-trigger-list');
     for(const word of item.triggers){const tag=node('button',word);tag.type='button';tag.title='Скопировать триггер';tag.onclick=()=>copyKeywords(word,tag);tags.append(tag);}
     meta.append(tags);
   }
-  if(item.description)meta.append(cardRow('p',item.description,'bulb','Описание','library-description'));
-  if(item.url){const link=node('a','Открыть на Civitai');link.href=item.url;link.target='_blank';link.rel='noopener noreferrer';meta.append(link);}
+  if(item.description)meta.append(cardRow('p',item.description,'document','Описание','library-description'));
+  if(item.url){const link=node('a','','library-civitai-link');link.href=item.url;link.target='_blank';link.rel='noopener noreferrer';link.append(node('span','Открыть на Civitai'),iconNode('civitai'));meta.append(link);}
   if(isCharacterLora(item))meta.prepend(characterSection(item,preferredName));else meta.append(addButton(item));
   body.append(meta);dialog.append(heading,body);syncSelectControls();dialog.showModal();
 }
