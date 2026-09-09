@@ -24,6 +24,8 @@
   if(dialog.querySelector('.library-description use')?.getAttribute('href')!=='#icon-document')throw new Error('У описания нет иконки документа');
   if(dialog.querySelector('.library-keywords-row h3 use')?.getAttribute('href')!=='#icon-keywords')throw new Error('У заголовка триггеров нет иконки');
   if(dialog.querySelector('.library-civitai-link use')?.getAttribute('href')!=='#icon-civitai')throw new Error('У ссылки Civitai нет логотипа');
+  const civitaiPaths=[...document.querySelectorAll('#icon-civitai path')].map(path=>path.getAttribute('d'));
+  if(civitaiPaths[0]!=='M22.392 6L12 0 1.608 6v12L12 24l10.392-6V6zm-3.407 1.967L12 3.934 5.015 7.967v8.066L12 20.065l6.985-4.032V7.967z')throw new Error('Используется не логотип Civitai из theSVG');
   const fileLink=dialog.querySelector('.library-file-link');if(fileLink?.textContent!==item.name||fileLink.tagName!=='A'||!fileLink.href.includes('/dashboard/lora-library/reveal?'))throw new Error('Файл LoRA не открывается обычной ссылкой');
   const titleBox=dialog.querySelector('h2').getBoundingClientRect(),closeBox=dialog.querySelector('.dialog-heading button').getBoundingClientRect();
   if(titleBox.right>closeBox.left+1 || titleBox.bottom>dialog.querySelector('.dialog-heading').getBoundingClientRect().bottom+1)throw new Error('Заголовок перекрывает закрытие');

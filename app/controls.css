@@ -167,7 +167,7 @@ body .ts-dropdown input.dropdown-input:focus { border-color:#343b47; outline:non
 .library-file-link { width:fit-content; color:#d4d4d8 !important; }
 .library-file-link:hover span { text-decoration:underline; }
 .library-civitai-link { display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; }
-.library-civitai-link .ui-icon { flex:none; width:18px; height:18px; }
+.library-civitai-link .ui-icon { flex:none; width:18px; height:18px; margin-left:auto; fill:currentColor; stroke:none; }
 .library-description { white-space:pre-line; }
 .library-trigger-list { display:flex; flex-wrap:wrap; gap:6px; }
 .library-trigger-list button { text-align:left; overflow-wrap:anywhere; min-width:0; max-width:100%; }
