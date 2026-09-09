@@ -183,6 +183,8 @@ body .ts-dropdown input.dropdown-input:focus { border-color:#343b47; outline:non
 #lora-library-categories button[aria-pressed=true] { background:#e7e9ed; color:#17191d; border-color:#e7e9ed; }
 .library-keywords-row { display:flex; align-items:center; gap:6px; }
 .library-keywords-row > :first-child { flex:1; min-width:0; }
+.library-keywords-row h3.library-card-row { align-items:center; }
+.library-keywords-row h3.library-card-row > .ui-icon { width:20px; height:20px; margin-top:0; }
 .library-copy,.app-dialog button.library-copy { flex:none; display:grid; place-items:center; width:44px; height:44px; min-height:44px; padding:0; border:0; border-radius:6px; background:transparent; color:#929ba8; cursor:pointer; }
 .library-copy .ui-icon { width:20px; height:20px; }
 .library-copy:hover { color:#e7e9ed; background:#ffffff08; }
