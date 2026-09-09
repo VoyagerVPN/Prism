@@ -75,13 +75,7 @@
   <main>
     <!-- Left Sidebar: Settings Panel -->
     <div class="sidebar" id="settings-panel">
-      <!-- Mode Tabs (Text-to-Image / Image-to-Image) -->
-
-
-      <nav class="settings-tabs" role="tablist" aria-label="Настройки изображения"><button type="button" role="tab" id="settings-tab-image" aria-controls="settings-image" aria-selected="true" tabindex="0">Изображение</button><button type="button" role="tab" id="settings-tab-processing" aria-controls="settings-processing" aria-selected="false" tabindex="-1">Обработка</button></nav><div class="settings-panels"><section class="settings-panel" id="settings-image" role="tabpanel" aria-labelledby="settings-tab-image"><div class="sidebar-tabs">
-        <button class="sidebar-tab active" id="tab-t2i">По описанию</button>
-        <button class="sidebar-tab" id="tab-i2i">Из изображения</button>
-      </div>
+      <nav class="settings-tabs" role="tablist" aria-label="Настройки изображения"><button type="button" role="tab" id="settings-tab-image" aria-controls="settings-image" aria-selected="true" tabindex="0">Изображение</button><button type="button" role="tab" id="settings-tab-processing" aria-controls="settings-processing" aria-selected="false" tabindex="-1">Обработка</button></nav><div class="settings-panels"><section class="settings-panel" id="settings-image" role="tabpanel" aria-labelledby="settings-tab-image">
 
           <div class="section-card" id="generation-model-card">
             <div class="section-title">
@@ -168,7 +162,7 @@
                 </select>
               </div>
             </div>
-          </div></div><div class="section-card" id="output-settings-card"><div class="section-card mode-t2i-only settings-subsection format-section">
+          </div></div><div class="section-card" id="output-settings-card"><div class="section-card settings-subsection format-section">
             <div class="section-title">
               <h3>Формат изображения</h3>
             </div>
@@ -211,39 +205,6 @@
               <div class="range-container"><input type="range" id="batch-count" min="0" max="2" step="1" value="0" aria-valuetext="1 изображение"></div>
               <div class="batch-stops" aria-hidden="true"><span>1</span><span>4</span><span>9</span></div>
             </div>
-          </div><div class="section-card mode-i2i-only settings-subsection format-section" style="display: none;">
-            <div class="section-title">
-              <h3>Исходное изображение</h3>
-            </div>
-            <div class="input-group">
-              <label class="input-label">Исходное изображение</label>
-              <div id="i2i-dropzone" class="i2i-dropzone">
-                <svg class="dropzone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                  <circle cx="8.5" cy="8.5" r="1.5"></circle>
-                  <polyline points="21 15 16 10 5 21"></polyline>
-                </svg>
-                <span class="dropzone-text">Перетащите картинку или кликните</span>
-                <input type="file" id="i2i-file-input" accept="image/*" style="display: none;">
-                <img id="i2i-preview" class="i2i-preview" style="display: none;">
-                <button id="i2i-clear-btn" class="i2i-clear-btn" style="display: none;">Удалить</button>
-              </div>
-            </div>
-            <div class="input-group">
-              <div style="display: flex; justify-content: space-between;">
-                <label class="input-label" for="i2i-denoise">Сила изменения (Denoise)</label>
-                <span id="i2i-denoise-val" class="range-val">0.60</span>
-              </div>
-              <div class="range-container">
-                <input type="range" id="i2i-denoise" min="0.0" max="1.0" step="0.05" value="0.60">
-              </div>
-            </div>
-            <div class="input-group">
-              <label class="input-label" for="i2i-batch-count">Количество изображений</label>
-              <span id="i2i-batch-count-label" class="format-ratio">1 изображение</span>
-              <div class="range-container"><input type="range" id="i2i-batch-count" min="0" max="2" step="1" value="0" aria-valuetext="1 изображение"></div>
-              <div class="batch-stops" aria-hidden="true"><span>1</span><span>4</span><span>9</span></div>
-            </div>
           </div><div class="section-card seed-section settings-subsection">
           <div class="section-title"><h3>Seed</h3></div>
           <div class="seed-input-container">
@@ -269,20 +230,6 @@
             </div>
           </details>
         </div></div>
-
-
-          <!-- Image Size & Batch Card (Visible in T2I mode) -->
-
-
-          <!-- Image-to-Image Upload & Settings Card (Visible in I2I mode) -->
-
-
-
-
-
-
-
-
 
 
 
@@ -433,15 +380,15 @@
               <!-- Source Image Upload for Face Swap -->
               <div class="input-group">
                 <label class="input-label">Изображение лица (Source)</label>
-                <div id="reactor-dropzone" class="i2i-dropzone">
+                <div id="reactor-dropzone" class="image-dropzone">
                   <svg class="dropzone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
                     <circle cx="12" cy="7" r="4"></circle>
                   </svg>
                   <span class="dropzone-text">Перетащите лицо или кликните</span>
                   <input type="file" id="reactor-file-input" accept="image/*" style="display: none;">
-                  <img id="reactor-preview" class="i2i-preview" style="display: none;">
-                  <button id="reactor-clear-btn" class="i2i-clear-btn" style="display: none;">Удалить</button>
+                  <img id="reactor-preview" class="image-preview" style="display: none;">
+                  <button id="reactor-clear-btn" class="image-clear-btn" style="display: none;">Удалить</button>
                 </div>
               </div>
 
@@ -579,8 +526,6 @@
         <button id="repeat-btn" class="header-meta-btn" disabled title="Повторить весь сохранённый рецепт">Повторить</button>
         <button id="apply-prompt-btn" class="header-meta-btn" disabled title="Перенести все настройки выбранной генерации в форму">Взять параметры</button>
         <button id="apply-seed-btn" class="header-meta-btn" disabled title="Применить seed из выбранного кадра">Seed кадра</button>
-        <button id="apply-i2i-btn" class="header-meta-btn" disabled title="Передать выбранный кадр в Img2Img">В Img2Img</button>
-        <button id="hires-current-btn" class="header-meta-btn" disabled title="Улучшить выбранное изображение">Улучшить</button>
       </div>
       <div id="batch-thumbnails" class="batch-thumbnails" style="display: none;"></div>
 

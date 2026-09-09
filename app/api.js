@@ -51,7 +51,7 @@ export async function getSystemStats() {
   return requestJson(COMFY_URL, '/system_stats');
 }
 
-export async function uploadI2IImage(file) {
+export async function uploadInputImage(file) {
   const formData = new FormData();
   // Уникальное имя не позволяет следующей загрузке изменить вход уже стоящего в очереди задания.
   formData.append('image', file, `${randomUuid()}-${file.name}`);

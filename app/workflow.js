@@ -41,11 +41,6 @@ export function compileWorkflow(settings) {
   if (typeof positivePromptBase !== 'string' || typeof negativePromptBase !== 'string') throw new Error('Промпты должны быть текстом.');
   const widthValNum = numeric(settings.width, 1024, 'Ширина', 16, 16384, true);
   const heightValNum = numeric(settings.height, 1024, 'Высота', 16, 16384, true);
-  const modeVal = settings.mode ?? 't2i';
-  if (!['t2i', 'i2i'].includes(modeVal)) throw new Error('Неизвестный режим генерации.');
-  const denoiseValInput = numeric(settings.denoise, 0.6, 'Denoise', 0, 1);
-  const uploadedImageName = settings.inputImageName ?? null;
-  if (modeVal === 'i2i' && !uploadedImageName) throw new Error('Для Img2Img нужен исходный файл.');
   const clipSkipValNum = numeric(settings.clipSkip, 1, 'Clip skip', 1, 24, true);
   const vaeVal = settings.vae ?? 'None';
   const isHiresEnabled = settings.hiresToggle === true;
@@ -65,7 +60,7 @@ export function compileWorkflow(settings) {
   const reactorIndexInputVal = settings.reactorIndexInput ?? '0';
   const activeReactorImageName = settings.reactorImageName;
   if (isReactorEnabled && !activeReactorImageName) throw new Error('Для Face Swap нужен исходный файл лица.');
-  if ((isHiresEnabled || isUpscaleEnabled || settings.operation === 'refine') && !upscaleModelVal) throw new Error('Выберите доступную модель увеличения.');
+  if ((isHiresEnabled || isUpscaleEnabled) && !upscaleModelVal) throw new Error('Выберите доступную модель увеличения.');
 
   const graph = {};
   
@@ -173,52 +168,15 @@ export function compileWorkflow(settings) {
     }
   };
   
-  let denoiseVal = 1.0;
-  let lastLatentLink = null;
-  
-  if (modeVal === "t2i") {
-    graph["4"] = {
-      "class_type": "EmptyLatentImage",
-      "inputs": {
-        "width": widthValNum,
-        "height": heightValNum,
-        "batch_size": 1
-      }
-    };
-    lastLatentLink = ["4", 0];
-    denoiseVal = 1.0;
-  } else {
-    graph["4"] = {
-      "class_type": "LoadImage",
-      "inputs": {
-        "image": uploadedImageName
-      }
-    };
-    let inputImageLink = ["4", 0];
-    if (settings.operation === 'refine') {
-      graph.refine_model = { class_type: 'UpscaleModelLoader', inputs: { model_name: upscaleModelVal } };
-      graph.refine_upscale = {
-        class_type: 'ImageUpscaleWithModel',
-        inputs: { upscale_model: ['refine_model', 0], image: inputImageLink }
-      };
-      inputImageLink = ['refine_upscale', 0];
+  graph["4"] = {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "width": widthValNum,
+      "height": heightValNum,
+      "batch_size": 1
     }
-    graph.input_scale = {
-      class_type: 'ImageScale',
-      inputs: { image: inputImageLink, width: widthValNum, height: heightValNum, upscale_method: 'bicubic', crop: 'disabled' }
-    };
-    graph["20"] = {
-      "class_type": "VAEEncode",
-      "inputs": {
-        "pixels": ["input_scale", 0],
-        "vae": lastVaeLink
-      }
-    };
-    
-    lastLatentLink = ["20", 0];
-    
-    denoiseVal = denoiseValInput;
-  }
+  };
+  const lastLatentLink = ["4", 0];
 
   graph["7"] = {
     "class_type": "KSampler",
@@ -232,7 +190,7 @@ export function compileWorkflow(settings) {
       "cfg": cfgValNum,
       "sampler_name": samplerVal,
       "scheduler": schedulerVal,
-      "denoise": denoiseVal
+      "denoise": 1.0
     }
   };
   
@@ -240,7 +198,7 @@ export function compileWorkflow(settings) {
     graph.variation_noise = {class_type:'PrismVariationNoise',inputs:{seed,variation_seed:variationSeed,strength:variationStrength}};
     graph.variation_guider = {class_type:'CFGGuider',inputs:{model:lastModelLink,positive:['5',0],negative:['6',0],cfg:cfgValNum}};
     graph.variation_sampler = {class_type:'KSamplerSelect',inputs:{sampler_name:samplerVal}};
-    graph.variation_schedule = {class_type:'BasicScheduler',inputs:{model:lastModelLink,scheduler:schedulerVal,steps:stepsValNum,denoise:denoiseVal}};
+    graph.variation_schedule = {class_type:'BasicScheduler',inputs:{model:lastModelLink,scheduler:schedulerVal,steps:stepsValNum,denoise:1.0}};
     graph['7'] = {class_type:'SamplerCustomAdvanced',inputs:{noise:['variation_noise',0],guider:['variation_guider',0],sampler:['variation_sampler',0],sigmas:['variation_schedule',0],latent_image:lastLatentLink}};
   }
 

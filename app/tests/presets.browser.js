@@ -3,9 +3,9 @@
   const {applyPresetData} = await import('./presets.js');
   const original = readSettings(), stored = localStorage.getItem('matrix_dashboard_v3');
   try {
-    applySettings({...original,positive:'Мой сюжет',negative:'Мои исключения',width:768,height:512,batchCount:4,t2iBatchCount:4,seedMode:'lock',seedInput:'123',variationSeedInput:'456',variationStrength:.1});
+    applySettings({...original,positive:'Мой сюжет',negative:'Мои исключения',width:768,height:512,batchCount:4,seedMode:'lock',seedInput:'123',variationSeedInput:'456',variationStrength:.1});
     const before = readSettings();
-    applyPresetData({...before,steps:37,cfg:8,positive:'Чужой сюжет',negative:'Затёрто',width:1024,height:1024,batchCount:9,t2iBatchCount:9,seedInput:'999',variationStrength:0});
+    applyPresetData({...before,steps:37,cfg:8,positive:'Чужой сюжет',negative:'Затёрто',width:1024,height:1024,batchCount:9,seedInput:'999',variationStrength:0});
     const after = readSettings();
     if (after.steps !== 37 || after.cfg !== 8) throw new Error('Параметры модели не применены');
     for (const key of Object.keys(before).filter(key => !['steps','cfg'].includes(key))) {

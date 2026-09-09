@@ -4,7 +4,7 @@ import { compileWorkflow } from '../workflow.js';
 
 const base = {
   recipe: 'checkpoint', checkpoint: 'novaKemonoXL_v80.safetensors',
-  mode: 't2i', width: 1024, height: 1024, batchCount: 1,
+  width: 1024, height: 1024, batchCount: 1,
   seed: 12345, steps: 20, cfg: 6, sampler: 'euler', scheduler: 'normal',
   positive: 'portrait', negative: 'blurry', loras: [], character: null,
 };
@@ -76,26 +76,6 @@ test('Clip skip меняет CLIP, переданный в текстовый э
   const clip = graph[encode.inputs.clip[0]];
   assert.equal(clip.class_type, 'CLIPSetLastLayer');
   assert.equal(clip.inputs.stop_at_clip_layer, -2);
-});
-
-test('Улучшение выбранного файла масштабирует его перед сэмплингом без нового txt2img', () => {
-  const graph = compileWorkflow({
-    ...base, mode: 'i2i', operation: 'refine', inputImageName: 'selected.png',
-    width: 1536, height: 1536, denoise: 0.3, upscaleSelect: '4x-UltraSharp.pth',
-  });
-  assert.ok(!Object.values(graph).some(node => node.class_type === 'EmptyLatentImage'));
-  const scale = Object.values(graph).find(node => node.class_type === 'ImageScale');
-  assert.equal(scale.inputs.width, 1536);
-  const upscale = graph[scale.inputs.image[0]];
-  assert.equal(upscale.class_type, 'ImageUpscaleWithModel');
-  assert.equal(graph[upscale.inputs.image[0]].inputs.image, 'selected.png');
-});
-
-test('Нулевой denoise и CFG сохраняются в задании', () => {
-  const graph = compileWorkflow({ ...base, mode: 'i2i', inputImageName: 'source.png', denoise: 0, cfg: 0 });
-  const sampler = Object.values(graph).find(node => node.class_type === 'KSampler');
-  assert.equal(sampler.inputs.denoise, 0);
-  assert.equal(sampler.inputs.cfg, 0);
 });
 
 test('Стек из 12 LoRA совместим с Face Swap без перезаписи узлов модели', () => {

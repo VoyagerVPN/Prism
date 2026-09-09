@@ -23,19 +23,6 @@ export const variationSeedInput = document.getElementById('variation-seed-input'
 export const variationStrength = document.getElementById('variation-strength');
 export const batchCountInput = document.getElementById("batch-count");
 
-// I2I specific elements
-export const tabT2I = document.getElementById("tab-t2i");
-export const tabI2I = document.getElementById("tab-i2i");
-export const t2iElements = document.querySelectorAll(".mode-t2i-only");
-export const i2iElements = document.querySelectorAll(".mode-i2i-only");
-export const i2iDropzone = document.getElementById("i2i-dropzone");
-export const i2iFileInput = document.getElementById("i2i-file-input");
-export const i2iPreview = document.getElementById("i2i-preview");
-export const i2iClearBtn = document.getElementById("i2i-clear-btn");
-export const i2iDenoiseSlider = document.getElementById("i2i-denoise");
-export const i2iDenoiseVal = document.getElementById("i2i-denoise-val");
-export const i2iBatchCountInput = document.getElementById("i2i-batch-count");
-
 // LoRA dynamic stack
 export const loraStackContainer = document.getElementById("lora-stack-container");
 
@@ -92,8 +79,6 @@ export const metadataBar = document.getElementById("metadata-bar");
 export const metadataSummary = document.getElementById("metadata-summary");
 export const applyPromptBtn = document.getElementById("apply-prompt-btn");
 export const applySeedBtn = document.getElementById("apply-seed-btn");
-export const applyI2IBtn = document.getElementById("apply-i2i-btn");
-export const hiresCurrentBtn = document.getElementById("hires-current-btn");
 export const fullscreenBtn = document.getElementById("fullscreen-btn");
 
 // Lightbox Elements

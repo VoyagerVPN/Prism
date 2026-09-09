@@ -1,5 +1,5 @@
-import { checkpointSelect, stepsSlider, stepsVal, cfgSlider, cfgVal, samplerSelect, schedulerSelect, positiveTextarea, negativeTextarea, widthSlider, heightSlider, batchCountInput, i2iBatchCountInput, i2iDenoiseSlider, i2iDenoiseVal, hiresToggle, hiresScaleSelect, hiresDenoiseSlider, hiresDenoiseVal, faceToggle, faceThresholdSlider, faceThresholdVal, faceStepsSlider, faceStepsVal, upscaleToggle, upscaleSelect, advancedToggle, clipSkipSlider, clipSkipVal, vaeSelect, generateBtn, downloadBtn, seedInput, seedRandomBtn, seedLockBtn, seedPrevBtn, seedNextBtn, interruptBtn, clearQueueBtn, profileSelect, saveProfileBtn, tabT2I, tabI2I, i2iDropzone, i2iFileInput, i2iClearBtn, outputImage, reactorToggle, reactorDropzone, reactorFileInput, reactorClearBtn, reactorDetection, reactorRestore, reactorVisibility, reactorVisibilityVal, reactorCodeformerWeight, reactorCodeformerWeightVal, reactorIndexSource, reactorIndexInput } from './elements.js';
-import { switchMode, handleI2IFile, clearI2IFile, setSeedMode, offsetSeed, handleReactorFile, clearReactorFile } from './state.js';
+import { checkpointSelect, stepsSlider, stepsVal, cfgSlider, cfgVal, samplerSelect, schedulerSelect, positiveTextarea, negativeTextarea, widthSlider, heightSlider, batchCountInput, hiresToggle, hiresScaleSelect, hiresDenoiseSlider, hiresDenoiseVal, faceToggle, faceThresholdSlider, faceThresholdVal, faceStepsSlider, faceStepsVal, upscaleToggle, upscaleSelect, advancedToggle, clipSkipSlider, clipSkipVal, vaeSelect, generateBtn, downloadBtn, seedInput, seedRandomBtn, seedLockBtn, seedPrevBtn, seedNextBtn, interruptBtn, clearQueueBtn, profileSelect, saveProfileBtn, outputImage, reactorToggle, reactorDropzone, reactorFileInput, reactorClearBtn, reactorDetection, reactorRestore, reactorVisibility, reactorVisibilityVal, reactorCodeformerWeight, reactorCodeformerWeightVal, reactorIndexSource, reactorIndexInput } from './elements.js';
+import { setSeedMode, offsetSeed, handleReactorFile, clearReactorFile } from './state.js';
 import { renderLoraStack } from './lora.js';
 import { setupPromptEditor } from './prompt_editor.js';
 import { modelList, loraList, upscaleModelList, samplerList, schedulerList, vaeList } from './api.js';
@@ -57,7 +57,7 @@ export function setupUIEventListeners() {
   setupMobileLayout();
   setupSettingsTabs();
   syncBatchControls();
-  for (const input of [batchCountInput,i2iBatchCountInput]) input.addEventListener('input',syncBatchControls);
+  batchCountInput.addEventListener('input',syncBatchControls);
   document.addEventListener('wheel', event => {
     if (event.ctrlKey || event.deltaY === 0 || !(event.target instanceof Element)) return;
     const input = event.target.closest('.input-group')?.querySelector('input[type="range"], input[type="number"]');
@@ -69,38 +69,6 @@ export function setupUIEventListeners() {
     input.dispatchEvent(new Event('input', { bubbles: true }));
     input.dispatchEvent(new Event('change', { bubbles: true }));
   }, { passive: false });
-  tabT2I.addEventListener("click", () => switchMode("t2i"));
-  tabI2I.addEventListener("click", () => switchMode("i2i"));
-  
-  i2iDropzone.addEventListener("click", () => i2iFileInput.click());
-  i2iFileInput.addEventListener("change", (e) => {
-    if (e.target.files.length > 0) {
-      handleI2IFile(e.target.files[0]);
-    }
-  });
-  
-  i2iDropzone.addEventListener("dragover", (e) => {
-    e.preventDefault();
-    i2iDropzone.style.borderColor = "var(--text-primary)";
-  });
-  
-  i2iDropzone.addEventListener("dragleave", () => {
-    i2iDropzone.style.borderColor = "var(--border-color)";
-  });
-  
-  i2iDropzone.addEventListener("drop", (e) => {
-    e.preventDefault();
-    i2iDropzone.style.borderColor = "var(--border-color)";
-    if (e.dataTransfer.files.length > 0) {
-      handleI2IFile(e.dataTransfer.files[0]);
-    }
-  });
-  
-  i2iClearBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    clearI2IFile();
-  });
-  
   seedRandomBtn.addEventListener("click", () => setSeedMode("random"));
   seedLockBtn.addEventListener("click", () => setSeedMode("lock"));
   const variationStrength = document.getElementById('variation-strength');
@@ -137,7 +105,6 @@ export function setupUIEventListeners() {
   
   setupSlider(stepsSlider, stepsVal);
   setupSlider(cfgSlider, cfgVal);
-  setupSlider(i2iDenoiseSlider, i2iDenoiseVal);
   setupSlider(hiresDenoiseSlider, hiresDenoiseVal);
   setupSlider(faceThresholdSlider, faceThresholdVal);
   setupSlider(faceStepsSlider, faceStepsVal);
@@ -190,7 +157,7 @@ export function setupUIEventListeners() {
 
   const inputs = [
     checkpointSelect, stepsSlider, cfgSlider, samplerSelect, schedulerSelect,
-    positiveTextarea, negativeTextarea, batchCountInput, i2iBatchCountInput,
+    positiveTextarea, negativeTextarea, batchCountInput,
     widthSlider, heightSlider, hiresToggle, hiresScaleSelect, faceToggle,
     faceThresholdSlider, faceStepsSlider, upscaleToggle, upscaleSelect,
     advancedToggle, clipSkipSlider, vaeSelect,
@@ -200,12 +167,6 @@ export function setupUIEventListeners() {
   inputs.forEach(el => el.addEventListener("change", () => {
     window.dispatchEvent(new CustomEvent("save-settings"));
   }));
-
-  window.addEventListener("apply-i2i-file", (e) => {
-    if (e.detail && e.detail.file) {
-      handleI2IFile(e.detail.file);
-    }
-  });
 
   window.addEventListener("keydown", (e) => {
     if (e.ctrlKey && e.key === "Enter") {
@@ -301,7 +262,6 @@ function setupSettingsTabs() {
     });
   }
   window.addEventListener('show-content-settings', () => show(tabs[0]));
-  document.getElementById('apply-i2i-btn').addEventListener('click', () => show(tabs[0]));
 }
 
 function setupMobileLayout() {
@@ -335,7 +295,6 @@ function setupMobileLayout() {
     button.addEventListener('click', () => showPanel(button.dataset.mobilePanel));
   });
   generateBtn.addEventListener('click', () => showPanel('generate'));
-  document.getElementById('apply-i2i-btn').addEventListener('click', () => showPanel('settings'));
   mobile.addEventListener('change', applyLayout);
   applyLayout();
 }

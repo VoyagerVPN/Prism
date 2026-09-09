@@ -1,7 +1,7 @@
 import { showNotice } from './dialogs.js';
 import {frameSettings,gridImage} from './batch.js';
-import { canvasPlaceholder, imageLoader, outputImage, galleryItems, metadataBar, metadataSummary, applyPromptBtn, applySeedBtn, applyI2IBtn, hiresToggle, faceToggle, upscaleToggle, upscaleSelect, hiresCurrentBtn, fullscreenBtn, lightbox, lightboxClose, lightboxPrev, lightboxNext, lightboxImg, lightboxCaption, batchThumbnails, reactorToggle, reactorDetection, reactorRestore, reactorVisibility, reactorCodeformerWeight, reactorIndexSource, reactorIndexInput } from './elements.js';
-import { switchMode, setSeedMode, setLastGeneratedSeed, reactorImageName } from './state.js';
+import { canvasPlaceholder, imageLoader, outputImage, galleryItems, metadataBar, metadataSummary, applyPromptBtn, applySeedBtn, hiresToggle, faceToggle, upscaleToggle, upscaleSelect, fullscreenBtn, lightbox, lightboxClose, lightboxPrev, lightboxNext, lightboxImg, lightboxCaption, batchThumbnails, reactorToggle, reactorDetection, reactorRestore, reactorVisibility, reactorCodeformerWeight, reactorIndexSource, reactorIndexInput } from './elements.js';
+import { setSeedMode, setLastGeneratedSeed, reactorImageName } from './state.js';
 
 
 
@@ -174,7 +174,7 @@ export function selectHistoryItem(item, batchIndex = 0) {
     : "";
   
   let charStr = item.character ? ` | Персонаж: ${item.character.name}` : "";
-  let sizeStr = item.width ? ` | Размер: ${item.width}x${item.height}` : ` | Img2Img (Denoise: ${item.denoise})`;
+  let sizeStr = item.width && item.height ? ` | Размер: ${item.width}x${item.height}` : '';
   
   const settings = selectedSettings(item,batchIndex);
   let activeSeed = settings.seed;
@@ -195,9 +195,6 @@ export function selectHistoryItem(item, batchIndex = 0) {
   applyPromptBtn.disabled = false;
   applySeedBtn.disabled = showGrid || seriesSeed;
   applySeedBtn.title = showGrid ? 'Сначала выберите кадр в сетке' : seriesSeed ? 'У старой серии сохранён только общий seed' : 'Взять seed выбранного кадра';
-  applyI2IBtn.disabled = showGrid;
-  hiresCurrentBtn.disabled = showGrid || !item.settings;
-  hiresCurrentBtn.title = showGrid ? 'Сначала выберите кадр' : 'Улучшить выбранный файл';
   fullscreenBtn.style.display = showGrid ? "none" : "block";
 }
 
@@ -223,34 +220,6 @@ export function initGalleryEvents() {
     }
   });
   
-  applyI2IBtn.addEventListener("click", async () => {
-    if (selectedHistoryItem) {
-      try {
-        let activeUrl = selectedHistoryItem.url;
-        if (selectedBatchIndex > 0 && selectedHistoryItem.batchUrls && selectedHistoryItem.batchUrls[selectedBatchIndex - 1]) {
-          activeUrl = selectedHistoryItem.batchUrls[selectedBatchIndex - 1];
-        }
-        const response = await fetch(activeUrl);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const blob = await response.blob();
-        const file = new File([blob], "generation.png", { type: "image/png" });
-        switchMode("i2i");
-        
-        const event = new CustomEvent("apply-i2i-file", { detail: { file } });
-        window.dispatchEvent(event);
-      } catch (e) {
-        console.error(e);
-        await showNotice("Не удалось переслать изображение в Img2Img");
-      }
-    }
-  });
-
-  hiresCurrentBtn.addEventListener('click', () => {
-    if (selectedHistoryItem?.settings) {
-      const index = selectedBatchIndex > 0 ? selectedBatchIndex - 1 : 0;
-      window.dispatchEvent(new CustomEvent('refine-image', { detail: { item: {...structuredClone(selectedHistoryItem),settings:structuredClone(selectedSettings())}, index } }));
-    }
-  });
   document.getElementById('repeat-btn').addEventListener('click', () => {
     if (!selectedHistoryItem?.workflow) return;
     const item = structuredClone(selectedHistoryItem);
@@ -353,9 +322,9 @@ export function openLightbox() {
   lightboxScale = 1.0;
   lightboxImg.style.transform = "scale(1)";
   
-  let sizeStr = selectedHistoryItem.width 
-    ? `${selectedHistoryItem.width}x${selectedHistoryItem.height}` 
-    : `Img2Img (Denoise: ${selectedHistoryItem.denoise})`;
+  let sizeStr = selectedHistoryItem.width && selectedHistoryItem.height
+    ? `${selectedHistoryItem.width}x${selectedHistoryItem.height}`
+    : 'Размер неизвестен';
     
   let modelName = (selectedHistoryItem.checkpoint ?? "Неизвестно").split("/").pop();
   

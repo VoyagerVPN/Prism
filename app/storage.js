@@ -2,7 +2,7 @@ import * as el from './elements.js';
 import { syncSelectControls } from './controls.js';
 import { syncImageFormats } from './formats.js';
 import {batchSizes,syncBatchControls} from './batch.js';
-import { currentMode, activeWidth, activeHeight, seedMode, i2iImageName, i2iWidth, i2iHeight, reactorImageName, setI2IImage, setReactorImageName, clearI2IFile, clearReactorFile, switchMode, setActiveWidth, setActiveHeight, setSeedMode, updateAllExpansions } from './state.js';
+import { activeWidth, activeHeight, seedMode, reactorImageName, setReactorImageName, clearReactorFile, setActiveWidth, setActiveHeight, setSeedMode, updateAllExpansions } from './state.js';
 import { activeLoras, updateActiveLoras } from './lora.js';
 import { history, updateHistory, renderGallery, selectHistoryItem } from './gallery.js';
 import { getSavedCharacters, getActiveCharacterSnapshot, renderCharacterSelect, loadCharacterData } from './characters.js';
@@ -15,8 +15,8 @@ const fields = {
   variationSeedInput: el.variationSeedInput, variationStrength: el.variationStrength,
   checkpoint: el.checkpointSelect, steps: el.stepsSlider, cfg: el.cfgSlider,
   sampler: el.samplerSelect, scheduler: el.schedulerSelect, positive: el.positiveTextarea,
-  negative: el.negativeTextarea, batchCount: el.batchCountInput, i2iBatchCount: el.i2iBatchCountInput,
-  denoise: el.i2iDenoiseSlider, hiresToggle: el.hiresToggle, hiresScale: el.hiresScaleSelect,
+  negative: el.negativeTextarea, batchCount: el.batchCountInput,
+  hiresToggle: el.hiresToggle, hiresScale: el.hiresScaleSelect,
   hiresDenoise: el.hiresDenoiseSlider, faceToggle: el.faceToggle, faceThreshold: el.faceThresholdSlider,
   faceSteps: el.faceStepsSlider, upscaleToggle: el.upscaleToggle, upscaleSelect: el.upscaleSelect,
   advancedToggle: el.advancedToggle, clipSkip: el.clipSkipSlider, vae: el.vaeSelect,
@@ -51,23 +51,21 @@ export function readSettings() {
     character.outfits[character.activeOutfitName ?? 'По умолчанию'] = document.getElementById('char-outfit-input').value;
   }
   return {
-    ...settings, recipe: 'checkpoint', mode: currentMode, width: activeWidth, height: activeHeight,
-    batchCount: batchSizes[currentMode === 'i2i' ? settings.i2iBatchCount : settings.batchCount],
-    t2iBatchCount: batchSizes[settings.batchCount], i2iBatchCount:batchSizes[settings.i2iBatchCount],batchLayout:'square-v1',
+    ...settings, recipe: 'checkpoint', width: activeWidth, height: activeHeight,
+    batchCount: batchSizes[settings.batchCount], batchLayout:'square-v1',
     ...(positiveParts?{positiveParts,positive:resolvePromptParts(positiveParts).text}:{}),
     loras: positiveParts?resolvePromptParts(positiveParts).loras:activeLoras.map(({ name, strength, description }) => ({ name, strength: Number(strength), description: description ?? '' })),
     character, selectedCharacter, seedMode, seedInput: el.seedInput.value,
-    inputImageName: i2iImageName, inputWidth: i2iWidth, inputHeight: i2iHeight, reactorImageName,
+    reactorImageName,
   };
 }
 
 export function applySettings(settings, { restoreCharacterSnapshot = true, partial = false } = {}) {
   restoring = true;
   try {
-    const values = partial ? {...settings} : { ...settings, denoise: settings.denoise ?? settings.i2iDenoise, batchCount: settings.t2iBatchCount ?? settings.batchCount, variationSeedInput: settings.variationSeed ?? settings.variationSeedInput ?? 'random', variationStrength: settings.variationStrength ?? 0 };
+    const values = partial ? {...settings} : { ...settings, variationSeedInput: settings.variationSeed ?? settings.variationSeedInput ?? 'random', variationStrength: settings.variationStrength ?? 0 };
     if (!partial) {
     values.batchCount = Math.max(0,batchSizes.indexOf(Number(values.batchCount ?? 1)));
-    values.i2iBatchCount = Math.max(0,batchSizes.indexOf(Number(settings.i2iBatchCount ?? (settings.mode === 'i2i' ? settings.batchCount : 1))));
     }
     for (const [name, input] of Object.entries(fields)) {
       const value = values[name];
@@ -87,14 +85,13 @@ export function applySettings(settings, { restoreCharacterSnapshot = true, parti
     if (settings.height !== undefined) { setActiveHeight(Number(settings.height)); el.heightSlider.value = settings.height; }
     syncImageFormats();
     syncBatchControls();
-    for (const [input, label] of [[el.stepsSlider, el.stepsVal], [el.cfgSlider, el.cfgVal], [el.i2iDenoiseSlider, el.i2iDenoiseVal], [el.hiresDenoiseSlider, el.hiresDenoiseVal], [el.faceThresholdSlider, el.faceThresholdVal], [el.faceStepsSlider, el.faceStepsVal], [el.clipSkipSlider, el.clipSkipVal], [el.reactorVisibility, el.reactorVisibilityVal], [el.reactorCodeformerWeight, el.reactorCodeformerWeightVal]]) {
+    for (const [input, label] of [[el.stepsSlider, el.stepsVal], [el.cfgSlider, el.cfgVal], [el.hiresDenoiseSlider, el.hiresDenoiseVal], [el.faceThresholdSlider, el.faceThresholdVal], [el.faceStepsSlider, el.faceStepsVal], [el.clipSkipSlider, el.clipSkipVal], [el.reactorVisibility, el.reactorVisibilityVal], [el.reactorCodeformerWeight, el.reactorCodeformerWeightVal]]) {
       label.textContent = input.value;
     }
     if (Array.isArray(settings.loras)) {
       updateActiveLoras(settings.loras.map(lora => ({ ...lora, id: randomUuid() })));
     }
     if(settings.positiveParts!==undefined||settings.positive!==undefined||Array.isArray(settings.loras))writePositiveParts(promptPartsFromSettings({...settings,positive:settings.positive??el.positiveTextarea.value,loras:settings.loras??activeLoras}));
-    if (settings.mode) switchMode(settings.mode === 'i2i' ? 'i2i' : 't2i');
     if (settings.seedMode) setSeedMode(settings.seedMode);
     document.getElementById('variation-strength-val').textContent = Number(el.variationStrength.value).toFixed(2);
     document.getElementById('seed-variation').open = Number(el.variationStrength.value) > 0;
@@ -112,14 +109,7 @@ export function applySettings(settings, { restoreCharacterSnapshot = true, parti
       document.getElementById('character-details').style.display = selected === 'none' ? 'none' : 'flex';
       if (selected !== 'none') loadCharacterData(selected, restoreCharacterSnapshot ? settings.character : undefined);
     }
-    if ('inputImageName' in settings) clearI2IFile();
     if ('reactorImageName' in settings) clearReactorFile();
-    if (settings.inputImageName) {
-      setI2IImage(settings.inputImageName, settings.inputWidth, settings.inputHeight);
-      el.i2iPreview.src = imageUrl({ filename: settings.inputImageName, type: 'input' });
-      el.i2iPreview.style.display = 'block';
-      el.i2iClearBtn.style.display = 'block';
-    }
     if (settings.reactorImageName) {
       setReactorImageName(settings.reactorImageName);
       el.reactorPreview.src = imageUrl({ filename: settings.reactorImageName, type: 'input' });

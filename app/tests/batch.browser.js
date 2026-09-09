@@ -29,7 +29,7 @@
       slider.value = position;
       slider.dispatchEvent(new Event('input',{bubbles:true}));
       slider.dispatchEvent(new Event('change',{bubbles:true}));
-      if (readSettings().t2iBatchCount !== count || !slider.getAttribute('aria-valuetext').startsWith(String(count))) throw new Error('Неверная позиция 1/4/9');
+      if (readSettings().batchCount !== count || !slider.getAttribute('aria-valuetext').startsWith(String(count))) throw new Error('Неверная позиция 1/4/9');
     }
     for (const job of window.batchFixtures) {
       gallery.displayOutputImage(job);

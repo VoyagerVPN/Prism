@@ -14,7 +14,6 @@
   try {
     document.querySelector('[data-mobile-panel=settings]').click();
     document.querySelector('#settings-tab-image').click();
-    document.querySelector('#tab-t2i').click();
     const save = document.querySelector('#add-format-btn');
     if (!save) throw new Error('Нельзя сохранить собственный формат');
     for (const [id,value] of [['width-val','1600'],['height-val','960']]) {

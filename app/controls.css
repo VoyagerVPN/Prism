@@ -207,7 +207,7 @@ body button:not(:where(.library-open,.gallery-thumb,.batch-thumb,.batch-grid but
   padding:5px 9px !important; font-size:12px !important; line-height:16px;
   border-radius:6px; gap:5px;
 }
-body button:is(.icon-btn-sm,.library-add-icon,.library-copy,.library-update,.delete-lora-btn,.control-btn,.i2i-clear-btn,.lightbox-nav-btn),
+body button:is(.icon-btn-sm,.library-add-icon,.library-copy,.library-update,.delete-lora-btn,.control-btn,.image-clear-btn,.lightbox-nav-btn),
 body .seed-input-container .seed-btn {
   width:var(--action-icon) !important; min-width:var(--action-icon) !important;
   height:var(--action-icon) !important; min-height:var(--action-icon) !important; padding:0 !important;

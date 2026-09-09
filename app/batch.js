@@ -11,16 +11,14 @@ export function frameSettings(settings, index) {
   const variationSeed = variation ? offset(settings.variationSeed,index) : settings.variationSeed;
   return {...settings,seed,seedInput:String(seed),seedMode:'lock',variationSeed,
     ...(variation ? {variationSeedInput:String(variationSeed)} : {}),
-    batchCount:1,t2iBatchCount:1,i2iBatchCount:1,batchLayout:'square-v1'};
+    batchCount:1,batchLayout:'square-v1'};
 }
 
 export function syncBatchControls() {
-  for (const id of ['batch-count','i2i-batch-count']) {
-    const input = document.getElementById(id);
-    const count = batchSizes[Number(input.value)];
-    document.getElementById(`${id}-label`).textContent = count === 1 ? '1 изображение' : `${count} изображений · ${Math.sqrt(count)}×${Math.sqrt(count)}`;
-    input.setAttribute('aria-valuetext',`${count} изображений`);
-  }
+  const input = document.getElementById('batch-count');
+  const count = batchSizes[Number(input.value)];
+  document.getElementById('batch-count-label').textContent = count === 1 ? '1 изображение' : `${count} изображений · ${Math.sqrt(count)}×${Math.sqrt(count)}`;
+  input.setAttribute('aria-valuetext',`${count} изображений`);
 }
 
 export async function gridImage(urls) {

@@ -14,7 +14,7 @@ for (const count of [1,4,9]) {
   }
   validateCapabilities(workflow,info);
   const client = new ComfyClient({storage:null,pollMs:0});
-  await client.submit(workflow,{batchLayout:'square-v1',batchCount:count,seed:100,width:64,height:64,mode:'t2i',positive:'CPU grid verification'});
+  await client.submit(workflow,{batchLayout:'square-v1',batchCount:count,seed:100,width:64,height:64,positive:'CPU grid verification'});
   const deadline = Date.now()+30000;
   while (client.busy && Date.now()<deadline) {
     await new Promise(resolve => setTimeout(resolve,250));

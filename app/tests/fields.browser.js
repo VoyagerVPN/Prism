@@ -59,10 +59,7 @@
     document.querySelector('[data-mobile-panel=settings]').click();
     document.querySelector('#settings-tab-image').click();
     await frame();
-    document.querySelector('#tab-t2i').click();
     document.querySelector('#seed-variation').open = true;
-    await inspect();
-    document.querySelector('#tab-i2i').click();
     await inspect();
     document.querySelector('#settings-tab-processing').click();
     await inspect();

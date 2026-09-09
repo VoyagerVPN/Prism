@@ -154,10 +154,6 @@ header {
   opacity: 0.35;
   cursor: not-allowed;
 }
-#hires-current-btn {
-  width: auto; padding: 0 10px;
-}
-
 .header-actions .action-status-info {
   display: flex;
   flex-direction: column;
@@ -502,8 +498,8 @@ textarea {
   color: var(--text-primary);
 }
 
-/* Image to Image Dropzone */
-.i2i-dropzone {
+/* Поле загрузки изображения */
+.image-dropzone {
   border: 1px dashed var(--border-color);
   border-radius: 4px;
   background: var(--bg-primary);
@@ -519,7 +515,7 @@ textarea {
   overflow: hidden;
   transition: border-color 0.15s ease;
 }
-.i2i-dropzone:hover {
+.image-dropzone:hover {
   border-color: var(--text-muted);
 }
 .dropzone-icon {
@@ -532,14 +528,14 @@ textarea {
   color: var(--text-secondary);
   text-align: center;
 }
-.i2i-preview {
+.image-preview {
   position: absolute;
   top: 0; left: 0; width: 100%; height: 100%;
   object-fit: contain;
   background: #000;
   z-index: 5;
 }
-.i2i-clear-btn {
+.image-clear-btn {
   position: absolute;
   top: 0.35rem; right: 0.35rem;
   background: rgba(9, 9, 11, 0.85);
@@ -551,7 +547,7 @@ textarea {
   cursor: pointer;
   z-index: 10;
 }
-.i2i-clear-btn:hover {
+.image-clear-btn:hover {
   background: var(--status-error);
   border-color: var(--status-error);
 }
@@ -1229,7 +1225,7 @@ input:checked + .slider:before {
 }
 
 /* Reactor specific styles */
-#reactor-card .i2i-dropzone {
+#reactor-card .image-dropzone {
   height: 90px;
   min-height: 90px;
 }
@@ -1243,7 +1239,7 @@ input:checked + .slider:before {
   font-size: 0.65rem;
 }
 
-#reactor-card .i2i-preview {
+#reactor-card .image-preview {
   max-height: 80px;
   object-fit: contain;
 }
@@ -1376,7 +1372,6 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--text-primary); 
   .profile-select-container button { flex-shrink: 0; }
   .header-art-actions:not(:has(button:enabled)) { display: none; }
   .header-art-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  #hires-current-btn { width: 100%; }
   #mobile-generation-controls {
     position: fixed; bottom: 0; left: 0; right: 0; z-index: 200;
     display: grid; grid-template-columns: 1fr auto; gap: 8px;
@@ -1394,7 +1389,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--text-primary); 
   .character-actions-row { flex-wrap: wrap; }
   .character-actions-row button { flex: 1; justify-content: center; }
   .lora-header select { flex: 1; width: 0; }
-  .i2i-dropzone { min-height: 140px; }
+  .image-dropzone { min-height: 140px; }
   .lightbox { height: 100dvh; }
   .lightbox-close { top: max(8px, env(safe-area-inset-top)); right: 8px; background: rgba(9, 9, 11, 0.7); }
   .lightbox-nav-btn { width: 44px; height: 44px; }

@@ -1,4 +1,4 @@
-import { ComfyClient, refreshComfyModels, fetchComfyInfo, fetchLoraTriggers, getSystemStats, uploadI2IImage, imageUrl, objectInfo, modelList, upscaleModelList } from './api.js';
+import { ComfyClient, refreshComfyModels, fetchComfyInfo, fetchLoraTriggers, getSystemStats, uploadInputImage, objectInfo, modelList, upscaleModelList } from './api.js';
 import { setupUIEventListeners, syncModelLists } from './ui.js';
 import * as state from './state.js';
 import * as el from './elements.js';
@@ -53,51 +53,17 @@ async function submit(settings, workflow = compileWorkflow(settings)) {
 }
 async function generate() {
   const settings = readSettings();
-  const inputFile = state.i2iFile;
   const faceFile = state.reactorFile;
   settings.seed = settings.seedMode === 'random' ? Math.floor(Math.random() * 10000000000) : Number(settings.seedInput);
   if (settings.variationStrength > 0) {
     const value = settings.variationSeedInput.trim();
     settings.variationSeed = ['', 'random', '-1'].includes(value) ? Math.floor(Math.random() * 10000000000) : Number(value);
   }
-  if (settings.mode === 'i2i' && inputFile) {
-    settings.inputImageName = await uploadI2IImage(inputFile);
-    const bitmap = await createImageBitmap(inputFile);
-    settings.inputWidth = bitmap.width;
-    settings.inputHeight = bitmap.height;
-    bitmap.close();
-    if (state.i2iFile === inputFile) state.setI2IImage(settings.inputImageName, settings.inputWidth, settings.inputHeight);
-  }
   if (settings.reactorToggle && faceFile) {
-    settings.reactorImageName = await uploadI2IImage(faceFile);
+    settings.reactorImageName = await uploadInputImage(faceFile);
     if (state.reactorFile === faceFile) state.setReactorImageName(settings.reactorImageName);
   }
   saveSettings();
-  await submit(settings);
-}
-async function refine({ item, index }) {
-  const output = item.outputs?.[index];
-  if (!output) throw new Error('Выберите сохранённый кадр.');
-  const scale = Number(el.hiresScaleSelect.value);
-  const denoise = Number(el.hiresDenoiseSlider.value);
-  const upscaleSelect = el.upscaleSelect.value;
-  const response = await fetch(imageUrl(output), { signal: AbortSignal.timeout(30000) });
-  if (!response.ok) throw new Error(`Исходный кадр недоступен: HTTP ${response.status}`);
-  const file = new File([await response.blob()], output.filename, { type: 'image/png' });
-  const bitmap = await createImageBitmap(file);
-  const settings = structuredClone(item.settings);
-  // Используем выбранный файл; уже выполненные завершающие этапы повторно не применяем.
-  Object.assign(settings, {
-    mode: 'i2i', operation: 'refine', batchCount: 1,
-    parentPromptId: item.promptId, parentOutput: output,
-    inputWidth: bitmap.width, inputHeight: bitmap.height,
-    width: Math.round(bitmap.width * scale / 8) * 8,
-    height: Math.round(bitmap.height * scale / 8) * 8,
-    denoise, upscaleSelect,
-    hiresToggle: false, faceToggle: false, reactorToggle: false, upscaleToggle: false,
-  });
-  bitmap.close();
-  settings.inputImageName = await uploadI2IImage(file);
   await submit(settings);
 }
 function availability() {
@@ -190,7 +156,6 @@ window.addEventListener('dashboard-warning', event => warn(event.detail));
 window.addEventListener('restore-history-settings', event => { applySettings(event.detail); saveSettings(); });
 window.addEventListener('generate-image', () => run(generate));
 window.addEventListener('repeat-job', event => run(() => submit(event.detail.settings, event.detail.workflow)));
-window.addEventListener('refine-image', event => run(() => refine(event.detail)));
 window.addEventListener('cancel-job', () => client.cancel().catch(error => warn(error.message)));
 window.addEventListener('clear-queue', () => client.clearQueue().catch(error => warn(error.message)));
 resetButton.addEventListener('click', () => { client.abandon(); warn('Связь с неизвестным заданием снята. Оно не отправлялось повторно.'); });
