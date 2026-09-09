@@ -95,7 +95,7 @@ function showDetails(item, preferredName) {
     meta.append(tags);
   }
   if(item.description)meta.append(cardRow('p',item.description,'document','Описание','library-description'));
-  if(item.url){const link=node('a','','library-civitai-link');link.href=item.url;link.target='_blank';link.rel='noopener noreferrer';link.append(node('span','Открыть на Civitai'),iconNode('civitai'));meta.append(link);}
+  if(item.url){const link=node('a','','library-civitai-link');link.href=item.url;link.target='_blank';link.rel='noopener noreferrer';link.title='Открыть на Civitai';link.setAttribute('aria-label',link.title);link.append(iconNode('civitai'));meta.append(link);}
   if(isCharacterLora(item))meta.prepend(characterSection(item,preferredName));else meta.append(addButton(item));
   body.append(meta);dialog.append(heading,body);syncSelectControls();dialog.showModal();
 }
