@@ -18,6 +18,25 @@ class Socket extends EventTarget {
   close() { this.readyState = 3; }
 }
 
+test('Серия возвращает четыре кадра и отдельный PNG сетки; отсутствие сетки означает незавершённый результат', async () => {
+  let withGrid=true;
+  const client = new ComfyClient({storage:null,pollMs:0,fetchImpl:async (url,options) => {
+    if (url.endsWith('/prompt')) return Response.json({prompt_id:JSON.parse(options.body).prompt_id});
+    const outputs = Object.fromEntries([3,1,2,0].map(index => [`frame_${index}_11`,{images:[{filename:`${index}.png`}]}]));
+    if(withGrid)outputs.grid_save={images:[{filename:'grid.png'}]};
+    return Response.json({[client.job.promptId]:{status:{completed:true,status_str:'success'},outputs}});
+  }});
+  const graph=Object.fromEntries([...Array.from({length:4},(_,i)=>`frame_${i}_11`),'grid_save'].map(id=>[id,{class_type:'SaveImage',inputs:{}}]));
+  await client.submit(graph,{batchCount:4,batchLayout:'square-v1'});await client.reconcile();
+  assert.equal(client.job.status,'succeeded');
+  assert.deepEqual(client.job.outputs.map(image=>image.filename),['0.png','1.png','2.png','3.png','grid.png']);
+  assert.equal(client.job.gridOutput.filename,'grid.png');
+  withGrid=false;
+  await client.submit(graph,{batchCount:4,batchLayout:'square-v1'});await client.reconcile();
+  assert.equal(client.job.status,'failed');
+  assert.match(client.job.error,/5/);
+});
+
 test('Порядок кадров определяется графом, а не порядком ответа history', async () => {
   const client = new ComfyClient({storage:null,pollMs:0,fetchImpl:async (url,options) => {
     if (url.endsWith('/prompt')) return Response.json({prompt_id:JSON.parse(options.body).prompt_id});
@@ -110,4 +129,26 @@ test('Перезагрузка восстанавливает ID и снимок
   await assert.rejects(restored.submit({}, {}), /Дождитесь/);
   restored.abandon();
   assert.equal(restored.busy, false);
+});
+
+test('Клиент сохраняет монотонный общий прогресс между сообщениями ComfyUI', async () => {
+  const values = new Map();
+  const storage = { getItem: key => values.get(key), setItem: (key, value) => values.set(key, value) };
+  const graph = {
+    first: { class_type: 'KSampler', inputs: { steps: 20, denoise: 1 } },
+    second: { class_type: 'KSampler', inputs: { latent_image: ['first', 0], steps: 20, denoise: 0.5 } },
+    save: { class_type: 'SaveImage', inputs: { images: ['second', 0] } },
+  };
+  const client = new ComfyClient({ storage, pollMs: 0, fetchImpl: async (url, options) =>
+    Response.json({ prompt_id: JSON.parse(options.body).prompt_id }) });
+  await client.submit(graph, { batchCount: 1 });
+  const prompt_id = client.job.promptId;
+  client.handleMessage({ type: 'executing', data: { prompt_id, node: 'first' } });
+  client.handleMessage({ type: 'progress', data: { prompt_id, node: 'first', value: 20, max: 20 } });
+  const firstPassPercent = client.job.progress.percent;
+  client.handleMessage({ type: 'executing', data: { prompt_id, node: 'second' } });
+  client.handleMessage({ type: 'progress', data: { prompt_id, node: 'second', value: 1, max: 10 } });
+
+  assert.ok(client.job.progress.percent >= firstPassPercent);
+  assert.equal(JSON.parse(values.get('matrix-active-job')).progress.percent, client.job.progress.percent);
 });

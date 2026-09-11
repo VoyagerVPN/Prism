@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { compileWorkflow } from '../workflow.js';
+import { compileRefineWorkflow, compileWorkflow } from '../workflow.js';
 
 const base = {
   recipe: 'checkpoint', checkpoint: 'novaKemonoXL_v80.safetensors',
@@ -8,6 +8,67 @@ const base = {
   seed: 12345, steps: 20, cfg: 6, sampler: 'euler', scheduler: 'normal',
   positive: 'portrait', negative: 'blurry', loras: [], character: null,
 };
+
+test('Refine улучшает выбранный output без повторного txt2img-прохода', () => {
+  const graph = compileRefineWorkflow({
+    ...base,
+    hiresScale: 1.5,
+    hiresDenoise: 0.35,
+    upscaleSelect: '4x-UltraSharp.pth',
+  }, {
+    filename: 'source.png',
+    subfolder: 'Prism/Series',
+    type: 'output',
+    width: 1024,
+    height: 768,
+  });
+
+  const source = Object.values(graph).find(node => node.class_type === 'LoadImageOutput');
+  const scale = Object.values(graph).find(node => node.class_type === 'ImageScale');
+  const sampler = Object.values(graph).find(node => node.class_type === 'KSampler');
+  assert.equal(source.inputs.image, 'Prism/Series/source.png [output]');
+  assert.equal(scale.inputs.width, 1536);
+  assert.equal(scale.inputs.height, 1152);
+  assert.equal(sampler.inputs.denoise, 0.35);
+  assert.equal(sampler.inputs.seed, base.seed);
+  assert.equal(sampler.inputs.sampler_name, base.sampler);
+  assert.equal(sampler.inputs.cfg, base.cfg);
+  assert.equal(Object.values(graph).some(node => node.class_type === 'EmptyLatentImage'), false);
+  assert.equal(Object.values(graph).filter(node => node.class_type === 'KSampler').length, 1);
+});
+
+test('Anima Aesthetic сохраняет общий UX, но собирает свой граф и безопасный промпт', () => {
+  const graph = compileWorkflow({
+    ...base, recipe: 'anima', checkpoint: 'anima-aesthetic-v1.1.safetensors',
+    clipName: 'qwen_3_06b_base.safetensors', vaeName: 'qwen_image_vae.safetensors',
+    positive: '1girl, purple hair. She is standing under warm window light.', negative: '',
+    cfg: 4, steps: 30, sampler: 'er_sde', scheduler: 'simple',
+  });
+  assert.equal(graph['1'].class_type, 'UNETLoader');
+  assert.equal(graph['2'].class_type, 'CLIPLoader');
+  assert.equal(graph['3'].class_type, 'VAELoader');
+  assert.equal(graph['5'].inputs.text, 'masterpiece, best quality, 1girl, purple hair. She is standing under warm window light.');
+  assert.equal(graph['6'].inputs.text, 'worst quality, low quality, blurry, jpeg artifacts, chromatic aberration');
+  assert.deepEqual(graph['7'].inputs.model, ['1', 0]);
+  assert.deepEqual(graph['5'].inputs.clip, ['2', 0]);
+  assert.deepEqual(graph['8'].inputs.vae, ['3', 0]);
+});
+
+test('Hires и FaceDetailer у Anima используют совместимый рецепт с теми же переключателями', () => {
+  const graph = compileWorkflow({
+    ...base, recipe: 'anima', checkpoint: 'anima-aesthetic-v1.1.safetensors',
+    clipName: 'qwen_3_06b_base.safetensors', vaeName: 'qwen_image_vae.safetensors',
+    cfg: 4, steps: 30, sampler: 'er_sde', scheduler: 'simple',
+    hiresToggle: true, hiresScale: 1.5, hiresDenoise: 0.35,
+    upscaleSelect: '4x-UltraSharp.pth', faceToggle: true, faceSteps: 20,
+  });
+  assert.equal(graph['16'].inputs.cfg, 4);
+  assert.equal(graph['16'].inputs.sampler_name, 'er_sde');
+  assert.equal(graph['10'].inputs.cfg, 4);
+  assert.equal(graph['10'].inputs.sampler_name, 'er_sde');
+  assert.equal(graph['10'].inputs.scheduler, 'simple');
+  assert.equal(graph['10'].inputs.steps, 20);
+});
 
 test('Inline LoRA отделяются от текста, сохраняют веса и не дублируют LoRA персонажа',()=>{
   const graph=compileWorkflow({...base,positive:'stale',loras:[{name:'stale.safetensors',strength:1}],positiveParts:[{type:'text',text:'portrait '},{type:'lora',name:'Style/light.safetensors',strength:-0.4},{type:'text',text:'at night'},{type:'lora',name:'Character/hero.safetensors',strength:0.9}],character:{lora:'Character\\hero.safetensors',strength:0.6}});
@@ -50,7 +111,7 @@ test('Серия 1/4/9 содержит независимые кадры с в�
     const samplers = Object.values(graph).filter(node => node.class_type === 'KSampler');
     assert.equal(samplers.length,count);
     assert.deepEqual(samplers.map(node => node.inputs.seed),Array.from({length:count},(_,i) => base.seed+i));
-    assert.equal(Object.values(graph).filter(node => node.class_type === 'SaveImage').length,count);
+    assert.equal(Object.values(graph).filter(node => node.class_type === 'SaveImage').length,count === 1 ? 1 : count+1);
     for (const node of Object.values(graph).filter(node => node.class_type === 'EmptyLatentImage')) assert.equal(node.inputs.batch_size,1);
   }
   const variants = Object.values(compileWorkflow({...base,batchCount:4,variationStrength:.1,variationSeed:500})).filter(node => node.class_type === 'PrismVariationNoise');

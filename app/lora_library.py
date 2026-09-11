@@ -1,6 +1,8 @@
 import hashlib
 import json
 import os
+import tempfile
+import threading
 from pathlib import Path
 from html.parser import HTMLParser
 from urllib.parse import urlencode, urlparse
@@ -8,6 +10,33 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
 CACHE = Path(__file__).resolve().parent / '.cache' / 'civitai'
+CATEGORY_PATH = Path(__file__).resolve().parent / 'data' / 'library-categories.json'
+_category_lock = threading.Lock()
+
+def read_categories():
+    if not CATEGORY_PATH.exists(): return {}
+    if CATEGORY_PATH.stat().st_size > 2 * 1024 * 1024: raise ValueError('Файл категорий больше 2 МБ')
+    values = json.loads(CATEGORY_PATH.read_text(encoding='utf-8'))
+    if (not isinstance(values, dict) or len(values) > 10000
+            or not all(isinstance(name, str) and isinstance(category, str) and category for name, category in values.items())):
+        raise ValueError('Некорректный файл категорий библиотеки')
+    return values
+
+def save_category(name, category):
+    # Назначение хранится отдельно от весов: пути в персонажах, промптах и истории остаются действительными.
+    with _category_lock:
+        values = read_categories(); key = name.replace('\\', '/')
+        if key not in values and len(values) >= 10000: raise ValueError('В библиотеке уже сохранено 10000 категорий')
+        values[key] = category
+        CATEGORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+        temporary = None
+        try:
+            with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=CATEGORY_PATH.parent, suffix='.tmp', delete=False) as file:
+                temporary = Path(file.name)
+                json.dump(values, file, ensure_ascii=False)
+            os.replace(temporary, CATEGORY_PATH)
+        finally:
+            if temporary is not None: temporary.unlink(missing_ok=True)
 
 class PlainText(HTMLParser):
     def __init__(self):
@@ -34,7 +63,7 @@ def fingerprint(path):
     stat = path.stat()
     return [stat.st_size,stat.st_mtime_ns]
 
-def local_entry(name, path, header):
+def local_entry(name, path, header, category_overrides=None):
     data = {}; warning = ''
     sidecar = path.with_suffix('.cm-info.json')
     if sidecar.exists():
@@ -53,10 +82,14 @@ def local_entry(name, path, header):
     url = f'https://civitai.com/models/{model_id}?modelVersionId={version_id}' if type(model_id) is int and type(version_id) is int else ''
     image = data.get('PreviewUrl','')
     if not isinstance(image,str) or urlparse(image).scheme != 'https' or urlparse(image).hostname != 'image.civitai.com': image = ''
-    if preview_path(path): image = '/dashboard/lora-preview?' + urlencode({'name':name})
+    if preview_path(path): image = '/prism/lora-preview?' + urlencode({'name':name})
     words = data.get('TrainedWords') or header.get('triggers',[])
+    parts = name.replace('\\', '/').split('/')
+    assigned = read_categories() if category_overrides is None else category_overrides
+    category = assigned.get('/'.join(parts), parts[0] if len(parts) > 1 else 'Other')
     return dict(name=name,title=str(data.get('ModelName') or path.stem),version=str(data.get('VersionName') or ''),
-        base=str(data.get('BaseModel') or header.get('base_model','unknown')),author=str(data.get('AuthorUsername') or ''),
+        category=category,
+        base=str(header['base_model'] if header.get('base_source') == 'import' else data.get('BaseModel') or header.get('base_model','unknown')),author=str(data.get('AuthorUsername') or ''),
         description=plain(data.get('VersionDescription') or data.get('ModelDescription')),triggers=[v for v in words if isinstance(v,str)] if isinstance(words,list) else [],
         tags=[v for v in data.get('Tags',[]) if isinstance(v,str)] if isinstance(data.get('Tags',[]),list) else [],
         url=url,preview=image,source='Civitai' if url else 'Локальный файл',warning=warning)

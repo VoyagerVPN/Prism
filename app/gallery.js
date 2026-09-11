@@ -1,7 +1,8 @@
 import { showNotice } from './dialogs.js';
 import {frameSettings,gridImage} from './batch.js';
-import { canvasPlaceholder, imageLoader, outputImage, galleryItems, metadataBar, metadataSummary, applyPromptBtn, applySeedBtn, hiresToggle, faceToggle, upscaleToggle, upscaleSelect, fullscreenBtn, lightbox, lightboxClose, lightboxPrev, lightboxNext, lightboxImg, lightboxCaption, batchThumbnails, reactorToggle, reactorDetection, reactorRestore, reactorVisibility, reactorCodeformerWeight, reactorIndexSource, reactorIndexInput } from './elements.js';
+import { canvasPlaceholder, imageLoader, outputImage, galleryItems, metadataBar, metadataSummary, refineBtn, applyPromptBtn, applySeedBtn, hiresToggle, hiresScaleSelect, hiresDenoiseSlider, faceToggle, upscaleToggle, upscaleSelect, fullscreenBtn, lightbox, lightboxClose, lightboxPrev, lightboxNext, lightboxImg, lightboxFavorite, batchThumbnails, reactorToggle, reactorDetection, reactorRestore, reactorVisibility, reactorCodeformerWeight, reactorIndexSource, reactorIndexInput } from './elements.js';
 import { setSeedMode, setLastGeneratedSeed, reactorImageName } from './state.js';
+import { selectedOutputImage } from './archive_gallery.js';
 
 
 
@@ -11,10 +12,91 @@ export let history = [];
 export let selectedHistoryItem = null;
 export let selectedBatchIndex = 0;
 export let lightboxScale = 1.0;
+let activeGalleryGroup=null;
+let lightboxGallery = null;
+let lightboxGalleryIndex = 0;
+const resultKey=item=>String(item?.promptId??item?.url??'');
+
+function syncFavoriteControl(button, state) {
+  if (!button) return;
+  button.disabled = !state.available;
+  button.classList.toggle('active', state.favorite);
+  button.setAttribute('aria-pressed', String(state.favorite));
+  const label = state.favorite ? 'Убрать из избранного' : 'Добавить в избранное';
+  button.setAttribute('aria-label', label);
+  button.title = state.available ? label : 'Сетку батча нельзя добавить в избранное';
+}
+
+async function syncOutputFavoriteButton() {
+  const button = document.getElementById('output-favorite-btn');
+  if (!button) return;
+  const item = selectedHistoryItem, index = selectedBatchIndex;
+  const {galleryFavoriteState} = await import('./archive_gallery.js');
+  if (item !== selectedHistoryItem || index !== selectedBatchIndex) return;
+  syncFavoriteControl(button, galleryFavoriteState(item, index));
+}
+
+function activeLightboxSelection() {
+  if (lightboxGallery?.length) return {item: lightboxGallery[lightboxGalleryIndex], index: 0};
+  return {item: selectedHistoryItem, index: selectedBatchIndex};
+}
+
+async function syncLightboxFavoriteButton() {
+  const selection = activeLightboxSelection();
+  const {galleryFavoriteState} = await import('./archive_gallery.js');
+  const current = activeLightboxSelection();
+  if (selection.item !== current.item || selection.index !== current.index) return;
+  syncFavoriteControl(lightboxFavorite, galleryFavoriteState(selection.item, selection.index));
+}
+
+async function toggleFavorite(item, index, sourceButton) {
+  if (!item || sourceButton?.disabled) return;
+  if (sourceButton) sourceButton.disabled = true;
+  try {
+    const {toggleGalleryFavorite} = await import('./archive_gallery.js');
+    await toggleGalleryFavorite(item, index);
+  } catch (error) {
+    window.dispatchEvent(new CustomEvent('dashboard-warning', {detail: `Не удалось изменить избранное: ${error.message}`}));
+  } finally {
+    await Promise.all([syncOutputFavoriteButton(), syncLightboxFavoriteButton()]);
+  }
+}
+
+function groupFor(item) {
+  const settings=item.settings??item,names=new Map();
+  const add=(name,label)=>{
+    if(typeof name!=='string'||!name||name==='None')return;
+    const key=name.replaceAll('\\','/');
+    if(!names.has(key)||label)names.set(key,label||key.split('/').pop().replace(/\.[^.]+$/,''));
+  };
+  if(Array.isArray(settings.positiveParts)){
+    for(const part of settings.positiveParts){
+      if(part?.type==='lora')add(part.name);
+      if(part?.type==='character')add(part.character?.lora,part.character?.name);
+    }
+    if(settings.promptVersion!==2&&!settings.positiveParts.some(part=>part?.type==='character'))add(settings.character?.lora,settings.character?.name);
+  }else{
+    for(const lora of settings.loras??[])add(lora?.name);
+    add(settings.character?.lora,settings.character?.name);
+  }
+  const keys=[...names.keys()].sort();
+  return {key:JSON.stringify(keys),label:keys.map(key=>names.get(key)).join(' + ')||'Без LoRA'};
+}
 
 function selectedSettings(item = selectedHistoryItem, index = selectedBatchIndex) {
   const settings = item.settings ?? item;
   return index > 0 && settings.batchLayout === 'square-v1' ? frameSettings(settings,index-1) : settings;
+}
+
+function syncRefineButton() {
+  if (!refineBtn) return;
+  const hasBatch = (selectedHistoryItem?.batchUrls?.length ?? selectedHistoryItem?.outputs?.length ?? 0) > 1;
+  const gridSelected = hasBatch && selectedBatchIndex === 0;
+  const source = selectedOutputImage(selectedHistoryItem, selectedBatchIndex);
+  refineBtn.disabled = gridSelected || source?.type !== 'output' || !outputImage.naturalWidth || !outputImage.naturalHeight;
+  refineBtn.title = gridSelected
+    ? 'Выберите отдельный кадр серии'
+    : 'Дорисовать выбранный кадр в высоком разрешении';
 }
 
 export function updateHistory(newHistory) {
@@ -25,7 +107,8 @@ export function updateHistory(newHistory) {
 export function displayOutputImage(job) {
   const existing = history.find(item => item.promptId === job.promptId);
   if (existing) return;
-  const urls = job.outputs.map(imageUrl);
+  const gridUrl = job.gridOutput ? imageUrl(job.gridOutput) : null;
+  const urls = job.outputs.map(imageUrl).filter(url=>url!==gridUrl);
   if (!urls.length) {
     window.dispatchEvent(new CustomEvent('dashboard-warning', { detail: 'Задание завершено, но SaveImage не вернул файлов.' }));
     return;
@@ -34,7 +117,7 @@ export function displayOutputImage(job) {
   const item = {
     ...settings, version: 3, promptId: job.promptId, settings,
     workflow: structuredClone(job.workflow), outputs: structuredClone(job.outputs),
-    url: urls[0], batchUrls: urls.length > 1 ? urls : [], timestamp: job.finishedAt ?? Date.now(),
+    url: gridUrl ?? urls[0], gridUrl, batchUrls: urls.length > 1 ? urls : [], timestamp: job.finishedAt ?? Date.now(),
     hires: settings.hiresToggle ? { scale: settings.hiresScale, denoise: settings.hiresDenoise } : null,
     face: settings.faceToggle ? { threshold: settings.faceThreshold, steps: settings.faceSteps } : null,
     upscale: settings.upscaleToggle ? { model: settings.upscaleSelect } : null,
@@ -51,22 +134,46 @@ export function displayOutputImage(job) {
   renderGallery();
   selectHistoryItem(item);
   window.dispatchEvent(new CustomEvent('save-settings'));
+  window.dispatchEvent(new CustomEvent('prism-output-created', {detail: structuredClone(item)}));
 }
 
 export function renderGallery() {
   const galleryBar = document.querySelector(".gallery-bar");
   if (history.length === 0) {
     galleryBar.style.display = "none";
+    galleryItems.replaceChildren();document.getElementById('gallery-groups')?.replaceChildren();activeGalleryGroup=null;
     return;
   }
-  galleryBar.style.display = "block";
+  galleryBar.style.display = "flex";
+  const groups=new Map();
+  for(const item of history){
+    const group=groupFor(item);
+    if(!groups.has(group.key))groups.set(group.key,{...group,items:[]});
+    groups.get(group.key).items.push(item);
+  }
+  if(!groups.has(activeGalleryGroup))activeGalleryGroup=groups.keys().next().value;
+  const groupBar=document.getElementById('gallery-groups');groupBar.replaceChildren();
+  for(const group of groups.values()){
+    const button=document.createElement('button');button.type='button';button.className='gallery-group';
+    button.dataset.groupKey=group.key;
+    button.setAttribute('aria-label',`Группа: ${group.label}`);button.setAttribute('aria-pressed',String(group.key===activeGalleryGroup));button.setAttribute('aria-controls','gallery-items');button.title=group.label;
+    const cover=document.createElement('img');cover.src=group.items[0].url;cover.alt='';cover.loading='lazy';
+    const label=document.createElement('span');label.className='gallery-group-label';label.textContent=group.label;
+    const count=document.createElement('span');count.className='gallery-group-count';count.textContent=group.items.length;count.title='Результатов в группе';
+    button.append(cover,label,count);
+    button.onclick=()=>{activeGalleryGroup=group.key;renderGallery();[...groupBar.children].find(child=>child.dataset.groupKey===group.key)?.focus({preventScroll:true});};groupBar.append(button);
+  }
   
   galleryItems.innerHTML = "";
-  history.forEach((item, index) => {
+  groups.get(activeGalleryGroup).items.forEach(item => {
+    const index=history.indexOf(item);
     const thumb = document.createElement("button");
     thumb.type = 'button';
-    thumb.setAttribute('aria-label', `Результат ${index + 1}, Seed ${item.seed ?? 'неизвестен'}`);
-    thumb.className = "gallery-thumb" + (selectedHistoryItem && (selectedHistoryItem.promptId ?? selectedHistoryItem.url) === (item.promptId ?? item.url) ? " active" : "");
+    thumb.setAttribute('aria-label', `Результат ${index + 1}, Seed ${(item.settings??item).seed ?? 'неизвестен'}`);
+    thumb.dataset.resultId=resultKey(item);
+    const selected=selectedHistoryItem&&resultKey(selectedHistoryItem)===resultKey(item);
+    thumb.className = "gallery-thumb" + (selected ? " active" : "");
+    thumb.setAttribute('aria-pressed',String(Boolean(selected)));
     thumb.style.backgroundImage = `url('${item.url}')`;
     if (item.batchUrls?.length > 1) {
       const count = document.createElement('span');
@@ -75,19 +182,21 @@ export function renderGallery() {
       thumb.append(count);
     }
     thumb.addEventListener("click", () => {
-      selectHistoryItem(item);
+      selectHistoryItem(item,0,{restorePrompt:true});
     });
     galleryItems.appendChild(thumb);
   });
 }
 
-export function selectHistoryItem(item, batchIndex = 0) {
+export function selectHistoryItem(item, batchIndex = 0, {restorePrompt=false} = {}) {
   selectedHistoryItem = item;
   selectedBatchIndex = batchIndex;
+  void syncOutputFavoriteButton();
+  const group=groupFor(item);
+  if(activeGalleryGroup!==group.key){activeGalleryGroup=group.key;renderGallery();}
   
-  Array.from(galleryItems.children).forEach((thumb, index) => {
-    const record = history[index];
-    thumb.classList.toggle('active', (record?.promptId ?? record?.url) === (item.promptId ?? item.url));
+  Array.from(galleryItems.children).forEach(thumb => {
+    thumb.classList.toggle('active', thumb.dataset.resultId===resultKey(item));
     thumb.setAttribute('aria-pressed', String(thumb.classList.contains('active')));
   });
   
@@ -101,11 +210,13 @@ export function selectHistoryItem(item, batchIndex = 0) {
   const grid = document.getElementById('batch-grid');
   grid.replaceChildren();
   const showGrid = hasBatch && batchIndex === 0;
+  const showLegacyGrid = showGrid && !item.gridUrl;
   grid.style.gridTemplateColumns = `repeat(${Math.ceil(Math.sqrt(item.batchUrls?.length || 1))},minmax(0,1fr))`;
-  grid.style.display = showGrid ? 'grid' : 'none';
-  outputImage.style.display = showGrid ? 'none' : 'block';
+  grid.style.display = showLegacyGrid ? 'grid' : 'none';
+  outputImage.style.display = showLegacyGrid ? 'none' : 'block';
   outputImage.src = displayUrl;
-  if (showGrid) {
+  syncRefineButton();
+  if (showLegacyGrid) {
     item.batchUrls.forEach((url, index) => {
       const button = document.createElement('button');
       button.type = 'button';
@@ -118,7 +229,7 @@ export function selectHistoryItem(item, batchIndex = 0) {
       image.src = url;
       image.onerror = () => { button.textContent = `Кадр ${index + 1} недоступен`; };
       button.append(image,number);
-      button.addEventListener('click', () => selectHistoryItem(item, index + 1));
+      button.addEventListener('click', () => selectHistoryItem(item, index + 1,{restorePrompt:true}));
       grid.appendChild(button);
     });
   }
@@ -126,7 +237,9 @@ export function selectHistoryItem(item, batchIndex = 0) {
   document.getElementById('download-btn').title = showGrid ? 'Скачать сетку PNG' : 'Скачать выбранный кадр';
   document.getElementById('repeat-btn').disabled = !item.workflow;
   document.getElementById('repeat-btn').title = item.workflow ? 'Повторить сохранённый граф с исходными параметрами' : 'У старой записи не сохранён точный граф';
-  document.getElementById('repeat-btn').textContent = showGrid || (hasBatch && item.settings?.batchLayout !== 'square-v1') ? 'Повторить серию' : 'Повторить кадр';
+  const repeatLabel=showGrid || (hasBatch && item.settings?.batchLayout !== 'square-v1') ? 'Повторить серию' : 'Повторить кадр';
+  document.getElementById('repeat-btn').title=repeatLabel;
+  document.getElementById('repeat-btn').setAttribute('aria-label',repeatLabel);
   canvasPlaceholder.style.display = "none";
   
   // Рендеринг эскизов батча
@@ -143,7 +256,7 @@ export function selectHistoryItem(item, batchIndex = 0) {
     gridThumb.setAttribute('aria-pressed', String(batchIndex === 0));
     gridThumb.title = "Сетка (Grid)";
     gridThumb.addEventListener("click", () => {
-      selectHistoryItem(item, 0);
+      selectHistoryItem(item, 0,{restorePrompt:true});
     });
     batchThumbnails.appendChild(gridThumb);
     
@@ -158,7 +271,7 @@ export function selectHistoryItem(item, batchIndex = 0) {
       thumb.style.backgroundImage = `url('${url}')`;
       thumb.title = `Изображение ${idx}`;
       thumb.addEventListener("click", () => {
-        selectHistoryItem(item, idx);
+        selectHistoryItem(item, idx,{restorePrompt:true});
       });
       batchThumbnails.appendChild(thumb);
     });
@@ -167,15 +280,13 @@ export function selectHistoryItem(item, batchIndex = 0) {
     batchThumbnails.innerHTML = "";
   }
   
-  metadataBar.style.display = "flex";
+  metadataBar.style.display = "block";
   
   let loraStr = item.loras && item.loras.length > 0 
     ? ` | LoRA: ${item.loras.map(l => `${l.name} (${l.strength})`).join(", ")}` 
     : "";
   
   let charStr = item.character ? ` | Персонаж: ${item.character.name}` : "";
-  let sizeStr = item.width && item.height ? ` | Размер: ${item.width}x${item.height}` : '';
-  
   const settings = selectedSettings(item,batchIndex);
   let activeSeed = settings.seed;
   setLastGeneratedSeed(activeSeed);
@@ -190,15 +301,50 @@ export function selectHistoryItem(item, batchIndex = 0) {
   
   const variationInfo = settings.variationStrength > 0 ? ` | Вариация: ${settings.variationSeed}, сила ${settings.variationStrength}` : '';
   const seriesSeed = hasBatch && (showGrid || item.settings?.batchLayout !== 'square-v1');
-  metadataSummary.textContent = `Модель: ${(item.checkpoint ?? "Неизвестно").split("/").pop()} | Steps: ${item.steps} | CFG: ${item.cfg} | Seed${seriesSeed ? ' серии' : ''}: ${activeSeed}${variationInfo}${sizeStr}${charStr}${loraStr}${batchInfoStr}`;
+  const renderMetadata = sizeStr => {
+    metadataSummary.textContent = `Модель: ${(item.checkpoint ?? "Неизвестно").split("/").pop()} | Steps: ${item.steps} | CFG: ${item.cfg} | Seed${seriesSeed ? ' серии' : ''}: ${activeSeed}${variationInfo}${sizeStr}${charStr}${loraStr}${batchInfoStr}`;
+  };
+  renderMetadata('');
+  const expectedUrl = new URL(displayUrl,document.baseURI).href;
+  outputImage.onload=()=>{
+    if(!showLegacyGrid&&outputImage.naturalWidth>0&&outputImage.src===expectedUrl)
+      renderMetadata(` | Размер: ${outputImage.naturalWidth}x${outputImage.naturalHeight}`);
+  };
+  if(outputImage.complete)outputImage.onload();
   
   applyPromptBtn.disabled = false;
   applySeedBtn.disabled = showGrid || seriesSeed;
   applySeedBtn.title = showGrid ? 'Сначала выберите кадр в сетке' : seriesSeed ? 'У старой серии сохранён только общий seed' : 'Взять seed выбранного кадра';
-  fullscreenBtn.style.display = showGrid ? "none" : "block";
+  fullscreenBtn.style.display = showLegacyGrid ? "none" : "block";
+  if(restorePrompt)window.dispatchEvent(new CustomEvent('restore-history-prompt',{detail:structuredClone(settings)}));
 }
 
 export function initGalleryEvents() {
+  const outputFavorite = document.getElementById('output-favorite-btn');
+  outputFavorite.addEventListener('click', () => { void toggleFavorite(selectedHistoryItem, selectedBatchIndex, outputFavorite); });
+  lightboxFavorite.addEventListener('click', event => {
+    event.stopPropagation();
+    const {item, index} = activeLightboxSelection();
+    void toggleFavorite(item, index, lightboxFavorite);
+  });
+  window.addEventListener('prism-gallery-catalog-change', () => {
+    void syncOutputFavoriteButton();
+    if (lightbox.style.display === 'flex') void syncLightboxFavoriteButton();
+  });
+  outputImage.addEventListener('load', syncRefineButton);
+  refineBtn.addEventListener('click', () => {
+    const source = selectedOutputImage(selectedHistoryItem, selectedBatchIndex);
+    if (!source || source.type !== 'output' || !outputImage.naturalWidth || !outputImage.naturalHeight) return;
+    window.dispatchEvent(new CustomEvent('refine-image', {detail: {
+      settings: {
+        ...structuredClone(selectedSettings()),
+        hiresScale: Number(hiresScaleSelect.value),
+        hiresDenoise: Number(hiresDenoiseSlider.value),
+        upscaleSelect: upscaleSelect.value,
+      },
+      source: {...structuredClone(source), width: outputImage.naturalWidth, height: outputImage.naturalHeight},
+    }}));
+  });
   applyPromptBtn.addEventListener('click', () => {
     if (!selectedHistoryItem) return;
     window.dispatchEvent(new CustomEvent('restore-history-settings', { detail: structuredClone(selectedSettings()) }));
@@ -234,14 +380,15 @@ export function initGalleryEvents() {
     if (!selectedHistoryItem) return;
     const item = selectedHistoryItem, index = selectedBatchIndex;
     const isGrid = item.batchUrls?.length > 1 && index === 0;
-    let url;
+    let url, temporary=false;
     try {
-      url = isGrid ? URL.createObjectURL(await gridImage(item.batchUrls)) : index > 0 ? item.batchUrls[index-1] : item.url;
+      temporary = isGrid && !item.gridUrl;
+      url = temporary ? URL.createObjectURL(await gridImage(item.batchUrls)) : index > 0 ? item.batchUrls[index-1] : item.url;
       const link = document.createElement('a');
       link.href = url; link.download = `prism_${isGrid ? 'grid' : 'frame'}_${Date.now()}.png`;
       document.body.append(link); link.click(); link.remove();
     } catch (error) { await showNotice(`Не удалось скачать изображение: ${error.message}`); }
-    finally { if (isGrid && url) setTimeout(() => URL.revokeObjectURL(url),1000); }
+    finally { if (temporary && url) setTimeout(() => URL.revokeObjectURL(url),1000); }
   });
 
   // Lightbox event listeners
@@ -279,12 +426,23 @@ export function initGalleryEvents() {
   });
 
   window.addEventListener("keydown", (e) => {
+    const editing = typeof e.target?.closest === 'function' && Boolean(e.target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"]'));
+    if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat && !editing) {
+      const lightboxOpen = lightbox.style.display === 'flex';
+      if (lightboxOpen || document.body.dataset.appView !== 'gallery') {
+        const {item, index} = lightboxOpen ? activeLightboxSelection() : {item: selectedHistoryItem, index: selectedBatchIndex};
+        if (item) { e.preventDefault(); void toggleFavorite(item, index, lightboxOpen ? lightboxFavorite : outputFavorite); }
+      }
+      return;
+    }
     if (lightbox.style.display === "flex") {
       if (e.key === "Escape") {
         closeLightbox();
       } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
         navigateLightbox(-1);
       } else if (e.key === "ArrowRight") {
+        e.preventDefault();
         navigateLightbox(1);
       }
     }
@@ -308,42 +466,38 @@ export function initGalleryEvents() {
   }, { passive: false });
 }
 
-export function openLightbox() {
-  if (!selectedHistoryItem) return;
-  
-  let activeUrl = selectedHistoryItem.url;
-  if (selectedBatchIndex > 0 && selectedHistoryItem.batchUrls && selectedHistoryItem.batchUrls[selectedBatchIndex - 1]) {
-    activeUrl = selectedHistoryItem.batchUrls[selectedBatchIndex - 1];
+function showLightboxItem(item, batchIndex = 0) {
+  let activeUrl = item.url;
+  if (batchIndex > 0 && item.batchUrls && item.batchUrls[batchIndex - 1]) {
+    activeUrl = item.batchUrls[batchIndex - 1];
   }
-  
-  lightboxImg.src = activeUrl;
   
   // Сбрасываем уровень зума при открытии
   lightboxScale = 1.0;
   lightboxImg.style.transform = "scale(1)";
-  
-  let sizeStr = selectedHistoryItem.width && selectedHistoryItem.height
-    ? `${selectedHistoryItem.width}x${selectedHistoryItem.height}`
-    : 'Размер неизвестен';
-    
-  let modelName = (selectedHistoryItem.checkpoint ?? "Неизвестно").split("/").pop();
-  
-  const frame = selectedSettings();
-  let activeSeed = frame.seed ?? "random";
-  let batchInfoStr = "";
-  if (selectedHistoryItem.batchUrls && selectedHistoryItem.batchUrls.length > 1) {
-    if (selectedBatchIndex === 0) {
-      batchInfoStr = " | Сетка";
-    } else {
-      batchInfoStr = ` | Кадр: ${selectedBatchIndex}/${selectedHistoryItem.batchUrls.length}`;
-    }
-  }
-  
-  const variation = frame.variationStrength > 0 ? ` | Вариация: ${frame.variationSeed}, сила ${frame.variationStrength}` : '';
-  lightboxCaption.textContent = `Промпт: ${selectedHistoryItem.positive || 'отсутствует'}\nМодель: ${modelName} | Seed: ${activeSeed}${variation} | Размер: ${sizeStr}${batchInfoStr}`;
+  lightboxImg.src=activeUrl;
 
   lightbox.style.display = "flex";
   document.body.style.overflow = 'hidden';
+  void syncLightboxFavoriteButton();
+}
+
+export function openLightbox() {
+  if (!selectedHistoryItem) return;
+  lightboxGallery = null;
+  showLightboxItem(selectedHistoryItem, selectedBatchIndex);
+}
+
+export function openLightboxGallery(items, itemId) {
+  lightboxGallery = items.map(item => ({
+    promptId: item.id,
+    url: imageUrl(item.image),
+    outputs: [item.image],
+    settings: item.settings ?? {},
+    timestamp: item.createdAt,
+  }));
+  lightboxGalleryIndex = Math.max(0, lightboxGallery.findIndex(item => item.promptId === itemId));
+  if (lightboxGallery.length) showLightboxItem(lightboxGallery[lightboxGalleryIndex]);
 }
 
 export function closeLightbox() {
@@ -353,27 +507,25 @@ export function closeLightbox() {
   // Сбрасываем уровень зума при закрытии
   lightboxScale = 1.0;
   lightboxImg.style.transform = "scale(1)";
+  lightboxGallery = null;
 }
 
 export function navigateLightbox(direction) {
-  if (history.length === 0 || !selectedHistoryItem) return;
-  
-  let currentIndex = history.findIndex(item => item.url === selectedHistoryItem.url);
-  if (currentIndex === -1) return;
-  
-  let nextIndex = currentIndex + direction;
-  if (nextIndex < 0) {
-    nextIndex = history.length - 1;
-  } else if (nextIndex >= history.length) {
-    nextIndex = 0;
+  if (lightboxGallery?.length) {
+    lightboxGalleryIndex = (lightboxGalleryIndex + direction + lightboxGallery.length) % lightboxGallery.length;
+    showLightboxItem(lightboxGallery[lightboxGalleryIndex]);
+    return;
   }
-  
-  const nextItem = history[nextIndex];
-  selectHistoryItem(nextItem, 0);
-  
-  // Сбрасываем уровень зума перед открытием следующего изображения
-  lightboxScale = 1.0;
-  lightboxImg.style.transform = "scale(1)";
-  
+  if (history.length === 0 || !selectedHistoryItem) return;
+  // Единая последовательность проходит кадры серий и все группы LoRA.
+  const images = history.flatMap(item=>{
+    if (!item.batchUrls?.length || item.batchUrls.length === 1) return [{item,index:0}];
+    const frames = item.batchUrls.map((_,index)=>({item,index:index+1}));
+    return item.gridUrl ? [{item,index:0},...frames] : frames;
+  });
+  const currentIndex = images.findIndex(({item,index})=>resultKey(item)===resultKey(selectedHistoryItem)&&index===selectedBatchIndex);
+  if (currentIndex === -1) return;
+  const next = images[(currentIndex + direction + images.length) % images.length];
+  selectHistoryItem(next.item, next.index,{restorePrompt:true});
   openLightbox();
 }

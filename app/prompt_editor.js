@@ -1,6 +1,8 @@
 import { normalizePromptParts, resolvePromptParts, loraKey, characterPromptPart } from './prompt_parts.js';
 import {createCharacterToken,readCharacterToken,characterOptions} from './prompt_character.js';
 import {categoryOf,promptCategoryIcon} from './lora_categories.js';
+import {selectCharacterVariant} from './character_variants.js';
+import {createCharacterTagPanel} from './prompt_character_tags.js';
 let mentionCatalog=()=>[];
 let characterActions={};
 
@@ -10,15 +12,51 @@ export function createPromptEditor(textarea,{onChange=()=>{},getLoras=()=>[],onS
   root.setAttribute('contenteditable','true');root.setAttribute('role','textbox');root.setAttribute('aria-label','Описание изображения');root.setAttribute('aria-multiline','true');root.dataset.placeholder='Опишите изображение…';root.spellcheck=false;
   textarea.hidden=true;textarea.before(root);doc.querySelector('label[for="positive-prompt"]')?.setAttribute('for',root.id);
   let lastRange=null,lastText=textarea.value,undo=[],undoIndex=-1;
-  let options=null;
+  let options=null,selectedControl=null;
+  let tagsPanel=null,tagsDispose=null,tagsOwner=null,tagsSection=null,tagsTimer=0,tagsPinned=false;
+  const closeTags=()=>{win.clearTimeout(tagsTimer);tagsDispose?.();tagsDispose=null;tagsPanel?.remove();tagsPanel=null;tagsOwner=null;tagsPinned=false;};
+  const deferCloseTags=()=>{win.clearTimeout(tagsTimer);if(tagsPinned||tagsPanel?.contains(doc.activeElement))return;tagsTimer=win.setTimeout(closeTags,180);};
+  const openTags=(el,section,pinned=false)=>{
+    if(options)return;
+    win.clearTimeout(tagsTimer);
+    if(tagsOwner===el&&tagsSection===section&&tagsPanel){tagsPinned||=pinned;return;}
+    if(tagsPanel?.contains(doc.activeElement)&&doc.activeElement.closest('.tagify__tag--editable'))return;
+    closeTags();tagsOwner=el;tagsSection=section;tagsPinned=pinned;
+    const tags=createCharacterTagPanel(el,{doc,section,onChange:()=>changed()});tagsPanel=tags.element;tagsDispose=tags.destroy;doc.body.append(tagsPanel);
+    const anchor=el.querySelector(section?`[data-character-variant="${section}"]`:'.prompt-character-summary'),rect=anchor.getBoundingClientRect(),size=tagsPanel.getBoundingClientRect();
+    tagsPanel.style.left=`${Math.max(8,Math.min(rect.left,win.innerWidth-size.width-8))}px`;
+    tagsPanel.style.top=`${Math.max(8,Math.min(rect.bottom+3,win.innerHeight-size.height-8))}px`;
+    tagsPanel.onpointerenter=()=>win.clearTimeout(tagsTimer);tagsPanel.onpointerleave=deferCloseTags;
+    tagsPanel.onfocusout=event=>{if(!tagsPanel?.contains(event.relatedTarget))deferCloseTags();};
+    tagsPanel.onkeydown=event=>{
+      event.stopPropagation();
+      if(event.key==='Escape'){event.preventDefault();closeTags();}
+      if((event.ctrlKey||event.metaKey)&&['z','y'].includes(event.key.toLowerCase())){event.preventDefault();root.dispatchEvent(new win.KeyboardEvent('keydown',{key:event.key,ctrlKey:event.ctrlKey,metaKey:event.metaKey,shiftKey:event.shiftKey,bubbles:true,cancelable:true}));}
+    };
+  };
   const closeOptions=()=>{options?.remove();options=null;};
-  const outsideOptions=event=>{if(options&&!options.contains(event.target)&&!event.target.closest('.prompt-character-head'))closeOptions();};
+  const clearControl=()=>{selectedControl=null;for(const el of root.querySelectorAll('.prompt-character')){el.classList.remove('is-selected');for(const control of el.querySelectorAll('[aria-pressed]'))control.setAttribute('aria-pressed','false');}};
+  const outsideOptions=event=>{if(!options?.contains(event.target)&&!tagsPanel?.contains(event.target)&&!event.target.closest('.prompt-character-summary')){closeOptions();closeTags();clearControl();}};
   doc.addEventListener('pointerdown',outsideOptions);
-  const characterToken=part=>createCharacterToken(part,{doc,onChange:()=>changed(),openOptions:el=>{
-    closeOptions();options=characterOptions(el,{doc,onChange:()=>changed(),replace:(previous,next)=>{const node=characterToken(next);previous.replaceWith(node);return node;},onSaveVariant,onEditLibrary,close:closeOptions});
+  const selectControl=(el,kind)=>{
+    clearControl();selectedControl={id:el.dataset.instanceId,kind};el.classList.add('is-selected');
+    const control=el.querySelector(kind==='character'?'.prompt-character-head':`[data-character-variant="${kind}"]`);control.setAttribute('aria-pressed','true');control.focus();
+    const range=doc.createRange();range.setStartAfter(el);range.collapse(true);
+    const selection=win.getSelection();selection.removeAllRanges();selection.addRange(range);lastRange=range.cloneRange();
+  };
+  const replaceCharacter=(previous,next)=>{
+    const reopen=tagsOwner===previous,section=tagsSection,pinned=tagsPinned;if(reopen)closeTags();
+    const node=characterToken(next);previous.replaceWith(node);if(selectedControl?.id===next.instanceId)selectControl(node,selectedControl.kind);if(reopen)openTags(node,section,pinned);return node;
+  };
+  const openCharacterOptions=(el,section)=>{
+    closeTags();closeOptions();options=characterOptions(el,{doc,section,onChange:()=>changed(),replace:replaceCharacter,onSaveVariant,onEditLibrary,onShowTags:(el,section)=>openTags(el,section,true),close:closeOptions});
     doc.body.append(options);const rect=el.getBoundingClientRect();
     options.style.left=`${Math.max(8,Math.min(rect.left,win.innerWidth-336))}px`;options.style.top=`${Math.max(8,Math.min(rect.bottom+6,win.innerHeight-options.getBoundingClientRect().height-8))}px`;
     options.querySelector('select')?.focus();
+  };
+  const characterToken=part=>createCharacterToken(part,{doc,onChange:()=>changed(),onHover:openTags,onHoverEnd:deferCloseTags,openOptions:openCharacterOptions,onSelect:(el,kind)=>{
+    const again=selectedControl?.id===el.dataset.instanceId&&selectedControl.kind===kind;
+    closeOptions();selectControl(el,kind);if(again)openCharacterOptions(el,kind==='character'?undefined:kind);
   }});
   const mentions=doc.createElement('div');mentions.className='prompt-mentions';mentions.id='prompt-lora-mentions';mentions.setAttribute('role','listbox');mentions.setAttribute('aria-label','LoRA');mentions.hidden=true;doc.body.append(mentions);
   let mentionRange=null,choices=[],choiceIndex=0;
@@ -38,7 +76,7 @@ export function createPromptEditor(textarea,{onChange=()=>{},getLoras=()=>[],onS
     const prefix=node.textContent.slice(0,selection.anchorOffset),match=prefix.match(/(?:^|[\s,(])@([^@\n,]*)$/);
     if(!match){closeMentions();return;}
     const query=match[1].toLocaleLowerCase(),parts=partsOf(root),used=new Set(resolvePromptParts(parts).loras.map(part=>loraKey(part.name)));
-    choices=getLoras().filter(item=>(item.character?!parts.some(part=>part.type==='character'&&part.character.name===item.character.name):item.name!=='None'&&!used.has(loraKey(item.name)))&&item.title.toLocaleLowerCase().includes(query)).slice(0,30);choiceIndex=0;
+    choices=getLoras().filter(item=>(item.character||item.name!=='None'&&!used.has(loraKey(item.name)))&&item.title.toLocaleLowerCase().includes(query)).slice(0,30);choiceIndex=0;
     mentionRange=doc.createRange();mentionRange.setStart(node,prefix.length-query.length-1);mentionRange.setEnd(node,selection.anchorOffset);
     mentions.replaceChildren();
     for(const [index,item] of choices.entries()){
@@ -68,10 +106,14 @@ export function createPromptEditor(textarea,{onChange=()=>{},getLoras=()=>[],onS
   const remember=()=>{
     const selection=win.getSelection(),range=selection?.rangeCount?selection.getRangeAt(0):null;
     for(const el of root.querySelectorAll('.prompt-lora'))el.classList.toggle('is-selected',Boolean(range&&!selection.isCollapsed&&range.intersectsNode(el)));
+    for(const el of root.querySelectorAll('.prompt-character'))el.classList.toggle('is-selected',selectedControl?.id===el.dataset.instanceId||Boolean(range&&!selection.isCollapsed&&range.intersectsNode(el.querySelector('.prompt-character-summary'))));
     if(range&&root.contains(range.commonAncestorContainer))lastRange=range.cloneRange();
   };
   const rangeForInsert=()=>{
-    if(lastRange&&root.contains(lastRange.commonAncestorContainer))return lastRange.cloneRange();
+    if(lastRange&&root.contains(lastRange.commonAncestorContainer)){
+      const range=lastRange.cloneRange(),node=range.commonAncestorContainer,character=(node.nodeType===1?node:node.parentElement)?.closest('.prompt-character');
+      if(character){range.setStartAfter(character);range.collapse(true);}return range;
+    }
     const range=doc.createRange();range.selectNodeContents(root);range.collapse(false);return range;
   };
   const record=parts=>{
@@ -84,10 +126,12 @@ export function createPromptEditor(textarea,{onChange=()=>{},getLoras=()=>[],onS
     if(keepUndo)record(parts);onChange(parts,{save});return parts;
   };
   const titleFor=name=>getLoras().find(item=>loraKey(item.name)===loraKey(name))?.title||loraKey(name).split('/').at(-1).replace(/\.safetensors$/i,'');
+  const categoryFor=name=>categoryOf(getLoras().find(item=>loraKey(item.name)===loraKey(name))||{name});
   const refreshLabels=()=>{
     for(const el of root.querySelectorAll('.prompt-lora')){
       const title=titleFor(el.dataset.name);el.querySelector('.prompt-lora-name').textContent=title;
       el.setAttribute('aria-label',`LoRA: ${title}, вес ${el.dataset.strength}`);
+      el.querySelector('.prompt-category-icon').replaceWith(promptCategoryIcon(doc,categoryFor(el.dataset.name)));
     }
   };
   const token=part=>{
@@ -97,15 +141,19 @@ export function createPromptEditor(textarea,{onChange=()=>{},getLoras=()=>[],onS
     const name=doc.createElement('span');name.className='prompt-lora-name';name.textContent=label;
     const weight=doc.createElement('span');weight.className='prompt-lora-weight';weight.textContent=String(part.strength);
     el.onclick=()=>{el.focus();const range=doc.createRange();range.selectNode(el);const selection=win.getSelection();selection.removeAllRanges();selection.addRange(range);remember();};
-    el.append(promptCategoryIcon(doc,categoryOf(part)),name,weight);return el;
+    el.append(promptCategoryIcon(doc,categoryFor(part.name)),name,weight);return el;
   };
   const fragment=parts=>{const result=doc.createDocumentFragment();for(const part of normalizePromptParts(parts))result.append(part.type==='text'?doc.createTextNode(part.text):part.type==='character'?characterToken(part):token(part));return result;};
   const write=(parts,{save=false,resetUndo=true}={})=>{
-    closeMentions();closeOptions();
+    closeMentions();closeOptions();closeTags();clearControl();
     root.replaceChildren(fragment(parts));lastRange=null;
     if(resetUndo){undo=[];undoIndex=-1;}changed(save,resetUndo);
   };
   const insert=parts=>{
+    const existing=partsOf(root),usedIds=new Set(existing.filter(part=>part.type==='character').map(part=>part.instanceId));
+    parts=parts.map(part=>part.type==='character'&&usedIds.has(part.instanceId)?characterPromptPart(part.character,{framePrompt:part.framePrompt,disabledTags:part.disabledTags}):part);
+    const weights=new Map(resolvePromptParts(existing).loras.map(lora=>[loraKey(lora.name),lora.strength]));
+    parts=parts.map(part=>{if(part.type!=='character')return part;const key=loraKey(part.character.lora),copy=structuredClone(part);if(weights.has(key))copy.character.strength=weights.get(key);else weights.set(key,copy.character.strength);return copy;});
     for(const part of parts.filter(part=>part.type==='character'))for(const el of root.querySelectorAll('.prompt-lora'))if(loraKey(el.dataset.name)===loraKey(part.character.lora))el.remove();
     const range=rangeForInsert(),nodes=fragment(parts),last=nodes.lastChild;range.deleteContents();range.insertNode(nodes);
     if(last){range.setStartAfter(last);range.collapse(true);const selection=win.getSelection();selection.removeAllRanges();selection.addRange(range);lastRange=range.cloneRange();}
@@ -136,10 +184,12 @@ export function createPromptEditor(textarea,{onChange=()=>{},getLoras=()=>[],onS
     changed(false);
   };
   root.addEventListener('input',event=>{if(event.target===root){changed();updateMentions();}});
+  root.addEventListener('focusin',event=>{if(event.target.closest('[data-character-field]'))clearControl();});
   root.addEventListener('keyup',event=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key))updateMentions();});
   root.addEventListener('click',updateMentions);
   root.addEventListener('blur',closeMentions);
   root.addEventListener('beforeinput',event=>{
+    if(tagsPanel?.contains(event.target))return;
     if(event.target.closest('[data-character-field]'))return;
     if(event.inputType==='insertParagraph'||event.inputType==='insertLineBreak'){event.preventDefault();remember();insert([{type:'text',text:'\n'}]);return;}
     if(!['deleteContentBackward','deleteContentForward'].includes(event.inputType))return;
@@ -155,20 +205,40 @@ export function createPromptEditor(textarea,{onChange=()=>{},getLoras=()=>[],onS
   });
   const weightTarget=event=>{
     const hovered=event.target.closest('.prompt-lora,.prompt-character-head');if(hovered)return hovered;
+    if(selectedControl?.kind==='character')return [...root.querySelectorAll('.prompt-character')].find(el=>el.dataset.instanceId===selectedControl.id)?.querySelector('.prompt-character-head')??null;
     const selection=win.getSelection();if(!selection?.rangeCount||selection.isCollapsed)return null;
     const range=selection.getRangeAt(0);
     return [...root.querySelectorAll('.prompt-lora')].find(el=>range.intersectsNode(el))??null;
   };
   const adjustLoraWeight=(el,increase)=>{
     const strength=Math.max(-1,Math.min(2,Number((Number(el.dataset.strength)+(increase?0.05:-0.05)).toFixed(2))));
-    el.dataset.strength=String(strength);el.querySelector('.prompt-lora-weight').textContent=String(strength);refreshLabels();changed();
+    el.dataset.strength=String(strength);el.querySelector('.prompt-lora-weight').textContent=String(strength);
+    const owner=el.closest('.prompt-character');
+    if(owner){const lora=JSON.parse(owner.dataset.character).lora;if(lora!=='None')for(const other of root.querySelectorAll('.prompt-character'))if(loraKey(JSON.parse(other.dataset.character).lora)===loraKey(lora)){const head=other.querySelector('.prompt-character-head');head.dataset.strength=String(strength);head.querySelector('.prompt-lora-weight').textContent=String(strength);}}
+    refreshLabels();changed();
   };
   root.addEventListener('wheel',event=>{
-    if(!event.ctrlKey||!event.deltaY)return;const target=weightTarget(event);if(!target)return;
-    event.preventDefault();adjustLoraWeight(target,event.deltaY<0);
+    if(!event.deltaY)return;
+    const variant=event.target.closest('[data-character-variant]'),owner=event.target.closest('.prompt-character');
+    const selected=owner&&selectedControl?.id===owner.dataset.instanceId&&selectedControl.kind===(variant?.dataset.characterVariant??'character')&&event.target.closest('.prompt-character-summary');
+    if(!event.ctrlKey&&!selected)return;
+    if(variant){
+      event.preventDefault();closeOptions();const part=readCharacterToken(owner),c=part.character,kind=variant.dataset.characterVariant;
+      const keys=Object.keys(kind==='appearance'?c.appearances:c.outfits);if(kind==='outfit')keys.push(null);
+      const current=kind==='outfit'&&!c.outfitEnabled?null:c[kind==='appearance'?'activeAppearanceName':'activeOutfitName'];
+      const next=keys[(keys.indexOf(current)+(event.deltaY>0?1:-1)+keys.length)%keys.length];
+      if(next===null)c.outfitEnabled=false;else{selectCharacterVariant(c,kind,next);if(kind==='outfit')c.outfitEnabled=true;}
+      replaceCharacter(owner,part);changed();return;
+    }
+    const target=weightTarget(event);if(!target)return;event.preventDefault();adjustLoraWeight(target,event.deltaY<0);
   },{passive:false});
   root.addEventListener('keydown',event=>{
     if(event.target.tagName==='INPUT')return;
+    if(event.key==='Escape'){clearControl();closeOptions();closeTags();}
+    if(event.target===root&&selectedControl&&['Enter',' '].includes(event.key)){
+      const owner=[...root.querySelectorAll('.prompt-character')].find(el=>el.dataset.instanceId===selectedControl.id);
+      if(owner){event.preventDefault();openCharacterOptions(owner,selectedControl.kind==='character'?undefined:selectedControl.kind);return;}
+    }
     if(event.ctrlKey&&['+','=','-','_','ArrowUp','ArrowDown'].includes(event.key)){
       const target=weightTarget(event);if(target){event.preventDefault();adjustLoraWeight(target,['+','=','ArrowUp'].includes(event.key));return;}
     }
@@ -183,10 +253,11 @@ export function createPromptEditor(textarea,{onChange=()=>{},getLoras=()=>[],onS
       event.preventDefault();const next=undoIndex+(event.key.toLowerCase()==='y'||event.shiftKey?1:-1);
       if(next>=0&&next<undo.length){undoIndex=next;write(undo[next],{save:true,resetUndo:false});}return;
     }
-    const selected=event.target.closest('.prompt-lora,.prompt-character-head');
-    if(selected&&['Backspace','Delete'].includes(event.key)){event.preventDefault();(selected.closest('.prompt-character')??selected).remove();closeOptions();root.focus();changed();}
+    const selected=event.target.closest('.prompt-lora,.prompt-character-head')??(selectedControl?.kind==='character'?weightTarget(event):null);
+    if(selected&&['Backspace','Delete'].includes(event.key)){event.preventDefault();(selected.closest('.prompt-character')??selected).remove();clearControl();closeOptions();closeTags();root.focus();changed();}
   });
   root.addEventListener('paste',event=>{
+    if(tagsPanel?.contains(event.target))return;
     if(event.target.closest('[data-character-field]')){event.preventDefault();const selection=win.getSelection();if(selection?.rangeCount){const range=selection.getRangeAt(0);range.deleteContents();const text=doc.createTextNode(event.clipboardData.getData('text/plain'));range.insertNode(text);range.setStartAfter(text);range.collapse(true);selection.removeAllRanges();selection.addRange(range);changed();}return;}
     event.preventDefault();remember();let parts;
     try{const encoded=event.clipboardData.getData('application/x-prism-prompt');if(encoded)parts=normalizePromptParts(JSON.parse(encoded));}catch{ /* Некорректные данные вставляются обычным текстом. */ }
@@ -194,16 +265,18 @@ export function createPromptEditor(textarea,{onChange=()=>{},getLoras=()=>[],onS
     const normalized=partsOf(root);if(root.querySelectorAll('.prompt-lora').length!==normalized.filter(part=>part.type==='lora').length)write(normalized,{save:true});
   });
   const copy=event=>{
-    const selection=win.getSelection();if(!selection?.rangeCount||selection.isCollapsed)return;
-    const range=selection.getRangeAt(0);if(!root.contains(range.commonAncestorContainer))return;
-    const parts=partsOf(range.cloneContents());event.preventDefault();event.clipboardData.setData('application/x-prism-prompt',JSON.stringify(parts));
+    if(tagsPanel?.contains(event.target))return;
+    const selection=win.getSelection(),range=selection?.rangeCount?selection.getRangeAt(0):null;
+    const card=(!range||selection.isCollapsed)&&selectedControl?.kind==='character'?[...root.querySelectorAll('.prompt-character')].find(el=>el.dataset.instanceId===selectedControl.id):null;
+    if(!card&&(!range||selection.isCollapsed||!root.contains(range.commonAncestorContainer)))return;
+    const parts=card?[readCharacterToken(card)]:partsOf(range.cloneContents());event.preventDefault();event.clipboardData.setData('application/x-prism-prompt',JSON.stringify(parts));
     event.clipboardData.setData('text/plain',parts.map(part=>part.type==='text'?part.text:part.type==='character'?resolvePromptParts([part]).text:`<lora:${part.name}:${part.strength}>`).join(''));
-    if(event.type==='cut'){range.deleteContents();changed();}
+    if(event.type==='cut'){if(card){card.remove();clearControl();}else range.deleteContents();changed();}
   };
   root.addEventListener('copy',copy);root.addEventListener('cut',copy);doc.addEventListener('selectionchange',remember);
   const fromTextarea=()=>read();textarea.addEventListener('input',fromTextarea);
   write([{type:'text',text:textarea.value}]);
-  return {root,read,write,insert,syncLoras,transformTextAtCaret,refreshLabels,destroy:()=>{closeOptions();doc.removeEventListener('pointerdown',outsideOptions);doc.removeEventListener('selectionchange',remember);textarea.removeEventListener('input',fromTextarea);mentions.remove();root.remove();textarea.hidden=false;}};
+  return {root,read,write,insert,syncLoras,transformTextAtCaret,refreshLabels,destroy:()=>{closeOptions();closeTags();doc.removeEventListener('pointerdown',outsideOptions);doc.removeEventListener('selectionchange',remember);textarea.removeEventListener('input',fromTextarea);mentions.remove();root.remove();textarea.hidden=false;}};
 }
 
 let editor;
@@ -222,8 +295,5 @@ export function setPromptLoraCatalog(provider) {mentionCatalog=provider;editor?.
 export function setPromptCharacterActions(actions) {characterActions=actions;}
 export function insertPromptCharacter(character) {
   const current=setupPromptEditor();if(!current)return;
-  const part=characterPromptPart(character),parts=current.read();
-  const index=parts.findIndex(item=>item.type==='character'&&item.character.name===character.name);
-  if(index>=0){parts[index]=part;current.write(parts,{save:true});}
-  else current.insert([part,{type:'text',text:' '}]);
+  current.insert([characterPromptPart(character),{type:'text',text:' '}]);
 }

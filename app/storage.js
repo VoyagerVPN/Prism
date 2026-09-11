@@ -7,7 +7,8 @@ import { activeLoras, updateActiveLoras } from './lora.js';
 import { history, updateHistory, renderGallery, selectHistoryItem } from './gallery.js';
 import { renderCharacterSelect, loadCharacterData } from './characters.js';
 import { randomUuid } from './config.js';
-import { imageUrl } from './api.js';
+import { imageUrl, modelCatalog } from './api.js';
+import { resolveModelSelection } from './model_loader.js';
 import { readPositiveParts, writePositiveParts } from './prompt_editor.js';
 import { promptPartsFromSettings, resolvePromptParts } from './prompt_parts.js';
 
@@ -32,8 +33,11 @@ export function readSettings() {
     input.type === 'checkbox' ? input.checked : ['range', 'number'].includes(input.type) ? Number(input.value) : input.value
   ]));
   const character=positiveParts?.find(part=>part.type==='character')?.character??null;
+  const catalogEntry=modelCatalog.find(model=>model.name===settings.checkpoint);
+  const modelSelection=catalogEntry?resolveModelSelection(modelCatalog,settings.checkpoint):{checkpoint:settings.checkpoint,recipe:'checkpoint'};
+  delete modelSelection.recommended;
   return {
-    ...settings, recipe: 'checkpoint', width: activeWidth, height: activeHeight,
+    ...settings, ...modelSelection, width: activeWidth, height: activeHeight,
     batchCount: batchSizes[settings.batchCount], batchLayout:'square-v1',
     ...(positiveParts?{positiveParts,positive:resolvePromptParts(positiveParts).text}:{}),
     loras: positiveParts?resolvePromptParts(positiveParts).loras:activeLoras.map(({ name, strength, description }) => ({ name, strength: Number(strength), description: description ?? '' })),
@@ -102,7 +106,13 @@ export function applySettings(settings, { restoreCharacterSnapshot = true, parti
       el.reactorClearBtn.style.display = 'block';
     }
     updateAllExpansions();
-  } finally { restoring = false; syncSelectControls(); window.dispatchEvent(new Event('settings-applied')); }
+  } finally {
+    restoring = false;
+    syncSelectControls();
+    window.dispatchEvent(new Event('settings-applied'));
+    const selected=modelCatalog.find(model=>model.name===el.checkpointSelect.value);
+    window.dispatchEvent(new CustomEvent('model-recipe-changed',{detail:{recipe:selected?.recipe??'checkpoint'}}));
+  }
 }
 
 export function saveSettings() {
@@ -112,6 +122,12 @@ export function saveSettings() {
   } catch (error) {
     window.dispatchEvent(new CustomEvent('dashboard-warning', { detail: `Настройки не сохранены: ${error.message}` }));
   }
+}
+
+export function applyHistoryPrompt(settings) {
+  const positiveParts=promptPartsFromSettings(settings),resolved=resolvePromptParts(positiveParts);
+  const character=positiveParts.find(part=>part.type==='character')?.character??null;
+  applySettings({positiveParts,promptVersion:2,positive:resolved.text,negative:settings.negative??'',loras:resolved.loras,character,selectedCharacter:character?.name??'none'},{partial:true});
 }
 
 export function loadSavedSettings() {
@@ -135,3 +151,7 @@ export function loadSavedSettings() {
 }
 
 window.addEventListener('save-settings', saveSettings);
+window.addEventListener('restore-history-prompt',event=>{
+  try{applyHistoryPrompt(event.detail);saveSettings();}
+  catch(error){window.dispatchEvent(new CustomEvent('dashboard-warning',{detail:`Не удалось восстановить промпт: ${error.message}`}));}
+});

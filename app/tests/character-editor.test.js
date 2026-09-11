@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { JSDOM } from 'jsdom';
 
 test('Единый редактор персонажа: прямое открытие, черновик, LoRA, сохранение и одежда', async () => {
-  const dom=new JSDOM(await readFile(new URL('../index.html',import.meta.url),'utf8'),{url:'http://localhost/dashboard/',runScripts:'outside-only',pretendToBeVisual:true});
+  const dom=new JSDOM(await readFile(new URL('../index.html',import.meta.url),'utf8'),{url:'http://localhost/prism/',runScripts:'outside-only',pretendToBeVisual:true});
   dom.window.eval(await readFile(new URL('../vendor-tagify.js',import.meta.url),'utf8'));
   for(const file of ['vendor-select.css','vendor-tagify.css','index.css','controls.css']){const style=dom.window.document.createElement('style');style.textContent=await readFile(new URL('../'+file,import.meta.url),'utf8');dom.window.document.head.append(style);}
   for(const key of ['window','document','CustomEvent','Event','Option','MutationObserver','localStorage'])globalThis[key]=key==='window'?dom.window:dom.window[key];
@@ -15,8 +15,8 @@ test('Единый редактор персонажа: прямое откры�
   let db={Старый:{name:'Старый',lora:item.name,strength:0.8,appearance:'old appearance',outfits:{День:'coat',Вечер:'dress'},activeOutfitName:'День',outfitEnabled:true}},writes=0;
   const originalFetch=globalThis.fetch;
   globalThis.fetch=async(url,options={})=>{
-    if(url==='/dashboard/lora-library')return Response.json({items:[item]});
-    assert.equal(url,'/dashboard/characters');
+    if(url==='/prism/lora-library')return Response.json({items:[item]});
+    assert.equal(url,'/prism/characters');
     if(options.method==='POST'){db=JSON.parse(options.body).characters;writes++;}
     return Response.json({characters:db,revision:'test-'+writes});
   };
@@ -25,6 +25,8 @@ test('Единый редактор персонажа: прямое откры�
     const {loadLoraLibrary}=await import('../library.js');
     await initCharacters();await loadLoraLibrary();
     const submit=async id=>{const form=$('library-character-editor').querySelector('form');await form.onsubmit({preventDefault(){},submitter:$(id)});};
+    const openSaved=name=>window.dispatchEvent(new CustomEvent('edit-library-character',{detail:{name,lora:db[name].lora}}));
+    const saveAndSelect=async()=>{const name=$('profile-character-name').value;await submit('profile-save-character');$('character-select').value=name;$('character-select').dispatchEvent(new Event('change'));};
     const cancel=()=>$('library-character-editor').querySelector('.close-profile-editor').click();
     const renameVariant=(kind,value)=>{const input=$(`profile-${kind}-name`);assert.ok(input,'Название варианта — обычное поле');input.value=value;input.dispatchEvent(new Event('change'));};
     const answer=async(value)=>{
@@ -62,13 +64,14 @@ test('Единый редактор персонажа: прямое откры�
     assert.equal(db.Новый.lora,'None');assert.equal(db.Новый.appearance,'green eyes');assert.equal(db.Новый.outfits['По умолчанию'],'blue coat');
     assert.equal(db.Новый.universe,'Тестовый мир');assert.equal(db.Новый.description,'Описание героя');
     assert.equal($('character-select').value,'none','Сохранение не активирует нового персонажа');
-    assert.ok($('lora-library-details').open,'Сохранение оставляет редактор открытым');
+    assert.equal($('lora-library-details').open,false,'Сохранение закрывает редактор');
+    openSaved('Новый');
     $('profile-character-lora').value=item.name;$('profile-character-lora').dispatchEvent(new Event('change'));
     assert.equal($('profile-character-base').value,'green eyes','Смена LoRA сохраняет черновик');
     assert.equal($('profile-source-tags').querySelectorAll('button[data-word]').length,2,'Теги соответствуют выбранной LoRA');
     $('profile-add-outfit').click();renameVariant('outfit','Вечер');
     $('profile-outfit-text').value='red dress';
-    await submit('profile-use-character');
+    await saveAndSelect();
     assert.equal($('character-select').value,'Новый');assert.equal(db.Новый.lora,item.name);assert.equal($('lora-library-details').open,false);
     assert.equal(db.Новый.outfits.Вечер,'red dress');assert.equal(db.Новый.outfits['По умолчанию'],'blue coat');
     $('edit-character-btn').click();assert.equal($('profile-character-name').value,'Новый');
@@ -87,7 +90,8 @@ test('Единый редактор персонажа: прямое откры�
     assert.equal(writes,beforeConflict);assert.match($('profile-editor-status').textContent,/занято/);
     $('profile-character-name').value='Переименованный';await submit('profile-save-character');
     assert.equal(db.Новый,undefined);assert.equal(db.Переименованный.outfits.Вечер,'red dress');
-    $('profile-character-lora').value='None';$('profile-character-lora').dispatchEvent(new Event('change'));await submit('profile-use-character');
+    openSaved('Переименованный');
+    $('profile-character-lora').value='None';$('profile-character-lora').dispatchEvent(new Event('change'));await saveAndSelect();
     $('edit-character-btn').click();assert.equal($('profile-character-name').value,'Переименованный');assert.equal($('profile-character-lora').value,'None');
     const deletion=$('profile-delete-character').onclick();await answer();await deletion;
     assert.equal(db.Переименованный,undefined);assert.equal($('character-select').value,'none');assert.equal($('lora-library-details').open,false);
@@ -104,12 +108,12 @@ test('Единый редактор персонажа: прямое откры�
     assert.equal(writes,beforeImport,'Импорт открывает черновик без записи');
     assert.equal($('profile-character-name').value,'Старый (2)','Совпадение имени не перезаписывает запись');
     assert.equal($('profile-character-universe').value,'Тестовый мир');
-    assert.equal($('profile-use-character').disabled,true,'Без LoRA карточку нельзя подключить');
+    assert.equal($('profile-use-character'),null,'Сохранение и подключение больше не совмещены в одной кнопке');
     assert.match(document.querySelector('.profile-lora-status').textContent,/Missing\/model.safetensors/);
     assert.equal($('profile-source-tags').querySelectorAll('button[data-word]').length,2,'Импорт сохраняет исходные теги при отсутствии LoRA');
-    await submit('profile-save-character');assert.equal(db['Старый (2)'].lora,'Missing/model.safetensors');cancel();
+    await submit('profile-save-character');assert.equal(db['Старый (2)'].lora,'Missing/model.safetensors');
     assert.equal($('character-select').value,'Старый','Импортированный персонаж не активируется');
-    await importCard(serializePrism(exported));assert.equal($('profile-character-lora').value,item.name);assert.equal($('profile-use-character').disabled,false);cancel();
+    await importCard(serializePrism(exported));assert.equal($('profile-character-lora').value,item.name);assert.equal($('profile-save-character').disabled,false);cancel();
     const afterImport=writes;await importCard('{broken');assert.equal(writes,afterImport);assert.match($('lora-library-status').textContent,/Не удалось импортировать/);
     $('add-character-btn').click();$('profile-character-name').value='Варианты';
     $('profile-character-trigger').value='hero_token';$('profile-character-base').value='green eyes';
@@ -128,7 +132,7 @@ test('Единый редактор персонажа: прямое откры�
       assert.equal(field.value,kind==='appearance'?'red eyes':'red dress');
       assert.equal($('profile-character-trigger').value,'hero_token');
     }
-    await submit('profile-use-character');
+    await saveAndSelect();
     assert.deepEqual(db.Варианты.appearances,{'По умолчанию':'green eyes',Вечер:'red eyes',Пустой:''});
     assert.equal(db.Варианты.activeAppearanceName,'Вечер');assert.equal(db.Варианты.trigger,'hero_token');
     $('edit-character-btn').click();assert.equal($('profile-character-trigger').value,'hero_token');
@@ -151,7 +155,7 @@ test('Единый редактор персонажа: прямое откры�
     assert.equal($('profile-appearance-name').value,'');renameVariant('appearance','Готическая');
     change('appearance','По умолчанию');change('outfit','По умолчанию');assert.equal($('profile-appearance-select').value,'Готическая');
     $('profile-variant-link').click();change('appearance','По умолчанию');assert.equal($('profile-outfit-select').value,'По умолчанию','Разорванная связь не переключает пару');
-    change('outfit','Вечер');$('profile-variant-link').click();await submit('profile-use-character');
+    change('outfit','Вечер');$('profile-variant-link').click();await saveAndSelect();
     $('char-appearance-select').value='Готическая';await $('char-appearance-select').onchange();
     assert.equal($('char-outfit-select').value,'По умолчанию');assert.equal(db.Варианты.variantsLinked,true);assert.equal(db.Варианты.trigger,'hero_token');
     await $('char-variant-link').onclick();$('char-outfit-select').value='Вечер';await $('char-outfit-select').onchange();
@@ -181,7 +185,25 @@ test('Единый редактор персонажа: прямое откры�
     const graph=compileWorkflow({...readSettings(),checkpoint:'test.safetensors',seed:0});
     assert.match(graph['5'].inputs.text,/snapshot_token, emerald eyes/);
     assert.equal(graph['5'].inputs.text.split('snapshot_token').length,2,'История не дублирует триггер');
-    $('positive-prompt-editor').querySelector('.prompt-character-head').click();
+    const {characterPromptPart}=await import('../prompt_parts.js');
+    const firstInstance=characterPromptPart({...editedFrame.character,lora:item.name},{framePrompt:'sitting, on the left'});
+    const secondInstance=characterPromptPart({...editedFrame.character,name:'Другой персонаж',lora:'Character/second.safetensors',trigger:'second_token'},{framePrompt:'standing, on the right'});
+    const multipleFrame={...editedFrame,positiveParts:[{type:'text',text:'garden, '},firstInstance,{type:'text',text:', '},secondInstance]};
+    const libraryBeforeMultiple=JSON.stringify(db);
+    applySettings(multipleFrame);
+    const restoredMultiple=JSON.parse(JSON.stringify(readSettings()));
+    assert.deepEqual(restoredMultiple.positiveParts,multipleFrame.positiveParts,'Все экземпляры проходят apply/read без потери ID и тегов кадра');
+    const frameFields=$('positive-prompt-editor').querySelectorAll('[data-character-field="frame"]');
+    frameFields[1].textContent='waving';frameFields[1].dispatchEvent(new Event('input',{bubbles:true}));
+    assert.equal(readSettings().positiveParts[1].framePrompt,'sitting, on the left','Правка второго персонажа не меняет первого');
+    applySettings(restoredMultiple);
+    assert.deepEqual(readSettings().positiveParts,restoredMultiple.positiveParts,'Снимок истории восстанавливает обоих персонажей');
+    const multipleGraph=compileWorkflow({...readSettings(),checkpoint:'test.safetensors',seed:0});
+    assert.match(multipleGraph['5'].inputs.text,/sitting, on the left, second_token.*standing, on the right/);
+    assert.equal(Object.values(multipleGraph).filter(node=>node.class_type==='LoraLoader').length,2);
+    assert.equal(JSON.stringify(db),libraryBeforeMultiple,'Восстановление и правки нескольких экземпляров не меняют библиотеку');
+    applySettings(editedFrame);
+    $('positive-prompt-editor').querySelector('.prompt-character-head').dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
     const saveVariantButton=[...document.querySelectorAll('.prompt-character-options button')].find(button=>button.textContent==='Сохранить внешность как вариант');
     const saveDraft=saveVariantButton.onclick();await answer('Из кадра');await saveDraft;
     assert.equal(db.Варианты.appearances['Из кадра'],'emerald eyes','Явная команда сохраняет внешний вид кадра новым вариантом');
@@ -251,22 +273,25 @@ test('Единый редактор персонажа: прямое откры�
     const beforeEnter=writes;
     $('profile-appearance-name').value='Внешность Enter';
     $('profile-appearance-name').dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
-    for(let i=0;i<30&&$('profile-editor-status').textContent!=='Персонаж сохранён';i++)await new Promise(resolve=>setImmediate(resolve));
+    for(let i=0;i<30&&$('lora-library-details').open;i++)await new Promise(resolve=>setImmediate(resolve));
     assert.equal(writes,beforeEnter+1,'Enter сохраняет персонажа в хранилище без нижней кнопки');
     assert.equal(db.Плашки.activeAppearanceName,'Внешность Enter');
-    assert.ok($('lora-library-details').open,'Enter оставляет редактор открытым');
+    assert.equal($('lora-library-details').open,false,'Enter сохраняет и закрывает редактор');
+    openSaved('Плашки');
     assert.equal(db.Плашки.universe,'','Очистка вселенной сохраняется');
     assert.ok(Object.values(db.Плашки.variantNames.appearance).includes(''),'Безымянный вариант сохраняется');
     assert.equal(db.Плашки.trigger,'hero');assert.match(db.Плашки.appearance,/\(silver hair, long hair:1\.1\)/);
     assert.match(db.Плашки.appearance,/blue ribbon, earrings/,'Сохранение фиксирует ввод без дополнительного Enter');
-    const pillStyle=dom.window.getComputedStyle(tagWidget.getTagElms()[0]);assert.equal(pillStyle.fontSize,'13px');assert.equal(pillStyle.borderRadius,'6px');
-    assert.equal(dom.window.getComputedStyle(tagWidget.DOM.scope).height,'240px');
+    const savedTags=$('profile-character-base').__tagify;
+    const pillStyle=dom.window.getComputedStyle(savedTags.getTagElms()[0]);assert.equal(pillStyle.fontSize,'13px');assert.equal(pillStyle.borderRadius,'6px');
+    assert.equal(dom.window.getComputedStyle(savedTags.DOM.scope).height,'240px');
     for(const use of $('library-character-editor').querySelectorAll('svg use'))assert.ok(document.querySelector(use.getAttribute('href')),'Иконка плашки существует');
     for(const [id,value] of [['profile-character-universe','Вселенная Enter'],['profile-outfit-name','Одежда Enter']]){
       const before=writes;$(id).value=value;$(id).dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
-      for(let i=0;i<30&&$('profile-editor-status').textContent!=='Персонаж сохранён';i++)await new Promise(resolve=>setImmediate(resolve));
+      for(let i=0;i<30&&$('lora-library-details').open;i++)await new Promise(resolve=>setImmediate(resolve));
       assert.equal(writes,before+1);
       assert.equal(id==='profile-character-universe'?db.Плашки.universe:db.Плашки.activeOutfitName,value);
+      openSaved('Плашки');
     }
     const beforeInvalid=writes;$('profile-appearance-name').value='Другой';$('profile-appearance-name').dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
     await new Promise(resolve=>setImmediate(resolve));assert.equal(writes,beforeInvalid,'Некорректное имя не сохраняется по Enter');assert.match($('profile-editor-status').textContent,/уже есть/);

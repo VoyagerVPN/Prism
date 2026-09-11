@@ -3,16 +3,16 @@
  const tick=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
  await(await import('./library.js')).loadLoraLibrary();
  const root=document.getElementById('lora-library');if(!root)throw new Error('Библиотека LoRA отсутствует');
- const response=await fetch('/dashboard/lora-library');if(!response.ok)throw new Error('API библиотеки недоступен');const {items}=await response.json();if(!items.length)throw new Error('Локальные LoRA не показаны');
- if((await fetch('/dashboard/lora-preview?name=../prism.json')).status!==404)throw new Error('Превью допускает чужой путь');
- if((await fetch('/dashboard/lora-library/lookup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'../prism.json'})})).status!==400)throw new Error('Поиск допускает чужой путь');
+ const response=await fetch('/prism/lora-library');if(!response.ok)throw new Error('API библиотеки недоступен');const {items}=await response.json();if(!items.length)throw new Error('Локальные LoRA не показаны');
+ if((await fetch('/prism/lora-preview?name=../prism.json')).status!==404)throw new Error('Превью допускает чужой путь');
+ if((await fetch('/prism/lora-library/lookup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'../prism.json'})})).status!==400)throw new Error('Поиск допускает чужой путь');
  const search=document.getElementById('lora-library-search'),base=document.getElementById('lora-library-base'),dialog=document.getElementById('lora-library-details');
  const setSearch=value=>{search.value=value;search.dispatchEvent(new Event('input',{bubbles:true}));};
  try{
   document.querySelector('[data-mobile-panel=settings]').click();document.querySelector('#settings-tab-image').click();
   base.tomselect.setValue('all');setSearch('');await tick();
   if(root.querySelectorAll('.library-card').length!==items.length)throw new Error('Не все локальные файлы показаны');
-  const item=items.find(item=>item.name.startsWith('Utility')&&item.preview.startsWith('/dashboard/')&&item.triggers.length&&item.author&&item.tags.length&&item.description);if(!item)throw new Error('Нет карточек с полными метаданными');
+  const item=items.find(item=>item.name.startsWith('Utility')&&item.preview.startsWith('/prism/')&&item.triggers.length&&item.author&&item.tags.length&&item.description);if(!item)throw new Error('Нет карточек с полными метаданными');
   setSearch(item.title);await tick();const card=[...root.querySelectorAll('.library-card')].find(card=>card.dataset.name===item.name);if(!card)throw new Error('Поиск не нашёл LoRA');
   card.scrollIntoView({block:'center'});await tick();
   const image=card.querySelector('img');await image.decode();if(!image.naturalWidth)throw new Error('Превью не загрузилось');
@@ -26,7 +26,7 @@
   const civitaiLink=dialog.querySelector('.library-civitai-link');if(civitaiLink.querySelector('use')?.getAttribute('href')!=='#icon-civitai'||civitaiLink.textContent||!civitaiLink.getAttribute('aria-label'))throw new Error('Ссылка Civitai должна содержать только доступный SVG-логотип');
   const civitaiPaths=[...document.querySelectorAll('#icon-civitai path')].map(path=>path.getAttribute('d'));
   if(civitaiPaths[0]!=='M22.392 6L12 0 1.608 6v12L12 24l10.392-6V6zm-3.407 1.967L12 3.934 5.015 7.967v8.066L12 20.065l6.985-4.032V7.967z')throw new Error('Используется не логотип Civitai из theSVG');
-  const fileLink=dialog.querySelector('.library-file-link');if(fileLink?.textContent!==item.name||fileLink.tagName!=='A'||!fileLink.href.includes('/dashboard/lora-library/reveal?'))throw new Error('Файл LoRA не открывается обычной ссылкой');
+  const fileLink=dialog.querySelector('.library-file-link');if(fileLink?.textContent!==item.name||fileLink.tagName!=='A'||!fileLink.href.includes('/prism/lora-library/reveal?'))throw new Error('Файл LoRA не открывается обычной ссылкой');
   const titleBox=dialog.querySelector('h2').getBoundingClientRect(),closeBox=dialog.querySelector('.dialog-heading button').getBoundingClientRect();
   if(titleBox.right>closeBox.left+1 || titleBox.bottom>dialog.querySelector('.dialog-heading').getBoundingClientRect().bottom+1)throw new Error('Заголовок перекрывает закрытие');
   dialog.querySelector('.dialog-heading button').click();

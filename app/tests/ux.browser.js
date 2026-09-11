@@ -1,6 +1,6 @@
 // Запуск в консоли загруженной панели; проверка не меняет JSON персонажей.
 (async () => {
-  const { readSettings, applySettings, loadSavedSettings } = await import('/dashboard/storage.js');
+  const { readSettings, applySettings, loadSavedSettings } = await import('/prism/storage.js');
   const original = readSettings();
   const stored = localStorage.getItem('matrix_dashboard_v3');
   const missing = '__UX_удалённый_персонаж__';

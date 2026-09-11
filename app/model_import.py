@@ -3,14 +3,66 @@ import json
 import os
 import re
 import struct
+import tempfile
+import threading
 from pathlib import Path
 from safetensors import safe_open
 
-BASES = ('SD15', 'SD2', 'SDXL', 'Illustrious', 'Pony', 'Flux', 'SD3', 'Other')
 CATEGORIES = ('Character', 'Style', 'Clothing', 'Pose', 'Object', 'Background', 'Utility', 'Other')
 KINDS = ('loras', 'checkpoints', 'diffusion_models')
 MAX_HEADER = 16 * 1024 * 1024
 MAX_FILE = 32 * 1024 ** 3
+_bases_lock = threading.Lock()
+
+
+def validate_base(value):
+    if (not isinstance(value, str) or not value.strip() or len(value) > 120
+            or value != value.strip() or re.search(r'[<>:"/\\|?*\x00-\x1f]', value)
+            or value.endswith('.') or re.match(r'^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)', value, re.I)):
+        raise ValueError('Укажите название базы до 120 символов без символов пути и служебных имён Windows.')
+    return value
+
+
+def read_bases(path):
+    path = Path(path)
+    if not path.exists():
+        return []
+    values = json.loads(path.read_text(encoding='utf-8'))
+    if not isinstance(values, list) or len(values) > 1000:
+        raise ValueError('Некорректный список добавленных баз')
+    return [validate_base(value) for value in values]
+
+
+def remember_base(value, path):
+    value = validate_base(value)
+    path = Path(path)
+    with _bases_lock:
+        values = read_bases(path)
+        if any(item.casefold() == value.casefold() for item in values):
+            return
+        values.append(value)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = None
+        try:
+            with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=path.parent, suffix='.tmp', delete=False) as file:
+                temporary = Path(file.name)
+                json.dump(values, file, ensure_ascii=False)
+            os.replace(temporary, path)
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+
+
+def declared_base(metadata):
+    for key in ('base_model', 'modelspec.base_model', 'ss_base_model_version'):
+        value = metadata.get(key, '').strip()
+        if value and value.casefold() not in ('unknown', 'none'):
+            return value
+    architecture = metadata.get('modelspec.architecture', '').strip()
+    if architecture and architecture.casefold() not in ('unknown', 'lora', 'lycoris'):
+        return re.sub(r'/(?:lora|lycoris)$', '', architecture, flags=re.I)
+    checkpoint = metadata.get('ss_sd_model_name', '').replace('\\', '/').rsplit('/', 1)[-1].strip()
+    return checkpoint or None
 
 
 def inspect_header(header, name):
@@ -30,21 +82,16 @@ def inspect_header(header, name):
         kind = 'checkpoints'
     elif any(key.startswith(('model.diffusion_model.', 'double_blocks.', 'transformer_blocks.')) for key in keys):
         kind = 'diffusion_models'
-    source = ' '.join(metadata.get(key, '') for key in ('modelspec.architecture', 'ss_base_model_version', 'ss_sd_model_name', 'base_model')).lower()
-    base = None
-    for pattern, value in ((r'illustrious', 'Illustrious'), (r'pony', 'Pony'), (r'flux', 'Flux'), (r'stable-diffusion-v3|sd3', 'SD3'), (r'sdxl|stable-diffusion-xl', 'SDXL'), (r'sd_v2|stable-diffusion-v2', 'SD2'), (r'sd_v1|stable-diffusion-v1|sd.?1\.5', 'SD15')):
-        if re.search(pattern, source):
-            base = value
-            break
+    base = declared_base(metadata)
     title = metadata.get('modelspec.title') or metadata.get('ss_output_name') or name
-    hint = (title + ' ' + name).lower()
-    suggested = 'Illustrious' if 'illustrious' in hint else 'Pony' if 'pony' in hint else None
     category_value = (metadata.get('modelspec.category') or metadata.get('category') or '').lower()
     category = next((value for value in CATEGORIES if value.lower() == category_value), None)
     if kind and kind != 'loras':
         category = 'Model'
-    return {'kind': kind, 'base': base, 'suggestedBase': suggested, 'category': category,
-            'title': title, 'evidence': {key: metadata[key] for key in ('modelspec.architecture', 'ss_base_model_version', 'ss_sd_model_name', 'modelspec.category', 'category') if key in metadata}}
+    training_model = metadata.get('ss_sd_model_name', '').replace('\\', '/').rsplit('/', 1)[-1]
+    return {'kind': kind, 'base': base, 'suggestedBase': None, 'category': category,
+            'title': title, 'trainingModel': training_model,
+            'evidence': {key: metadata[key] for key in ('base_model', 'modelspec.base_model', 'modelspec.architecture', 'ss_base_model_version', 'ss_sd_model_name', 'modelspec.category', 'category') if key in metadata}}
 
 
 def read_header(path):
@@ -66,7 +113,8 @@ def install_model(source, root, name, kind, base, category):
             or re.search(r'[<>:"/\\|?*\x00-\x1f]', name) or name.startswith('.')
             or re.match(r'^(con|prn|aux|nul|com[1-9]|lpt[1-9])\.', name, re.I)):
         raise ValueError('Недопустимое имя файла; нужен .safetensors без пути')
-    if kind not in KINDS or base not in BASES or (category not in CATEGORIES if kind == 'loras' else category != 'Model'):
+    validate_base(base)
+    if kind not in KINDS or (category not in CATEGORIES if kind == 'loras' else category != 'Model'):
         raise ValueError('Выберите тип, базовую модель и категорию')
     result = inspect_header(read_header(source), name)
     if result['kind'] and result['kind'] != kind:

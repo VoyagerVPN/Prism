@@ -23,10 +23,17 @@
 <symbol id="icon-landscape" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="18" rx="2"/><circle cx="8" cy="8" r="2"/><path d="m2 18 6-6 4 4 4-6 6 8"/></symbol>
 <symbol id="icon-tool" viewBox="0 0 24 24"><path d="M14 6a6 6 0 0 0-7 8l-5 5 3 3 5-5a6 6 0 0 0 8-7l-4 4-4-4Z"/></symbol>
 <symbol id="icon-tag" viewBox="0 0 24 24"><path d="M3 3h8l11 11-8 8L3 11Z"/><circle cx="7" cy="7" r="1"/></symbol><symbol id="icon-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 1-4 2 2 0 0 1 1-4h3a3 3 0 0 0 3-3c0-4-4-7-9-7Z"/><circle cx="7" cy="10" r="1"/><circle cx="10" cy="7" r="1"/><circle cx="15" cy="7" r="1"/></symbol>
+<symbol id="icon-eye" viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></symbol>
+<symbol id="icon-eye-off" viewBox="0 0 24 24"><path d="m3 3 18 18M10 5h2c7 0 10 7 10 7a18 18 0 0 1-3 4M6 6a19 19 0 0 0-4 6s3 7 10 7a12 12 0 0 0 5-1M10 10a3 3 0 0 0 4 4"/></symbol>
+<symbol id="icon-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/></symbol>
+<symbol id="icon-repeat" viewBox="0 0 24 24"><path d="M20 7h-9a6 6 0 1 0 6 6M20 7l-4-4M20 7l-4 4"/></symbol>
+<symbol id="icon-sliders" viewBox="0 0 24 24"><path d="M4 6h7M15 6h5M4 12h3M11 12h9M4 18h10M18 18h2"/><circle cx="13" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="16" cy="18" r="2"/></symbol>
+<symbol id="icon-seed" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="9" cy="9" r="1"/><circle cx="15" cy="9" r="1"/><circle cx="9" cy="15" r="1"/><circle cx="15" cy="15" r="1"/></symbol>
 <symbol id="icon-user-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="9" r="3"/><path d="M5 19a7 7 0 0 1 14 0"/></symbol>
 <symbol id="icon-keywords" viewBox="0 0 24 24"><path d="M9 3 7 21M17 3l-2 18M3 9h18M2 15h18"/></symbol>
 <symbol id="icon-document" viewBox="0 0 24 24"><path d="M6 2h8l4 4v16H6Z"/><path d="M14 2v5h5M9 12h6M9 16h6"/></symbol>
-<symbol id="icon-civitai" viewBox="0 0 24 24" fill-rule="evenodd"><path d="M22.392 6L12 0 1.608 6v12L12 24l10.392-6V6zm-3.407 1.967L12 3.934 5.015 7.967v8.066L12 20.065l6.985-4.032V7.967z"/><path d="M12 6.885l4.43 2.558v1.377h-2.386L12 9.64l-2.044 1.18v2.36L12 14.36l2.044-1.18h2.386v1.377L12 17.115l-4.43-2.558V9.443L12 6.885z"/></symbol></defs></svg>
+<symbol id="icon-export" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 15v6h16v-6"/></symbol>
+<symbol id="icon-civitai" viewBox="0 0 24 24" fill-rule="evenodd"><path d="M22.392 6L12 0 1.608 6v12L12 24l10.392-6V6zm-3.407 1.967L12 3.934 5.015 7.967v8.066L12 20.065l6.985-4.032V7.967z"/><path d="M12 6.885l4.43 2.558v1.377h-2.386L12 9.64l-2.044 1.18v2.36L12 14.36l2.044-1.18h2.386v1.377L12 17.115l-4.43-2.558V9.443L12 6.885z"/></symbol><symbol id="icon-heart" viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1L12 21l7.8-7.5 1.1-1.1a5.5 5.5 0 0 0-.1-7.8Z"/></symbol><symbol id="icon-sparkles" viewBox="0 0 24 24"><path d="m12 3-1.9 4.8A2 2 0 0 1 9 8.9L4 11l5 2.1a2 2 0 0 1 1.1 1.1L12 19l1.9-4.8a2 2 0 0 1 1.1-1.1l5-2.1-5-2.1a2 2 0 0 1-1.1-1.1ZM5 3v4M3 5h4M19 17v4M17 19h4"/></symbol></defs></svg>
 
   <header>
     <div class="logo-container">
@@ -40,11 +47,46 @@
       </div>
     </div>
 
+    <nav id="app-nav" class="app-nav" aria-label="Разделы Prism" role="tablist">
+      <button type="button" data-app-view="generation" role="tab" aria-selected="true" aria-pressed="true" aria-controls="generation-view">Создание</button>
+      <button type="button" data-app-view="gallery" role="tab" aria-selected="false" aria-pressed="false" aria-controls="gallery-view">Галерея</button>
+    </nav>
+
+    <div class="header-monitor" aria-label="Ресурсы системы и очередь">
+      <div class="control-section resources-section">
+        <div class="resource-indicator" title="Оперативная память процесса Prism/ComfyUI">
+          <div class="resource-header">
+            <span class="control-label">RAM Prism</span>
+            <span id="ram-val" class="resource-val">—</span>
+          </div>
+          <div class="resource-track"><div id="ram-fill" class="resource-fill" style="width: 0%;"></div></div>
+          <small id="ram-detail" class="resource-detail">RSS процесса</small>
+        </div>
+        <div class="resource-indicator" title="Видеопамять процесса Prism/ComfyUI">
+          <div class="resource-header">
+            <span class="control-label">VRAM Prism</span>
+            <span id="vram-val" class="resource-val">—</span>
+          </div>
+          <div class="resource-track resource-track-segmented">
+            <div id="vram-fill" class="resource-fill resource-model-fill" style="width: 0%;"></div>
+            <div id="vram-working-fill" class="resource-fill resource-working-fill" style="width: 0%;"></div>
+            <div id="vram-cache-fill" class="resource-fill resource-cache-fill" style="width: 0%;"></div>
+          </div>
+          <small id="vram-detail" class="resource-detail">PyTorch: нет данных</small>
+        </div>
+      </div>
+      <button id="clear-queue-btn" class="clear-queue-btn" title="Убрать ожидающие задания со всех устройств; выполняющееся задание продолжится" disabled>Очистить очередь</button>
+    </div>
+
     <div class="header-actions">
       <div class="action-status-info">
         <span id="progress-label" class="progress-label">Готов к генерации</span>
         <span id="progress-sub" class="progress-sub">Настройте параметры и нажмите Запуск</span>
       </div>
+      <button id="preview-toggle" class="header-preview-btn preview-toggle" type="button" aria-label="Скрыть превью генерации" title="Скрыть превью генерации" aria-pressed="true">
+        <svg class="ui-icon" aria-hidden="true"><use href="#icon-eye"/></svg>
+        <span>Превью</span>
+      </button>
       <button id="generate-btn" class="generate-btn" disabled>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <polygon points="5 3 19 12 5 21 5 3"></polygon>
@@ -73,7 +115,7 @@
   <div id="dashboard-message" role="status" aria-live="polite" hidden></div>
   <button id="reset-job-btn" class="header-meta-btn" hidden>Сбросить ожидание отсутствующего задания</button>
 
-  <main>
+  <main id="generation-view">
     <!-- Left Sidebar: Settings Panel -->
     <div class="sidebar" id="settings-panel">
       <div class="settings-panels"><section class="settings-panel" id="settings-image" aria-label="Настройки генерации">
@@ -505,82 +547,84 @@
         <!-- Rendered Output Image -->
         <img id="output-image" class="output-image" src="" alt="Сгенерированное изображение">
         <div id="batch-grid" class="batch-grid" aria-label="Изображения серии"></div>
-
-        <!-- Controls overlay -->
-        <div class="image-overlay-controls">
-          <button id="fullscreen-btn" class="control-btn" title="На полный экран" style="display: none;">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <div class="viewer-controls header-art-actions image-overlay-controls" aria-label="Действия с изображением">
+          <button id="refine-btn" class="control-btn" disabled aria-label="Refine" title="Дорисовать выбранный кадр в высоком разрешении"><svg class="ui-icon" aria-hidden="true"><use href="#icon-sparkles"/></svg></button>
+          <button id="repeat-btn" class="control-btn" disabled aria-label="Повторить" title="Повторить весь сохранённый рецепт"><svg class="ui-icon" aria-hidden="true"><use href="#icon-repeat"/></svg></button>
+          <button id="apply-prompt-btn" class="control-btn" disabled aria-label="Взять параметры" title="Перенести все настройки выбранной генерации в форму"><svg class="ui-icon" aria-hidden="true"><use href="#icon-sliders"/></svg></button>
+          <button id="apply-seed-btn" class="control-btn" disabled aria-label="Взять seed кадра" title="Применить seed из выбранного кадра"><svg class="ui-icon" aria-hidden="true"><use href="#icon-seed"/></svg></button>
+          <button id="output-favorite-btn" class="control-btn output-favorite" type="button" disabled aria-label="Добавить в избранное" title="Добавить в избранное" aria-pressed="false"><svg class="ui-icon" aria-hidden="true"><use href="#icon-heart"/></svg></button>
+          <button id="fullscreen-btn" class="control-btn" aria-label="На полный экран" title="На полный экран" style="display: none;">
+            <svg class="ui-icon" aria-hidden="true" viewBox="0 0 24 24">
               <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
             </svg>
           </button>
-          <button id="download-btn" class="control-btn" title="Скачать изображение" disabled>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <button id="download-btn" class="control-btn" aria-label="Скачать изображение" title="Скачать изображение" disabled>
+            <svg class="ui-icon" aria-hidden="true" viewBox="0 0 24 24">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
               <polyline points="7 10 12 15 17 10"></polyline>
               <line x1="12" y1="15" x2="12" y2="3"></line>
             </svg>
           </button>
-        </div>
-      </div>
-
-      <!-- Batch thumbnails -->
-      <!-- Art Management Actions -->
-      <div class="header-art-actions">
-        <button id="repeat-btn" class="header-meta-btn" disabled title="Повторить весь сохранённый рецепт">Повторить</button>
-        <button id="apply-prompt-btn" class="header-meta-btn" disabled title="Перенести все настройки выбранной генерации в форму">Взять параметры</button>
-        <button id="apply-seed-btn" class="header-meta-btn" disabled title="Применить seed из выбранного кадра">Seed кадра</button>
-      </div>
-      <div id="batch-thumbnails" class="batch-thumbnails" style="display: none;"></div>
-
-      <!-- Metadata bar for selected image -->
-      <div id="metadata-bar" class="metadata-bar">
-        <div class="metadata-info">
-          <span class="metadata-label">Кадр</span>
-          <span id="metadata-summary" class="metadata-summary">Изображение не выбрано</span>
-        </div>
-      </div>
-
-      <!-- Control Bar: Seed & Resources Monitor -->
-      <div class="control-bar">
-        <!-- Resources Monitor (VRAM / RAM) -->
-        <div class="control-section resources-section">
-          <div class="resource-indicator">
-            <div class="resource-header">
-              <span class="control-label">RAM (Система)</span>
-              <span id="ram-val" class="resource-val">--%</span>
-            </div>
-            <div class="resource-track">
-              <div id="ram-fill" class="resource-fill" style="width: 0%;"></div>
-            </div>
-          </div>
-          <div class="resource-indicator">
-            <div class="resource-header">
-              <span class="control-label">VRAM (Видеокарта)</span>
-              <span id="vram-val" class="resource-val">--%</span>
-            </div>
-            <div class="resource-track">
-              <div id="vram-fill" class="resource-fill" style="width: 0%;"></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Queue & Execution Control -->
-        <div class="control-section queue-section">
-
-          <button id="clear-queue-btn" class="clear-queue-btn" title="Убрать ожидающие задания со всех устройств; выполняющееся задание продолжится" disabled>Очистить очередь</button>
-        </div>
-      </div>
-
-      <!-- Bottom History Gallery Bar -->
-      <div class="gallery-bar" style="display: none;">
-        <span class="gallery-title">Недавние результаты</span>
-        <div id="gallery-items" class="gallery-items">
-          <!-- Gallery items will dynamically append here -->
+          <details id="metadata-bar" class="metadata-bar">
+            <summary class="control-btn" aria-label="О кадре" title="О кадре"><svg class="ui-icon" aria-hidden="true"><use href="#icon-info"/></svg></summary>
+            <div class="metadata-info"><span id="metadata-summary" class="metadata-summary">Изображение не выбрано</span></div>
+          </details>
         </div>
       </div>
 
     </div>
+
+    <aside class="history-sidebar" aria-label="История генераций">
+      <p class="history-empty">Здесь появится история генераций</p>
+      <div class="gallery-bar" style="display: none;">
+        <span class="gallery-title">Недавние результаты</span>
+        <div id="gallery-groups" class="gallery-groups" role="group" aria-label="Группы результатов по LoRA"></div>
+        <div id="gallery-items" class="gallery-items">
+          <!-- Gallery items will dynamically append here -->
+        </div>
+      </div>
+      <section class="series-history" aria-label="Кадры выбранной серии">
+        <span class="gallery-title">Кадры серии</span>
+        <div id="batch-thumbnails" class="batch-thumbnails" style="display: none;"></div>
+      </section>
+    </aside>
   </main>
+
+  <section id="gallery-view" class="archive-view" aria-labelledby="archive-title" hidden>
+    <header class="archive-header">
+      <div><h2 id="archive-title">Галерея</h2><p>Все арты, созданные в Prism</p></div>
+      <div class="archive-filters" aria-label="Фильтры галереи">
+        <div class="archive-filter-tabs" role="group" aria-label="Состав галереи">
+          <button type="button" data-gallery-filter="all" aria-pressed="true">Все</button>
+          <button type="button" data-gallery-filter="art" aria-pressed="false">Арты</button>
+          <button type="button" data-gallery-filter="grid" aria-pressed="false">Сетки</button>
+          <button type="button" data-gallery-filter="favorites" aria-pressed="false"><svg class="ui-icon" aria-hidden="true"><use href="#icon-heart"/></svg> Избранное</button>
+        </div>
+        <label class="archive-preview-size" for="archive-preview-size">
+          <span>Размер превью</span>
+          <input id="archive-preview-size" type="range" min="140" max="420" step="20" value="220">
+          <output id="archive-preview-size-value" for="archive-preview-size">220 px</output>
+        </label>
+      </div>
+    </header>
+    <div class="archive-content">
+      <details class="archive-booru" open>
+        <summary>Теги и персонажи</summary>
+        <div class="archive-booru-body">
+          <label class="archive-tag-search" for="archive-tag-search"><span>Поиск</span><input id="archive-tag-search" type="search" placeholder="Найти тег…" autocomplete="off"></label>
+          <div id="archive-selected-tags" class="archive-selected-tags" aria-label="Выбранные теги"></div>
+          <button id="archive-tags-clear" class="archive-tags-clear" type="button" hidden>Сбросить теги</button>
+          <section><h3>Персонажи</h3><div id="archive-character-tags" class="archive-tag-list"></div></section>
+          <section><h3>Художники</h3><div id="archive-artist-tags" class="archive-tag-list"></div></section>
+          <section><h3>Теги</h3><div id="archive-general-tags" class="archive-tag-list"></div></section>
+        </div>
+      </details>
+      <div class="archive-results">
+        <p id="archive-empty" class="archive-empty">После первой генерации здесь появятся арты Prism.</p>
+        <div id="archive-grid" class="archive-grid" aria-live="polite"></div>
+      </div>
+    </div>
+  </section>
 
   <div id="mobile-generation-controls" class="mobile-only" aria-label="Управление генерацией"></div>
 
@@ -590,26 +634,27 @@
     <button id="lightbox-prev" class="lightbox-nav-btn prev-btn" title="Предыдущее изображение (←)">&#10094;</button>
     <div class="lightbox-content">
       <img id="lightbox-img" src="" alt="Полноэкранный просмотр">
-      <div id="lightbox-caption" class="lightbox-caption"></div>
     </div>
+    <button id="lightbox-favorite-btn" class="lightbox-favorite" type="button" disabled aria-label="Добавить в избранное" title="Добавить в избранное" aria-pressed="false"><svg class="ui-icon" aria-hidden="true"><use href="#icon-heart"/></svg></button>
     <button id="lightbox-next" class="lightbox-nav-btn next-btn" title="Следующее изображение (→)">&#10095;</button>
   </div>
 
-  <dialog id="model-import-dialog" aria-labelledby="model-import-title">
+  <dialog id="model-import-dialog" class="app-dialog" aria-labelledby="model-import-title">
     <form id="model-import-form">
-      <h2 id="model-import-title">Импорт в библиотеку</h2>
+      <h2 id="model-import-title" tabindex="-1" autofocus>Импорт в библиотеку</h2>
       <p id="import-filename"></p>
       <p id="import-status" role="status" aria-live="polite"></p>
+      <p id="import-model-summary"></p>
       <fieldset id="import-fields" disabled>
         <label for="import-kind">Тип файла</label>
         <select id="import-kind" required><option value="">Выберите тип</option><option value="loras">LoRA</option><option value="checkpoints">Checkpoint — полная модель</option><option value="diffusion_models">Diffusion model — отдельные веса</option></select>
-        <label for="import-base">Базовая модель</label><select id="import-base" required></select>
-        <label for="import-category">Назначение</label><select id="import-category" required></select>
+        <label for="import-base">Базовая модель</label><span id="import-base-field"></span>
+        <label for="import-category">Раздел библиотеки</label><select id="import-category" required></select>
       </fieldset>
       <details><summary>Что найдено в файле</summary><p id="import-evidence"></p></details>
       <p id="import-destination"></p>
       <progress id="import-progress" max="100" value="0" hidden aria-label="Загрузка файла"></progress>
-      <div class="import-actions"><button type="button" id="import-cancel">Отмена</button><button type="submit" id="import-save" disabled>Сохранить в библиотеку</button></div>
+      <div class="dialog-actions"><button type="button" id="import-cancel">Отмена</button><button type="submit" id="import-save" class="dialog-primary" disabled>Сохранить в библиотеку</button></div>
     </form>
   </dialog>
   <script src="vendor-select.js"></script>

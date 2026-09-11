@@ -3,7 +3,7 @@ import urllib.request
 import urllib.error
 import uuid
 
-url = 'http://127.0.0.1:8188/dashboard/presets'
+url = 'http://127.0.0.1:8188/prism/presets'
 def request(body=None):
     req = urllib.request.Request(url, data=None if body is None else json.dumps(body).encode(), headers={'Content-Type':'application/json'})
     try:

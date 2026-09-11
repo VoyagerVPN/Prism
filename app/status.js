@@ -14,15 +14,10 @@ export function updateStatus(state, text) {
   }
 }
 
-export function showProgress(label, sub) {
+export function showProgress(label, sub, percent = 0) {
   progressContainer.style.display = "block";
   progressLabel.textContent = label;
   progressSub.textContent = sub;
-  progressBarFill.style.width = "0%";
-}
-
-export function updateProgressBar(pct, subText) {
-  progressContainer.style.display = "block";
-  progressBarFill.style.width = `${pct}%`;
-  progressSub.textContent = `${pct}% (${subText})`;
+  const pct = Number(percent);
+  progressBarFill.style.width = `${Number.isFinite(pct) ? Math.max(0, Math.min(100, pct)) : 0}%`;
 }

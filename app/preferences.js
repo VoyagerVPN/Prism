@@ -1,3 +1,5 @@
+import {makeDialogBackdropDismissible} from './popup_behavior.js';
+
 export const defaultPreferences=Object.freeze({initialAppearanceName:'По умолчанию',initialOutfitName:'По умолчанию',initialOutfitEnabled:true,loraWeightDisplay:'always'});
 const storageKey='prism_preferences_v1';
 
@@ -33,6 +35,7 @@ export function setupPreferences({doc=document,storage=window.localStorage}={}) 
     const outfitLabel=doc.createElement('label');outfitLabel.className='preference-checkbox';outfitLabel.innerHTML='<input type="checkbox" id="preference-outfit-enabled"> Включать одежду у нового персонажа';dialog.querySelector('fieldset').append(outfitLabel);
     const prompt=doc.createElement('fieldset');prompt.innerHTML='<legend>Промпт</legend><label for="preference-lora-weight">Показывать вес LoRA</label><select id="preference-lora-weight" data-native="true"><option value="always">Всегда</option><option value="modified">Только если отличается от 1</option></select><p>Меняет только отображение. Вес модели и содержимое промпта сохраняются.</p>';dialog.querySelector('#prism-settings-status').before(prompt);
   }
+  makeDialogBackdropDismissible(dialog);
   const appearance=dialog.querySelector('#preference-appearance-name'),outfit=dialog.querySelector('#preference-outfit-name'),status=dialog.querySelector('[role="status"]');
   const enabled=dialog.querySelector('#preference-outfit-enabled'),weights=dialog.querySelector('#preference-lora-weight');
   const apply=()=>{doc.body.dataset.loraWeightDisplay=readPreferences(storage).loraWeightDisplay;};apply();

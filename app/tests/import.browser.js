@@ -1,6 +1,6 @@
 // Запуск на панели: проверяем настоящее событие drop без записи файла в библиотеку.
 (async () => {
-  const header = new TextEncoder().encode(JSON.stringify({__metadata__: {'modelspec.architecture': 'stable-diffusion-xl-v1-base/lora'}, 'lora_x.lora_down.weight': {dtype: 'F32', shape: [1], data_offsets: [0, 4]}}));
+  const header = new TextEncoder().encode(JSON.stringify({'lora_x.lora_down.weight': {dtype: 'F32', shape: [1], data_offsets: [0, 4]}}));
   const prefix = new ArrayBuffer(8);
   new DataView(prefix).setBigUint64(0, BigInt(header.length), true);
   const transfer = new DataTransfer();
@@ -26,9 +26,10 @@
   const dialog = document.querySelector('#model-import-dialog');
   if (!dialog?.open) throw new Error('Перетаскивание не открыло импорт');
   for (let i = 0; i < 100 && document.querySelector('#import-kind').value !== 'loras'; i++) await new Promise(resolve => setTimeout(resolve, 50));
-  if (document.querySelector('#import-base').value !== 'SDXL') throw new Error('База не распознана');
-  if (document.querySelector('#import-category').value !== '') throw new Error('Категория назначена без метаданных');
+  if (document.querySelector('#import-base').value !== '') throw new Error('Без метаданных база должна быть пустой');
+  if (document.querySelector('#import-base').tagName !== 'INPUT') throw new Error('Базу должно быть можно вписать');
+  if (document.querySelector('#import-category').value !== 'Other') throw new Error('Для файла без назначения выбран раздел Прочее');
   document.querySelector('#import-cancel').click();
   if (dialog.open) throw new Error('Отмена не закрыла импорт');
-  return 'Drop распознаёт LoRA/SDXL, спрашивает категорию; отмена не сохраняет файл';
+  return 'Drop распознаёт LoRA, предлагает вписать неизвестную базу; отмена не сохраняет файл';
 })();

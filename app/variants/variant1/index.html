@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Prism · Рецепт персонажа</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="К вариантам Prism">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span><b>PRISM</b><small>подготовка генерации</small></span>
+      </a>
+      <div class="crumbs"><span>Черновик</span><i></i><strong>Рецепт персонажа</strong></div>
+      <div class="top-actions">
+        <span class="save-state" id="save-state"><i></i>Черновик сохранён локально</span>
+        <button class="button ghost" id="reset-recipe" type="button">Сбросить рецепт</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <aside class="character-sidebar">
+        <div class="sidebar-heading">
+          <div><span class="eyebrow">Библиотека</span><h1>Персонажи</h1></div>
+          <span class="count" id="character-count">0</span>
+        </div>
+        <label class="search-box">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m21 21-4.3-4.3m2.3-5.2A7.5 7.5 0 1 1 4 11.5a7.5 7.5 0 0 1 15 0Z"/></svg>
+          <input id="character-search" type="search" placeholder="Найти персонажа" autocomplete="off">
+        </label>
+        <div class="character-list" id="character-list" aria-live="polite"></div>
+        <div class="sidebar-note">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 8v4m0 4h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
+          <p>Изменения этого варианта остаются в браузере и не затрагивают библиотеку Prism.</p>
+        </div>
+      </aside>
+
+      <section class="recipe-column">
+        <div class="loading-panel" id="loading-panel">
+          <span class="spinner"></span><p>Читаем карточки и библиотеку LoRA…</p>
+        </div>
+
+        <div id="recipe-content" hidden>
+          <section class="identity-card">
+            <div class="portrait" id="portrait"><span id="portrait-initial">I</span><img id="portrait-image" alt=""></div>
+            <div class="identity-main">
+              <span class="eyebrow">Персонаж в рецепте</span>
+              <div class="identity-title"><h2 id="character-name">Isabella</h2><span class="badge" id="character-base">Illustrious</span></div>
+              <p id="character-source">NeoB1tch · Финес и Ферб</p>
+            </div>
+            <button class="button subtle" id="open-card-editor" type="button">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg>
+              Наборы персонажа
+            </button>
+          </section>
+
+          <section class="section-block lora-strip">
+            <div class="section-title compact">
+              <span class="section-icon violet"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 3h6v5l4 7a4 4 0 0 1-3.5 6h-7A4 4 0 0 1 5 15l4-7V3Zm-2 11h10"/></svg></span>
+              <div><h3>LoRA персонажа</h3><p>Вес модели и её теги работают как один рецепт.</p></div>
+            </div>
+            <div class="lora-controls">
+              <div class="lora-file"><strong id="lora-title">Isabella</strong><span id="lora-path"></span></div>
+              <span class="availability" id="lora-availability"></span>
+              <label class="range-control"><span>Вес</span><input id="lora-strength" type="range" min="-1" max="2" step="0.05"><output id="lora-strength-value">1.00</output></label>
+              <label class="switch"><input id="lora-enabled" type="checkbox"><span></span><b>Включена</b></label>
+            </div>
+          </section>
+
+          <section class="section-block">
+            <div class="section-title">
+              <span class="step-number">1</span>
+              <div><h3>Выберите образ</h3><p>Сохранённые наборы подставляются в рецепт, а текущие теги можно менять ниже.</p></div>
+            </div>
+            <div class="variant-grid">
+              <div class="variant-group">
+                <div class="group-label"><span>Внешность</span><small id="appearance-count"></small></div>
+                <div class="choice-list" id="appearance-choices" role="radiogroup" aria-label="Внешность"></div>
+              </div>
+              <div class="variant-group">
+                <div class="group-label"><span>Одежда</span><label class="mini-switch"><input id="outfit-enabled" type="checkbox"><span></span><b>Добавлять</b></label></div>
+                <div class="choice-list" id="outfit-choices" role="radiogroup" aria-label="Одежда"></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="section-block">
+            <div class="section-title">
+              <span class="step-number">2</span>
+              <div><h3>Уточните текущие теги</h3><p>Правки относятся только к этому рецепту. Сохранить новый набор можно через карточку.</p></div>
+            </div>
+            <div class="tag-fields">
+              <label class="tag-field scene-field"><span><b>Сцена и стиль</b><small>ваш замысел</small></span><textarea id="scene-input" rows="2" placeholder="official style, screencap, outdoors"></textarea></label>
+              <label class="tag-field"><span><b>Триггер</b><small>из карточки</small></span><textarea id="trigger-input" rows="2"></textarea></label>
+              <label class="tag-field"><span><b>Внешность</b><small id="appearance-field-name"></small></span><textarea id="appearance-input" rows="3"></textarea></label>
+              <label class="tag-field" id="outfit-field"><span><b>Одежда</b><small id="outfit-field-name"></small></span><textarea id="outfit-input" rows="3"></textarea></label>
+              <label class="tag-field"><span><b>Дополнительно</b><small>только для этого кадра</small></span><textarea id="extra-input" rows="2" placeholder="smile, looking at viewer"></textarea></label>
+            </div>
+
+            <div class="author-tags">
+              <div class="author-tags-head">
+                <div><span class="eyebrow">Подсказки автора</span><p id="author-tags-hint">Нажмите тег, чтобы добавить его в выбранную секцию.</p></div>
+                <div class="target-picker" role="radiogroup" aria-label="Куда добавлять тег">
+                  <button type="button" data-target="scene">Сцена</button>
+                  <button type="button" data-target="appearance" class="active">Внешность</button>
+                  <button type="button" data-target="outfit">Одежда</button>
+                  <button type="button" data-target="extra">Дополнительно</button>
+                </div>
+              </div>
+              <div class="suggestion-list" id="author-tag-list"></div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <aside class="prompt-sidebar" id="prompt-sidebar">
+        <div class="prompt-head">
+          <div><span class="eyebrow">Итог</span><h2>Состав промпта</h2></div>
+          <span class="prompt-status synced" id="prompt-status">Синхронизирован</span>
+        </div>
+        <div class="prompt-parts" id="prompt-parts"></div>
+        <label class="final-prompt-label" for="final-prompt"><span>Итоговый промпт</span><small>Можно редактировать свободно</small></label>
+        <textarea class="final-prompt" id="final-prompt" rows="12" spellcheck="false" placeholder="Выберите персонажа, чтобы собрать рецепт"></textarea>
+        <div class="manual-notice" id="manual-notice" hidden>
+          <span>Состав изменился после вашей ручной правки.</span>
+          <button type="button" id="apply-composition">Применить новый состав</button>
+        </div>
+        <div class="prompt-footer">
+          <div class="recipe-meta"><span id="tag-count">0 тегов</span><span id="lora-summary">Без LoRA</span></div>
+          <button class="button primary" id="preview-recipe" type="button">
+            Подготовить и посмотреть рецепт
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+          </button>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <div class="drawer-backdrop" id="drawer-backdrop" hidden></div>
+  <aside class="card-drawer" id="card-drawer" aria-labelledby="drawer-title" aria-hidden="true">
+    <div class="drawer-head"><div><span class="eyebrow">Локальная карточка</span><h2 id="drawer-title">Наборы Isabella</h2></div><button class="icon-button" id="close-drawer" type="button" aria-label="Закрыть">×</button></div>
+    <p class="drawer-intro">Здесь хранятся варианты персонажа. Изменения сразу доступны в рецепте, но остаются только в этом прототипе.</p>
+    <div id="card-editor-content"></div>
+    <div class="drawer-actions"><button class="button ghost" id="discard-card-draft" type="button">Вернуть данные Prism</button><button class="button primary" id="save-card-draft" type="button">Сохранить локально</button></div>
+  </aside>
+
+  <dialog class="recipe-dialog" id="recipe-dialog">
+    <form method="dialog">
+      <div class="dialog-head"><div><span class="eyebrow">Предпросмотр без запуска GPU</span><h2>Рецепт подготовлен</h2></div><button class="icon-button" value="cancel" aria-label="Закрыть">×</button></div>
+      <p class="dialog-lead">Такой состав можно передать в генерацию. Прототип ничего не отправляет в очередь.</p>
+      <div class="recipe-sheet" id="recipe-sheet"></div>
+      <div class="dialog-actions"><button class="button ghost" id="copy-recipe" type="button">Копировать промпт</button><button class="button primary" value="done">Готово</button></div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

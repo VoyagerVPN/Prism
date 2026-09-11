@@ -15,39 +15,57 @@ export function splitPromptTags(words) {
   return [...new Set(result)];
 }
 
-export function createTagInput(field,{kind,label,icon,onChange,onFocus}) {
+export function createTagInput(field,{kind,label,icon,onChange,onFocus=()=>{},toggle}) {
+  const win=field.ownerDocument.defaultView;
   const initial=field.value;
   field.value=JSON.stringify(splitPromptTags([initial]).map(value=>({value})));
-  const widget=new window.Tagify(field,{
-    delimiters:null,duplicates:false,onChangeAfterBlur:false,backspace:'edit',
+  const widget=new win.Tagify(field,{
+    delimiters:null,duplicates:false,onChangeAfterBlur:false,backspace:toggle?false:'edit',
     originalInputValueFormat:values=>values.map(item=>item.value).join(', '),
     dropdown:{enabled:false},a11y:{focusableTags:true,inputAriaLabel:label},
-    editTags:{clicks:2,keepInvalid:false},
+    editTags:{clicks:toggle?1:2,keepInvalid:false},
     templates:{tag(data){
       // Tagify экранирует value/title перед вызовом шаблона.
-      return `<tag title="${data.title}" contenteditable="false" tabindex="0" class="tagify__tag"><div><svg class="ui-icon" aria-hidden="true"><use href="#icon-${icon}"/></svg><span class="tagify__tag-text">${data.value}</span></div><button type="button" class="tagify__tag__removeBtn" aria-label="Удалить тег ${data.value}" title="Удалить тег"><svg class="ui-icon" aria-hidden="true"><use href="#icon-close"/></svg></button></tag>`;
+      const action=toggle?'toggle':'remove',verb=toggle?'Исключить':'Удалить';
+      return `<tag title="${data.title}" contenteditable="false" tabindex="0" class="tagify__tag"><div><svg class="ui-icon" aria-hidden="true"><use href="#icon-${icon}"/></svg><span class="tagify__tag-text">${data.value}</span></div><button type="button" class="tagify__tag__${action}Btn" aria-label="${verb} тег ${data.value}" title="${verb} тег"><svg class="ui-icon" aria-hidden="true"><use href="#icon-${toggle?'eye':'close'}"/></svg></button></tag>`;
     }},
   });
   widget.DOM.scope.dataset.tagKind=kind;
   widget.DOM.scope.classList.add('prompt-tags');
   field.hidden=true;
+  const refreshActions=()=>{
+    if(!toggle)return;
+    for(const tag of widget.getTagElms()){
+      const value=widget.getSetTagData(tag).value,off=toggle.isDisabled(value),button=tag.querySelector('.tagify__tag__toggleBtn');
+      tag.classList.toggle('is-disabled',off);button.setAttribute('aria-label',`${off?'Вернуть':'Исключить'} тег ${value}`);button.setAttribute('aria-pressed',String(!off));button.title=off?'Вернуть в промпт':'Исключить из промпта';button.querySelector('use').setAttribute('href',`#icon-${off?'eye-off':'eye'}`);
+    }
+  };
+  if(toggle){widget.DOM.scope.classList.add('prompt-tags-toggle');widget.DOM.input.hidden=true;refreshActions();}
   widget.DOM.scope.addEventListener('click',event=>{
-    const button=event.target.closest('.tagify__tag__removeBtn');
+    const button=event.target.closest('.tagify__tag__removeBtn,.tagify__tag__toggleBtn');
     if(!button)return;
     event.preventDefault();event.stopPropagation();
-    widget.removeTags(button.closest('.tagify__tag'),false,0);
+    const tag=button.closest('.tagify__tag');
+    if(toggle){toggle.onToggle(widget.getSetTagData(tag).value);refreshActions();onChange();}
+    else widget.removeTags(tag,false,0);
   },true);
   // Стандартное деление по запятой разрушает веса и группы в промптах.
   const normalize=widget.normalizeTags.bind(widget);
   widget.normalizeTags=items=>normalize(typeof items==='string'?splitPromptTags([items]):items);
   let changing=false;
-  const changed=()=>{if(changing)return;field.value=widget.getInputValue();field.dispatchEvent(new Event('input'));onChange();};
+  const changed=()=>{if(changing)return;field.value=widget.getInputValue();refreshActions();field.dispatchEvent(new win.Event('input'));onChange();};
+  let editingValue;
+  widget.on('edit:start',event=>{editingValue=event.detail.data.value;});
+  widget.on('edit:beforeUpdate',event=>{
+    if(toggle){const previous=editingValue??event.detail.previousData.value,next=event.detail.data.value??'';if(previous!==next)toggle.onEdit(previous,next);}
+    editingValue=undefined;
+  });
   widget.on('add remove edit:updated',changed);
   widget.DOM.scope.addEventListener('focusin',onFocus);
   widget.DOM.scope.addEventListener('pointerdown',onFocus);
   const sync=value=>{
     if(value===widget.getInputValue())return;
-    changing=true;widget.removeAllTags();widget.addTags(splitPromptTags([value]),true,true);field.value=widget.getInputValue();changing=false;
+    changing=true;widget.removeAllTags();widget.addTags(splitPromptTags([value]),true,true);field.value=widget.getInputValue();refreshActions();changing=false;
   };
   const read=()=>{
     if(field.value!==widget.getInputValue())sync(field.value);

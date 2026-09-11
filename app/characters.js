@@ -12,7 +12,7 @@ let characterRevision;
 let characterSaveQueue = Promise.resolve(true);
 
 async function requestCharacters(options = {}) {
-  const response = await fetch('/dashboard/characters', { cache: 'no-store', signal: AbortSignal.timeout(15000), ...options });
+  const response = await fetch('/prism/characters', { cache: 'no-store', signal: AbortSignal.timeout(15000), ...options });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || `Ошибка сохранения: HTTP ${response.status}`);
   if (!data.characters || typeof data.characters !== 'object' || Array.isArray(data.characters) || !('revision' in data)) throw new Error('Некорректный ответ хранилища персонажей');
@@ -92,11 +92,11 @@ export function getSavedCharacters() {
   return db;
 }
 
-export async function saveCharactersDatabase(db) {
+export async function saveCharactersDatabase(db,{optimistic=true}={}) {
   const card = document.getElementById('character-select').closest('.section-card');
   const status = document.getElementById('character-storage-status');
   // Последовательная запись позволяет продолжать ввод, пока сохраняется предыдущее поле.
-  characters = structuredClone(db);
+  if(optimistic)characters = structuredClone(db);
   status.textContent = 'Сохранение…';
   characterSaveQueue = characterSaveQueue.then(async previousSaved => {
   if (!previousSaved) return false;
@@ -106,6 +106,7 @@ export async function saveCharactersDatabase(db) {
       body: JSON.stringify({ characters: db, revision: characterRevision }),
     });
     characterRevision = data.revision;
+    if(!optimistic)characters = structuredClone(db);
     status.textContent = 'Изменения сохранены';
     return true;
   } catch (error) {

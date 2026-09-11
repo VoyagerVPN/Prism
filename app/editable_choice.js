@@ -1,5 +1,5 @@
 // Свободное название и выбор существующей записи — разные действия.
-export function createEditableChoice({id,label,placeholder,maxLength,readName,commitName,options,choose,filter=false,onEnter=()=>{}}) {
+export function createEditableChoice({id,label,placeholder,maxLength,readName,commitName,options,choose,filter=false,onEnter=()=>{},scrollContainer}) {
   const root=document.createElement('div');root.className='editable-choice';
   const input=document.createElement('input');input.id=id;input.type='text';input.maxLength=maxLength;
   input.placeholder=placeholder;input.autocomplete='off';input.setAttribute('aria-label',label);
@@ -45,7 +45,7 @@ export function createEditableChoice({id,label,placeholder,maxLength,readName,co
   toggle.onmousedown=event=>event.preventDefault();
   toggle.onclick=()=>{if(!menu.hidden){close();return;}if(commit())open();};
   const scroll=event=>{if(!menu.hidden&&!menu.contains(event.target))position();};
-  const dialog=document.getElementById('lora-library-details');dialog.addEventListener('scroll',scroll,true);
+  const dialog=scrollContainer??document.getElementById('lora-library-details');dialog.addEventListener('scroll',scroll,true);
   sync();
   return {root,input,sync,commit,focus:()=>{input.focus();input.select();},destroy:()=>dialog.removeEventListener('scroll',scroll,true)};
 }

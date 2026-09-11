@@ -1,4 +1,4 @@
-// Перед запуском загрузить window.batchFixtures из .cache/verification/batch-fixtures.json.
+// Перед запуском загрузить window.batchFixtures из проектной .cache/verification/batch-fixtures.json.
 (async () => {
   const gallery = await import('./gallery.js');
   const {gridImage} = await import('./batch.js');
@@ -10,7 +10,7 @@
   const tick = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   const captureRepeat = async () => {
     let payload;
-    if (Object.values(gallery.selectedHistoryItem.workflow).some(node => !['EmptyImage','SaveImage'].includes(node.class_type))) throw new Error('Живой повтор разрешён только для CPU-фикстур');
+    if (Object.values(gallery.selectedHistoryItem.workflow).some(node => !['EmptyImage','SaveImage','ImageBatch','GetImageSize','ImageGrid'].includes(node.class_type))) throw new Error('Живой повтор разрешён только для CPU-фикстур');
     const before = JSON.parse(sessionStorage.getItem('matrix-active-job') || 'null')?.promptId;
     window.addEventListener('repeat-job',event => {payload=event.detail;},{once:true});
     document.querySelector('#repeat-btn').click();
@@ -41,25 +41,28 @@
         if (grid.style.display !== 'none') throw new Error('Одиночный кадр показан сеткой');
         continue;
       }
-      if (grid.querySelectorAll('img').length !== count || getComputedStyle(grid).gridTemplateColumns.split(' ').length !== Math.sqrt(count)) throw new Error('Сетка не квадратная');
+      const item = gallery.selectedHistoryItem;
+      if(item.gridUrl){
+        const image=document.querySelector('#output-image');await image.decode();
+        if(image.naturalWidth!==Math.sqrt(count)*job.settings.width||image.naturalHeight!==Math.sqrt(count)*job.settings.height)throw new Error('Сохранённая сетка потеряла разрешение кадров');
+      }else if (grid.querySelectorAll('img').length !== count || getComputedStyle(grid).gridTemplateColumns.split(' ').length !== Math.sqrt(count)) throw new Error('Сетка не квадратная');
       const canvasBounds = document.querySelector('.canvas-container').getBoundingClientRect();
       for (const button of grid.querySelectorAll('button')) {
         const bounds = button.getBoundingClientRect();
         if (bounds.top < canvasBounds.top-1 || bounds.bottom > canvasBounds.bottom+1 || bounds.left < canvasBounds.left-1 || bounds.right > canvasBounds.right+1) throw new Error('Сетка обрезает кадры вместо показа целиком');
       }
       if (!document.querySelector('#apply-seed-btn').disabled || document.querySelector('#download-btn').disabled) throw new Error('Неверные действия для общей сетки');
-      const item = gallery.selectedHistoryItem;
       const blob = await gridImage(item.batchUrls);
       const bitmap = await createImageBitmap(blob);
-      if (bitmap.width !== Math.sqrt(count)*64 || bitmap.height !== Math.sqrt(count)*64) throw new Error('PNG не склеен в квадрат');
+      if (bitmap.width !== Math.sqrt(count)*job.settings.width || bitmap.height !== Math.sqrt(count)*job.settings.height) throw new Error('PNG не склеен в сетку');
       const canvas = document.createElement('canvas');
       canvas.width = bitmap.width; canvas.height = bitmap.height;
       const context = canvas.getContext('2d'); context.drawImage(bitmap,0,0);
       const pixel = context.getImageData(32,32,1,1).data;
       if (Math.abs(pixel[0]-224)>1 || Math.abs(pixel[1]-82)>1 || Math.abs(pixel[2]-82)>1) throw new Error('PNG потерял первый кадр или изменил порядок');
       bitmap.close();
-      if (grid.querySelectorAll('button').length !== count) throw new Error(`Предпросмотр серии ${count} изменился во время сборки PNG: ${grid.children.length}, кадр ${gallery.selectedBatchIndex}`);
-      grid.querySelectorAll('button')[2].click();
+      if (gallery.selectedBatchIndex!==0) throw new Error('Сборка PNG изменила выбранный кадр');
+      document.querySelector('.batch-thumb[aria-label="Кадр 3"]').click();
       if (gallery.selectedBatchIndex !== 3 || !document.querySelector('#metadata-summary').textContent.includes('Seed: 102')) throw new Error('Кадр получил чужой seed');
       document.querySelector('#seed-random-btn').click();
       document.querySelector('#seed-lock-btn').click();
@@ -72,7 +75,7 @@
       if (frame.settings.seed !== 102 || frame.settings.batchCount !== 1 || Object.keys(frame.workflow).some(id => !id.startsWith('frame_2_'))) throw new Error('Повтор кадра повторяет всю серию');
       gallery.selectHistoryItem(item,0);
       const series = await captureRepeat();
-      if (series.settings.batchCount !== count || Object.values(series.workflow).filter(node => node.class_type === 'SaveImage').length !== count) throw new Error('Повтор серии потерял кадры');
+      if (series.settings.batchCount !== count || Object.values(series.workflow).filter(node => node.class_type === 'SaveImage').length !== count+(item.gridUrl?1:0)) throw new Error('Повтор серии потерял кадры или сетку');
     }
     return `1/4/9, квадратный PNG, seed и отдельный повтор кадра/серии: OK (${innerWidth}×${innerHeight})`;
   } finally {

@@ -1,6 +1,7 @@
 import {widthSlider, heightSlider, widthVal, heightVal} from './elements.js';
 import {activeWidth, activeHeight, setActiveWidth, setActiveHeight} from './state.js';
 import {askConfirm, showNotice} from './dialogs.js';
+import {makeDialogBackdropDismissible} from './popup_behavior.js';
 
 const key = 'prism_image_formats';
 const grid = document.querySelector('.resolution-grid');
@@ -26,7 +27,8 @@ export function syncImageFormats() {
     button.classList.toggle('active',active);
     button.setAttribute('aria-pressed',String(active));
   }
-  document.getElementById('current-format-ratio').textContent = `${ratio(activeWidth,activeHeight)} · ${activeWidth} × ${activeHeight} px`;
+  const pixelCount = new Intl.NumberFormat('ru-RU').format(activeWidth * activeHeight);
+  document.getElementById('current-format-ratio').textContent = `${ratio(activeWidth,activeHeight)} · ${activeWidth} × ${activeHeight} px · ${pixelCount} пикс.`;
 }
 
 function renderFormats() {
@@ -101,6 +103,7 @@ function editFormat(existing) {
     dialog.setAttribute('aria-labelledby','format-editor-title');
     dialog.innerHTML = '<form><h2 id="format-editor-title"></h2><label>Название<input name="name" type="text" maxlength="80" required></label><div class="grid-2-col"><label>Ширина, px<input name="width" type="number" min="256" max="2048" step="8" required></label><label>Высота, px<input name="height" type="number" min="256" max="2048" step="8" required></label></div><p role="status"></p><div class="dialog-actions"><button type="button" data-cancel>Отмена</button><button type="submit" class="dialog-primary">Сохранить</button></div></form>';
     document.body.append(dialog);
+    makeDialogBackdropDismissible(dialog);
   }
   const form = dialog.querySelector('form');
   const fields = form.elements;

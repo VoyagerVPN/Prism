@@ -1,6 +1,9 @@
+import {randomUuid} from './config.js';
+import {splitPromptTags} from './tag_input.js';
 export const loraKey=name=>name.replaceAll('\\','/');
 
-export function characterPromptPart(value) {
+export function characterPromptPart(value,{instanceId=randomUuid(),framePrompt='',disabledTags=[]}={}) {
+  if(typeof instanceId!=='string'||!/^[a-zA-Z0-9_-]{1,200}$/.test(instanceId)||typeof framePrompt!=='string')throw new Error('Некорректный экземпляр персонажа.');
   if(!value||typeof value!=='object'||typeof value.name!=='string'||!value.name)throw new Error('Некорректный персонаж в промпте.');
   const character=structuredClone(value);
   character.lora??='None';character.strength=Number(character.strength??1);character.trigger??='';
@@ -16,14 +19,16 @@ export function characterPromptPart(value) {
   character.outfitEnabled=character.outfitEnabled!==false;
   if(typeof character.trigger!=='string')throw new Error('Некорректный триггер персонажа.');
   if(character.lora!=='None')normalizePromptParts([{type:'lora',name:character.lora,strength:character.strength}]);
-  return {type:'character',character};
+  if(!Array.isArray(disabledTags)||disabledTags.length>10000||disabledTags.some(entry=>!entry||!['appearance','outfit'].includes(entry.kind)||typeof entry.variant!=='string'||typeof entry.tag!=='string'||!entry.tag.trim()))throw new Error('Некорректное состояние тегов персонажа.');
+  const disabled=disabledTags.map(({kind,variant,tag})=>({kind,variant,tag}));
+  return {type:'character',instanceId,character,framePrompt,disabledTags:disabled};
 }
 
 export function normalizePromptParts(parts) {
   if(!Array.isArray(parts)||parts.length>10000)throw new Error('Некорректный промпт.');
   const result=[],seen=new Set();
   const characterLoras=new Set(parts.filter(part=>part?.type==='character'&&typeof part.character?.lora==='string').map(part=>loraKey(part.character.lora)));
-  for(const part of parts){
+  for(const [index,part] of parts.entries()){
     if(!part||typeof part!=='object')throw new Error('Некорректный элемент промпта.');
     if(part.type==='text'){
       if(typeof part.text!=='string')throw new Error('Некорректный текст промпта.');
@@ -34,8 +39,8 @@ export function normalizePromptParts(parts) {
       if(typeof name!=='string'||!name||name==='None'||name.length>2000||/^[a-z]:|^[/\\]|[\x00-\x1f]/i.test(name)||loraKey(name).split('/').some(segment=>segment==='..'||segment==='.')||typeof strength!=='number'||!Number.isFinite(strength)||strength < -1||strength > 2)throw new Error('Некорректная LoRA или её вес (от −1 до 2).');
       const key=loraKey(name);if(seen.has(key)||characterLoras.has(key))continue;seen.add(key);result.push({type:'lora',name,strength});
     }else if(part.type==='character'){
-      const normalized=characterPromptPart(part.character),key='character:'+normalized.character.name;
-      if(seen.has(key))continue;seen.add(key);result.push(normalized);
+      const normalized=characterPromptPart(part.character,{instanceId:part.instanceId??`legacy-character-${index}`,framePrompt:part.framePrompt??'',disabledTags:part.disabledTags??[]}),key='character:'+normalized.instanceId;
+      if(seen.has(key))throw new Error('Повторяющийся ID экземпляра персонажа.');seen.add(key);result.push(normalized);
     }else throw new Error('Неизвестный элемент промпта.');
   }
   return result;
@@ -62,13 +67,14 @@ export function promptPartsFromSettings(settings) {
 
 export function resolvePromptParts(parts) {
   const normalized=normalizePromptParts(parts);
-  const loras=[],seen=new Set();
-  const add=lora=>{if(lora.name==='None'||seen.has(loraKey(lora.name)))return;seen.add(loraKey(lora.name));loras.push(lora);};
+  const loras=[],seen=new Map();
+  const add=lora=>{if(lora.name==='None')return;const key=loraKey(lora.name);if(seen.has(key)){if(seen.get(key)!==lora.strength)throw new Error(`У LoRA «${lora.name}» должен быть общий вес для всех персонажей.`);return;}seen.set(key,lora.strength);loras.push(lora);};
   const text=normalized.map(part=>{
     if(part.type==='text')return part.text;
     if(part.type==='lora'){add({name:part.name,strength:part.strength});return '';}
     const c=part.character;add({name:c.lora,strength:c.strength});
-    return [c.trigger,c.appearances[c.activeAppearanceName],c.outfitEnabled?c.outfits[c.activeOutfitName]:''].filter(text=>text.trim()).join(', ');
+    const visible=(kind,variant,source)=>{const disabled=new Set(part.disabledTags.filter(entry=>entry.kind===kind&&entry.variant===variant).map(entry=>entry.tag));return disabled.size?splitPromptTags([source]).filter(tag=>!disabled.has(tag)).join(', '):source;};
+    return [c.trigger,visible('appearance',c.activeAppearanceName,c.appearances[c.activeAppearanceName]),c.outfitEnabled?visible('outfit',c.activeOutfitName,c.outfits[c.activeOutfitName]):'',part.framePrompt].filter(text=>text.trim()).join(', ');
   }).join('');
   return {text,loras};
 }

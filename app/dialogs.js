@@ -1,3 +1,5 @@
+import {makeDialogBackdropDismissible} from './popup_behavior.js';
+
 let queue = Promise.resolve();
 
 function openDialog(message, {kind, value = '', title, action, readOnly = false}) {
@@ -11,6 +13,7 @@ function openDialog(message, {kind, value = '', title, action, readOnly = false}
       dialog.setAttribute('aria-describedby', 'action-message');
       dialog.innerHTML = '<form><h2 id="action-title"></h2><p id="action-message"></p><input id="action-input" type="text"><div class="dialog-actions"><button type="button" data-cancel>Отмена</button><button type="submit" class="dialog-primary"></button></div></form>';
       document.body.append(dialog);
+      makeDialogBackdropDismissible(dialog);
     }
     const field = dialog.querySelector('input');
     const cancel = dialog.querySelector('[data-cancel]');

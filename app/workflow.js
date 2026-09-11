@@ -10,6 +10,54 @@ function numeric(value, fallback, label, min, max, integer = false) {
   return n;
 }
 
+function outputImagePath(source) {
+  if (!source || (source.type ?? 'output') !== 'output' || typeof source.filename !== 'string' || !source.filename) {
+    throw new Error('Refine доступен только для сохранённого output-изображения.');
+  }
+  const path = [source.subfolder, source.filename].filter(Boolean).join('/').replaceAll('\\', '/');
+  if (path.startsWith('/') || path.includes('\0') || path.split('/').some(part => part === '..' || part === '')) {
+    throw new Error('Некорректный путь исходного изображения.');
+  }
+  return `${path} [output]`;
+}
+
+function connectedWorkflow(graph, outputId) {
+  const connected = new Set();
+  const visit = id => {
+    if (connected.has(id) || !Object.hasOwn(graph, id)) return;
+    connected.add(id);
+    for (const value of Object.values(graph[id].inputs)) {
+      if (Array.isArray(value) && typeof value[0] === 'string') visit(value[0]);
+    }
+  };
+  visit(outputId);
+  return Object.fromEntries(Object.entries(graph).filter(([id]) => connected.has(id)));
+}
+
+// Refine повторяет только второй Hires-проход над уже сохранённым кадром.
+export function compileRefineWorkflow(settings, source) {
+  const width = numeric(source?.width, 0, 'Ширина исходника', 16, 16384, true);
+  const height = numeric(source?.height, 0, 'Высота исходника', 16, 16384, true);
+  const graph = compileWorkflow({
+    ...settings,
+    width,
+    height,
+    batchCount: 1,
+    variationStrength: 0,
+    hiresToggle: true,
+    faceToggle: false,
+    upscaleToggle: false,
+    reactorToggle: false,
+  });
+  const upscale = Object.entries(graph).find(([, node]) => node.class_type === 'ImageUpscaleWithModel');
+  const output = Object.entries(graph).find(([, node]) => node.class_type === 'SaveImage');
+  if (!upscale || !output) throw new Error('Не удалось собрать Refine workflow.');
+  const sourceNodeId = upscale[1].inputs.image?.[0];
+  if (typeof sourceNodeId !== 'string' || !Object.hasOwn(graph, sourceNodeId)) throw new Error('В Hires workflow отсутствует исходное изображение.');
+  graph[sourceNodeId] = { class_type: 'LoadImageOutput', inputs: { image: outputImagePath(source) } };
+  return connectedWorkflow(graph, output[0]);
+}
+
 // Граф зависит только от снимка задания, а не от изменяемых полей интерфейса.
 export function compileWorkflow(settings) {
   const count = settings.batchCount ?? 1;
@@ -24,6 +72,17 @@ export function compileWorkflow(settings) {
           [key,Array.isArray(value) && Object.hasOwn(graph,value[0]) ? [prefix+value[0],value[1]] : value]))};
       }
     }
+    // Берём готовые кадры после всех обработок; размеры сетки равны сумме исходных пикселей.
+    const frames = Array.from({length:count},(_,index)=>result[`frame_${index}_11`].inputs.images);
+    let images = frames[0];
+    for (let index = 1; index < count; index++) {
+      const id = `grid_batch_${index}`;
+      result[id] = {class_type:'ImageBatch',inputs:{image1:images,image2:frames[index]}};
+      images = [id,0];
+    }
+    result.grid_size = {class_type:'GetImageSize',inputs:{image:frames[0]}};
+    result.grid_image = {class_type:'ImageGrid',inputs:{images,columns:Math.sqrt(count),cell_width:['grid_size',0],cell_height:['grid_size',1],padding:0}};
+    result.grid_save = {class_type:'SaveImage',inputs:{images:['grid_image',0],filename_prefix:`${settings.filenamePrefix ?? 'Dashboard'}_grid`}};
     return result;
   }
   const seed = numeric(settings.seed, 0, 'Seed', 0, Number.MAX_SAFE_INTEGER, true);
@@ -36,9 +95,14 @@ export function compileWorkflow(settings) {
   const samplerVal = settings.sampler ?? 'euler';
   const schedulerVal = settings.scheduler ?? 'normal';
   const inline=settings.positiveParts===undefined?null:resolvePromptParts(normalizePromptParts(settings.positiveParts));
-  const positivePromptBase = inline?.text ?? settings.positive ?? '';
-  const negativePromptBase = settings.negative ?? '';
+  let positivePromptBase = inline?.text ?? settings.positive ?? '';
+  let negativePromptBase = settings.negative ?? '';
   if (typeof positivePromptBase !== 'string' || typeof negativePromptBase !== 'string') throw new Error('Промпты должны быть текстом.');
+  if (settings.recipe === 'anima' && /anima-aesthetic/i.test(checkpointVal)) {
+    const missingQuality = ['masterpiece', 'best quality'].filter(tag => !new RegExp(`(?:^|,\\s*)${tag}(?:,|$)`, 'i').test(positivePromptBase));
+    if (missingQuality.length) positivePromptBase = [...missingQuality, positivePromptBase.trim()].filter(Boolean).join(', ');
+    if (!negativePromptBase.trim()) negativePromptBase = 'worst quality, low quality, blurry, jpeg artifacts, chromatic aberration';
+  }
   const widthValNum = numeric(settings.width, 1024, 'Ширина', 16, 16384, true);
   const heightValNum = numeric(settings.height, 1024, 'Высота', 16, 16384, true);
   const clipSkipValNum = numeric(settings.clipSkip, 1, 'Clip skip', 1, 24, true);
@@ -313,6 +377,9 @@ export function compileWorkflow(settings) {
   }
   
   if (isFaceEnabled) {
+    const faceCfg = settings.recipe === 'anima' ? cfgValNum : 6.0;
+    const faceSampler = settings.recipe === 'anima' ? samplerVal : 'dpmpp_2m';
+    const faceScheduler = settings.recipe === 'anima' ? schedulerVal : 'karras';
     graph["9"] = {
       "class_type": "UltralyticsDetectorProvider",
       "inputs": {
@@ -332,9 +399,9 @@ export function compileWorkflow(settings) {
         "max_size": 1024,
         "seed": seed,
                 "steps": faceStepsValNum,
-        "cfg": 6.0,
-        "sampler_name": "dpmpp_2m",
-        "scheduler": "karras",
+        "cfg": faceCfg,
+        "sampler_name": faceSampler,
+        "scheduler": faceScheduler,
         "denoise": 0.35,
         "feather": 5,
         "noise_mask": true,

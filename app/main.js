@@ -1,28 +1,41 @@
-import { ComfyClient, refreshComfyModels, fetchComfyInfo, fetchLoraTriggers, getSystemStats, uploadInputImage, objectInfo, modelList, upscaleModelList } from './api.js';
+import { ComfyClient, refreshComfyModels, fetchComfyInfo, fetchLoraTriggers, getPrismMetrics, uploadInputImage, objectInfo, modelList, loraDetailsMap, upscaleModelList } from './api.js';
 import { setupUIEventListeners, syncModelLists } from './ui.js';
 import * as state from './state.js';
 import * as el from './elements.js';
 import { loadSavedSettings, readSettings, saveSettings, applySettings } from './storage.js';
 import { initCharacters } from './characters.js';
 import { loadCustomProfiles, initPresetEvents, renderProfiles } from './presets.js';
-import { initGalleryEvents, displayOutputImage, selectedHistoryItem, selectHistoryItem } from './gallery.js';
+import { initGalleryEvents, displayOutputImage } from './gallery.js';
+import {setupLivePreview} from './live_preview.js';
+import {initArchiveGallery} from './archive_gallery.js';
 import { compileWorkflow } from './workflow.js';
-import { validateCapabilities, comboValues } from './model_loader.js';
-import { updateStatus, showProgress, updateProgressBar } from './status.js';
+import { createRefineSubmission } from './refine.js';
+import { assertLoraCompatibility, validateCapabilities, comboValues } from './model_loader.js';
+import { updateStatus, showProgress } from './status.js';
 import { setupModelImport } from './import.js';
 import { loadLoraLibrary } from './library.js';
 import { setupSelectControls } from './controls.js';
+import { describeProgress } from './progress.js';
+import { presentResourceMetrics } from './resource_metrics.js';
 
 const client = new ComfyClient();
 let preparing = false;
 let ready = false;
-let previewUrl;
 const message = document.getElementById('dashboard-message');
 const resetButton = document.getElementById('reset-job-btn');
 const labels = { submitting: 'Отправка', queued: 'В очереди', running: 'Выполняется', reconnecting: 'Восстановление связи', unknown: 'Состояние неизвестно', cancelling: 'Отмена', cancelled: 'Отменено', failed: 'Ошибка', succeeded: 'Готово', lost: 'Задание отсоединено' };
 function warn(text) {
   message.textContent = text;
   message.hidden = !text;
+}
+function jobProgressView(job) {
+  const progress = describeProgress(job.progress, job.workflow, job.settings);
+  if (job.status === 'submitting') return { label: 'Отправка', detail: 'Передача зафиксированного workflow в ComfyUI', percent: progress.percent };
+  if (job.status === 'queued') return { label: 'В очереди', detail: `Ожидание запуска · Общий прогресс ${Math.round(progress.percent)}%`, percent: progress.percent };
+  if (job.status === 'reconnecting') return { label: `Восстановление связи · ${Math.round(progress.percent)}%`, detail: `Последний этап: ${progress.label}`, percent: progress.percent };
+  if (job.status === 'cancelling') return { label: 'Отмена задания', detail: `Зафиксированный прогресс ${Math.round(progress.percent)}%`, percent: progress.percent };
+  if (job.status === 'unknown') return { label: 'Проверка состояния задания', detail: `Последний прогресс ${Math.round(progress.percent)}%`, percent: progress.percent };
+  return progress;
 }
 function render() {
   const busy = preparing || client.busy;
@@ -35,7 +48,11 @@ function render() {
   el.imageLoader.style.display = busy ? 'flex' : 'none';
   if (busy) {
     updateStatus('working', preparing ? 'Подготовка файла' : labels[client.job.status]);
-    showProgress(preparing ? 'Подготовка файла' : labels[client.job.status], preparing ? 'Проверка настроек и исходных файлов' : 'Настройки задания уже зафиксированы');
+    if (preparing) showProgress('Подготовка файла', 'Проверка настроек и исходных файлов', 0);
+    else {
+      const progress = jobProgressView(client.job);
+      showProgress(progress.label, progress.detail, progress.percent);
+    }
   } else updateStatus(client.connected ? 'connected' : 'disconnected', client.connected ? 'Подключено' : 'Нет соединения');
 }
 async function run(action) {
@@ -53,6 +70,7 @@ async function submit(settings, workflow = compileWorkflow(settings)) {
 }
 async function generate() {
   const settings = readSettings();
+  assertLoraCompatibility(settings.recipe, settings.loras, loraDetailsMap);
   const faceFile = state.reactorFile;
   settings.seed = settings.seedMode === 'random' ? Math.floor(Math.random() * 10000000000) : Number(settings.seedInput);
   if (settings.variationStrength > 0) {
@@ -65,6 +83,12 @@ async function generate() {
   }
   saveSettings();
   await submit(settings);
+}
+
+async function refine({settings, source}) {
+  const submission = createRefineSubmission({settings, source});
+  assertLoraCompatibility(submission.settings.recipe, submission.settings.loras, loraDetailsMap);
+  await submit(submission.settings, submission.workflow);
 }
 function availability() {
   const detector = comboValues(objectInfo.UltralyticsDetectorProvider?.input.required.model_name);
@@ -102,15 +126,24 @@ async function refresh() {
 }
 async function stats() {
   try {
-    const data = await getSystemStats();
-    for (const [total, free, label, fill] of [
-      [data.system.ram_total, data.system.ram_free, el.ramVal, el.ramFill],
-      [data.devices?.[0]?.vram_total, data.devices?.[0]?.vram_free, el.vramVal, el.vramFill],
-    ]) {
-      label.textContent = total ? `${((total - free) / 1073741824).toFixed(1)} / ${(total / 1073741824).toFixed(1)} GB` : '—';
-      fill.style.width = total ? `${(total - free) / total * 100}%` : '0%';
-    }
-  } catch { el.ramVal.textContent = el.vramVal.textContent = '—'; }
+    const view = presentResourceMetrics(await getPrismMetrics());
+    el.ramVal.textContent = view.ram.value;
+    el.ramDetail.textContent = view.ram.detail;
+    el.ramFill.style.width = `${view.ram.percent}%`;
+    el.ramVal.closest('.resource-indicator').title = view.ram.title;
+    el.vramVal.textContent = view.vram.value;
+    el.vramDetail.textContent = view.vram.detail;
+    el.vramFill.style.width = `${view.vram.modelPercent}%`;
+    el.vramWorkingFill.style.width = `${view.vram.workingPercent}%`;
+    el.vramCacheFill.style.width = `${view.vram.cachePercent}%`;
+    el.vramVal.closest('.resource-indicator').title = view.vram.title;
+  } catch {
+    const view = presentResourceMetrics(null);
+    el.ramVal.textContent = el.vramVal.textContent = '—';
+    el.ramDetail.textContent = view.ram.detail;
+    el.vramDetail.textContent = view.vram.detail;
+    for (const fill of [el.ramFill, el.vramFill, el.vramWorkingFill, el.vramCacheFill]) fill.style.width = '0%';
+  }
 }
 client.addEventListener('connection', event => {
   if (event.detail && message.textContent === 'Соединение с ComfyUI прервано.') warn('');
@@ -126,35 +159,11 @@ client.addEventListener('job', event => {
   render();
   if (job.error) warn(job.error);
   if (job.status === 'succeeded') displayOutputImage(job);
-  if (!client.busy && previewUrl) {
-    URL.revokeObjectURL(previewUrl); previewUrl = null;
-    if (selectedHistoryItem) selectHistoryItem(selectedHistoryItem);
-    else { el.outputImage.style.display = 'none'; el.canvasPlaceholder.style.display = 'flex'; }
-  }
-});
-client.addEventListener('progress', event => {
-  const progress = event.detail;
-  if (progress.max) {
-    const frame = /^frame_(\d+)_/.exec(String(progress.node));
-    const count = frame ? client.job.settings.batchCount : 1;
-    const index = frame ? Number(frame[1]) : 0;
-    updateProgressBar(Math.round(progress.value/progress.max*100), `${frame ? `Кадр ${index+1}/${count} · ` : ''}${progress.classType ?? 'Узел'}: ${progress.value}/${progress.max}`);
-  }
-});
-client.addEventListener('preview', async event => {
-  const blob = event.detail;
-  const header = new DataView(await blob.slice(0, 8).arrayBuffer());
-  if (!client.busy || header.byteLength < 8 || header.getUint32(0) !== 1) return;
-  if (previewUrl) URL.revokeObjectURL(previewUrl);
-  previewUrl = URL.createObjectURL(blob.slice(8, blob.size, header.getUint32(4) === 2 ? 'image/png' : 'image/jpeg'));
-  el.outputImage.src = previewUrl;
-  el.outputImage.style.display = 'block';
-  document.getElementById('batch-grid').style.display = 'none';
-  el.canvasPlaceholder.style.display = 'none';
 });
 window.addEventListener('dashboard-warning', event => warn(event.detail));
 window.addEventListener('restore-history-settings', event => { applySettings(event.detail); saveSettings(); });
 window.addEventListener('generate-image', () => run(generate));
+window.addEventListener('refine-image', event => run(() => refine(event.detail)));
 window.addEventListener('repeat-job', event => run(() => submit(event.detail.settings, event.detail.workflow)));
 window.addEventListener('cancel-job', () => client.cancel().catch(error => warn(error.message)));
 window.addEventListener('clear-queue', () => client.clearQueue().catch(error => warn(error.message)));
@@ -178,11 +187,12 @@ window.addEventListener('load', async () => {
   await initCharacters();
   setupSelectControls();
   initGalleryEvents();
+  setupLivePreview(client);
   render();
   try {
     await refresh();
     loadSavedSettings();
-    await loadCustomProfiles();
+    await Promise.all([loadCustomProfiles(), initArchiveGallery()]);
     state.updateAllExpansions();
   } catch (error) { warn(error.message); }
   client.connect();

@@ -32,3 +32,60 @@ test('Обычные поля используют общее оформлени
     assert.notEqual(style('focused').boxShadow,reference.boxShadow,'У фокуса есть видимый индикатор');
   }finally{dom.window.close();}
 });
+
+test('Меню действий библиотеки использует тёмные пункты без системного оформления кнопок',async()=>{
+  const dom=new JSDOM('<body><details class="library-actions" open><div class="library-actions-menu"><button id="add-character-btn" class="add-lora-btn">Создать персонажа</button></div></details></body>');
+  try{
+    for(const file of ['index.css','controls.css']){const style=dom.window.document.createElement('style');style.textContent=await readFile(new URL('../'+file,import.meta.url),'utf8');dom.window.document.head.append(style);}
+    const button=dom.window.document.querySelector('button'),computed=dom.window.getComputedStyle(button);
+    assert.equal(computed.backgroundColor,'rgba(0, 0, 0, 0)');
+    assert.equal(computed.color,'rgb(237, 240, 245)');
+    assert.equal(computed.borderStyle,'none');
+    assert.equal(computed.borderRadius,'6px');
+    assert.equal(computed.fontWeight,'400');
+  }finally{dom.window.close();}
+});
+
+test('Свободно плавающие меню используют одну поверхность',async()=>{
+  const dom=new JSDOM('<body><div class="editable-choice-menu"></div><div class="prompt-character-options"></div><div class="prompt-mentions"></div><div class="library-actions-menu"></div></body>');
+  try{
+    const style=dom.window.document.createElement('style');style.textContent=await readFile(new URL('../controls.css',import.meta.url),'utf8');dom.window.document.head.append(style);
+    const surfaces=[...dom.window.document.body.children].map(element=>dom.window.getComputedStyle(element));
+    for(const computed of surfaces){
+      assert.equal(computed.backgroundColor,'rgb(27, 31, 39)');
+      assert.equal(computed.borderTopColor,'rgb(52, 59, 71)');
+      assert.equal(computed.borderRadius,'8px');
+      assert.equal(computed.boxShadow,'0 10px 35px rgba(0, 0, 0, 0.533333)');
+    }
+  }finally{dom.window.close();}
+});
+
+test('Вся карточка остаётся однострочной, а слишком длинные подписи получают многоточие',async()=>{
+  const dom=new JSDOM('<body><span class="prompt-character-summary"><span class="prompt-character-head"><span class="prompt-character-name">Очень длинное имя персонажа</span></span><span class="prompt-character-variant"></span><span class="prompt-character-variant"></span></span><span class="prompt-frame is-empty"><span data-character-field="frame"></span></span><span class="prompt-character-tags"><span class="prompt-tags"></span></span></body>');
+  try{
+    const style=dom.window.document.createElement('style');style.textContent=await readFile(new URL('../controls.css',import.meta.url),'utf8');dom.window.document.head.append(style);
+    const computed=selector=>dom.window.getComputedStyle(dom.window.document.querySelector(selector));
+    assert.equal(computed('.prompt-character-summary').flexWrap,'nowrap');
+    assert.equal(computed('.prompt-character-summary').whiteSpace,'nowrap');
+    assert.equal(computed('.prompt-character-summary').overflow,'hidden');
+    assert.equal(computed('.prompt-character-summary').maxHeight,'22.4px');
+    assert.equal(computed('.prompt-character-summary').verticalAlign,'baseline');
+    assert.equal(computed('.prompt-character-summary').borderRadius,'4px');
+    assert.equal(computed('.prompt-character-head').borderRadius,'4px 0 0 4px');
+    assert.equal(dom.window.getComputedStyle(dom.window.document.querySelector('.prompt-character-variant:last-child')).borderRadius,'0 4px 4px 0');
+    assert.equal(computed('.prompt-character-head').flexShrink,'0','Короткое имя не теряет даже долю пикселя из-за соседних вариантов');
+    assert.equal(computed('.prompt-character-head').maxWidth,'100%');
+    assert.equal(computed('.prompt-character-head').overflow,'hidden');
+    assert.equal(computed('.prompt-character-variant').flexShrink,'100','Варианты освобождают место короткому имени первыми');
+    assert.equal(computed('.prompt-character-variant').overflow,'hidden');
+    assert.equal(computed('.prompt-character-name').whiteSpace,'nowrap');
+    assert.equal(computed('.prompt-character-name').overflow,'hidden');
+    assert.equal(computed('.prompt-character-name').textOverflow,'ellipsis');
+    assert.equal(computed('.prompt-frame').marginLeft,'0px');
+    assert.equal(computed('.prompt-frame [data-character-field]').minWidth,'0px');
+    assert.equal(computed('.prompt-character-tags').overflow,'visible');
+    assert.equal(computed('.prompt-character-tags').maxHeight,'none');
+    assert.equal(computed('.prompt-tags').flexDirection,'row');
+    assert.equal(computed('.prompt-tags').flexWrap,'wrap');
+  }finally{dom.window.close();}
+});

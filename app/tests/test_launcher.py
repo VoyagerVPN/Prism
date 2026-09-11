@@ -3,17 +3,73 @@ import os
 from pathlib import Path
 import subprocess
 import shutil
+import sys
 import tempfile
 import threading
+import time
 import unittest
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class LauncherCheck(unittest.TestCase):
+    def test_stop_uses_process_identity_when_prism_route_is_unavailable(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / '.cache') as directory:
+            root = Path(directory)
+            shutil.copyfile(ROOT / 'Start.ps1', root / 'Start.ps1')
+            probe = ThreadingHTTPServer(('127.0.0.1', 0), BaseHTTPRequestHandler)
+            port = probe.server_port
+            probe.server_close()
+            script = root / 'main.py'
+            script.write_text(
+                """import json,sys
+from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == '/queue':
+            raw=json.dumps({'queue_running':[],'queue_pending':[]}).encode()
+            self.send_response(200);self.send_header('Content-Type','application/json');self.end_headers();self.wfile.write(raw)
+        else:self.send_response(404);self.end_headers()
+    def log_message(self,*args):pass
+ThreadingHTTPServer(('127.0.0.1',int(sys.argv[1])),Handler).serve_forever()
+""",
+                encoding='utf-8',
+            )
+            config = json.loads((ROOT / 'prism.json').read_text(encoding='utf-8-sig'))
+            config.update({'port': port, 'python': sys.executable})
+            config_path = root / 'config.json'
+            config_path.write_text(json.dumps(config), encoding='utf-8')
+            process = subprocess.Popen(
+                [sys.executable, str(script), str(port)],
+                cwd=root,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+            try:
+                for _ in range(100):
+                    try:
+                        urllib.request.urlopen(f'http://127.0.0.1:{port}/queue', timeout=.2).close()
+                        break
+                    except OSError:
+                        time.sleep(.05)
+                result = subprocess.run(
+                    ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(root / 'Start.ps1'), '-Action', 'Stop', '-Config', str(config_path)],
+                    capture_output=True,
+                    text=True,
+                    encoding='utf-8',
+                    errors='replace',
+                    timeout=30,
+                )
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                process.wait(timeout=10)
+            finally:
+                if process.poll() is None:
+                    process.terminate()
+                    process.wait(timeout=10)
+
     def test_status_rejects_preview_and_accepts_real_backend(self):
-        responses = {'/system_stats': {'system': {}}, '/dashboard/runtime': {'service': 'prism', 'version': 1}}
+        responses = {'/system_stats': {'system': {}}, '/prism/runtime': {'service': 'prism', 'version': 1}}
 
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):
@@ -47,7 +103,7 @@ class LauncherCheck(unittest.TestCase):
                 result = run('Update')
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn('PRISM_BUSY', result.stdout + result.stderr)
-                responses['/dashboard/runtime'] = {'service': 'another-app'}
+                responses['/prism/runtime'] = {'service': 'another-app'}
                 self.assertNotEqual(run().returncode, 0)
             finally:
                 server.shutdown()

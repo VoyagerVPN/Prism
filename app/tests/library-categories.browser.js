@@ -7,7 +7,7 @@
  const utility=[...tabs.querySelectorAll('button')].find(b=>b.dataset.category==='Utility');if(!utility)throw new Error('Нет категории Utility');utility.click();
  const cards=[...root.querySelectorAll('.library-card')];if(cards.length!==2||cards.some(c=>!c.dataset.name.startsWith('Utility')))throw new Error('Категория смешивает разные папки');
  tabs.querySelector('[data-category="all"]').click();
- const {items}=await(await fetch('/dashboard/lora-library')).json(),item=items.find(i=>i.triggers.length);
+ const {items}=await(await fetch('/prism/lora-library')).json(),item=items.find(i=>i.triggers.length);
  const card=[...root.querySelectorAll('.library-card')].find(c=>c.dataset.name===item.name),button=card.querySelector('.library-copy');
  const actions=card.querySelector('.library-card-actions');
  if(actions.children.length!==3||!actions.children[0].classList.contains('library-add-icon')||actions.children[1]!==button)throw new Error('Нет единого ряда +, copy, обновить');

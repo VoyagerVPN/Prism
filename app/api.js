@@ -1,5 +1,6 @@
 import { COMFY_URL, randomUuid } from './config.js';
 import { buildModelCatalog, comboValues as extractList } from './model_loader.js';
+import { advanceProgress, createProgress } from './progress.js';
 
 export { COMFY_URL } from './config.js';
 export let objectInfo = {};
@@ -40,15 +41,15 @@ export async function fetchComfyInfo() {
 }
 
 export async function refreshComfyModels() {
-  return requestJson(COMFY_URL, '/dashboard/refresh', { method: 'POST' });
+  return requestJson(COMFY_URL, '/prism/refresh', { method: 'POST' });
 }
 
 export async function fetchLoraTriggers() {
-  loraDetailsMap = await requestJson(COMFY_URL, '/dashboard/lora_triggers');
+  loraDetailsMap = await requestJson(COMFY_URL, '/prism/lora_triggers');
 }
 
-export async function getSystemStats() {
-  return requestJson(COMFY_URL, '/system_stats');
+export async function getPrismMetrics() {
+  return requestJson(COMFY_URL, '/prism/metrics');
 }
 
 export async function uploadInputImage(file) {
@@ -99,7 +100,7 @@ export class ComfyClient extends EventTarget {
 
   async submit(workflow, settings) {
     if (this.busy) throw new Error('Дождитесь завершения текущего задания или отмените его.');
-    this.job = { promptId: randomUuid(), workflow: structuredClone(workflow), settings: structuredClone(settings), status: 'submitting', submittedAt: Date.now(), outputs: [] };
+    this.job = { promptId: randomUuid(), workflow: structuredClone(workflow), settings: structuredClone(settings), status: 'submitting', submittedAt: Date.now(), outputs: [], progress: createProgress(workflow) };
     this.submitting = true;
     this.publish();
     try {
@@ -165,10 +166,11 @@ export class ComfyClient extends EventTarget {
       this.publish();
     } else if (type === 'execution_success' || (type === 'executing' && data.node === null)) {
       this.reconcile().catch(error => this.emit('warning', error.message));
-    } else if (['execution_start', 'executing', 'progress'].includes(type)) {
+    } else if (['execution_start', 'execution_cached', 'executing', 'progress'].includes(type)) {
       if (!this.job.cancelRequested) this.job.status = 'running';
+      this.job.progress = advanceProgress(this.job.progress, this.job.workflow, type, data);
       this.publish();
-      this.emit('progress', { ...data, classType: this.job.workflow[data.node]?.class_type });
+      this.emit('progress', structuredClone(this.job.progress));
     }
   }
 
@@ -181,13 +183,17 @@ export class ComfyClient extends EventTarget {
       const entry = history[job.promptId];
       if (entry?.status?.completed && entry.status.status_str === 'success') {
         job.status = 'succeeded';
+        job.progress = advanceProgress(job.progress, job.workflow, 'execution_success');
         job.outputs = Object.entries(job.workflow).flatMap(([id,node]) =>
           node.class_type === 'SaveImage' ? entry.outputs?.[id]?.images ?? [] : []);
+        const hasGrid = job.workflow.grid_save?.class_type === 'SaveImage';
+        job.gridOutput = hasGrid ? entry.outputs?.grid_save?.images?.[0] ?? null : null;
         job.finishedAt = Date.now();
         job.error = null;
-        if (job.settings.batchLayout === 'square-v1' && job.outputs.length !== job.settings.batchCount) {
+        const expected = job.settings.batchCount + (hasGrid ? 1 : 0);
+        if (job.settings.batchLayout === 'square-v1' && (job.outputs.length !== expected || (hasGrid && !job.gridOutput))) {
           job.status = 'failed';
-          job.error = `Серия вернула ${job.outputs.length} файлов вместо ${job.settings.batchCount}.`;
+          job.error = `Серия вернула ${job.outputs.length} файлов вместо ${expected}${hasGrid && !job.gridOutput ? ': отсутствует сетка' : ''}.`;
         }
       } else if (entry?.status?.status_str === 'error') {
         const messages = entry.status.messages ?? [];

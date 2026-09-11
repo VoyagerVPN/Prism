@@ -2,16 +2,17 @@ import os
 import asyncio
 import struct
 import json
-import hashlib
-import math
 import tempfile
 import subprocess
 from pathlib import Path
 from server import PromptServer
 from aiohttp import web
 import folder_paths
-from .model_import import inspect_header, install_model, BASES, CATEGORIES, KINDS, MAX_HEADER, MAX_FILE
+from .model_import import inspect_header, install_model, declared_base, validate_base, read_bases, remember_base, CATEGORIES, KINDS, MAX_HEADER, MAX_FILE
 from . import lora_library
+from .gallery_catalog import GalleryCatalog
+from .prism_core import CharacterStore, InvalidDocument, PresetStore, RevisionConflict
+from .runtime_metrics import collect_runtime_metrics
 
 # Получаем путь к текущей папке плагина
 dir_path = str(Path(__file__).resolve().parent)
@@ -23,133 +24,62 @@ routes = PromptServer.instance.routes
 lora_metadata_cache = {}
 
 character_path = Path(dir_path) / 'data' / 'characters.json'
-
-def validate_characters(db):
-    if not isinstance(db, dict) or len(db) > 1000:
-        raise ValueError('Ожидается объект с не более чем 1000 персонажами')
-    for name, char in db.items():
-        if not name.strip() or name == 'none' or not isinstance(char, dict):
-            raise ValueError('Некорректная запись персонажа')
-        for field in ('name', 'lora', 'appearance', 'outfit', 'activeOutfitName'):
-            if field in char and not isinstance(char[field], str):
-                raise ValueError(f'{name}: {field} должен быть строкой')
-        if 'outfits' in char and (not isinstance(char['outfits'], dict) or not all(isinstance(v, str) for v in char['outfits'].values())):
-            raise ValueError(f'{name}: некорректный список одежды')
-        if 'strength' in char and (type(char['strength']) not in (int, float) or not math.isfinite(char['strength'])):
-            raise ValueError(f'{name}: некорректная сила LoRA')
-        if 'outfitEnabled' in char and not isinstance(char['outfitEnabled'], bool):
-            raise ValueError(f'{name}: некорректный переключатель одежды')
+import_bases_path = Path(dir_path) / 'data' / 'import-bases.json'
+gallery_catalog = GalleryCatalog(Path(dir_path) / 'data' / 'gallery.json')
 
 def read_characters():
-    if not character_path.exists():
-        return {'characters': {}, 'revision': None}
-    raw = character_path.read_bytes()
-    db = json.loads(raw.decode('utf-8-sig'))
-    validate_characters(db)
-    return {'characters': db, 'revision': hashlib.sha256(raw).hexdigest()}
+    return CharacterStore(character_path).read()
 
-@routes.get('/dashboard/characters')
+@routes.get('/prism/characters')
 async def get_characters(request):
     try:
         return web.json_response(read_characters(), headers={'Cache-Control': 'no-store'})
     except (OSError, ValueError) as error:
         return web.json_response({'error': f'Не удалось прочитать characters.json: {error}'}, status=500)
 
-@routes.post('/dashboard/characters')
+@routes.post('/prism/characters')
 async def post_characters(request):
     try:
         body = await request.json()
         if not isinstance(body, dict) or 'revision' not in body:
             raise ValueError('Отсутствует версия данных')
-        validate_characters(body.get('characters'))
-        raw = json.dumps(body['characters'], ensure_ascii=False, indent=2, allow_nan=False).encode('utf-8')
-        if len(raw) > 2 * 1024 * 1024:
-            raise ValueError('База персонажей превышает 2 МБ')
     except (ValueError, TypeError) as error:
         return web.json_response({'error': str(error)}, status=400)
     try:
-        # Между проверкой версии и заменой файла нет await: другая вкладка не вклинится.
-        current = read_characters()
-        if body['revision'] != current['revision']:
-            return web.json_response({'error': 'Персонажи изменены в другой вкладке. Обновите страницу перед сохранением.'}, status=409)
-        character_path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = character_path.with_suffix('.json.tmp')
-        with temporary.open('wb') as file:
-            file.write(raw)
-            file.flush()
-            os.fsync(file.fileno())
-        if character_path.exists():
-            backup_tmp = character_path.with_suffix('.json.bak.tmp')
-            backup_tmp.write_bytes(character_path.read_bytes())
-            os.replace(backup_tmp, character_path.with_suffix('.json.bak'))
-        os.replace(temporary, character_path)
-        return web.json_response(read_characters())
+        return web.json_response(CharacterStore(character_path).save(body.get('characters'), body['revision']))
+    except InvalidDocument as error:
+        return web.json_response({'error': str(error)}, status=400)
+    except RevisionConflict as error:
+        return web.json_response({'error': str(error)}, status=409)
     except (OSError, ValueError) as error:
         return web.json_response({'error': f'Не удалось сохранить characters.json: {error}'}, status=500)
 
 preset_path = Path(dir_path) / 'data' / 'model-presets.json'
 
-def validate_presets(db):
-    if not isinstance(db, dict) or len(db) > 1000:
-        raise ValueError('Ожидается объект с не более чем 1000 пресетами')
-    strings = ('checkpoint', 'sampler', 'scheduler', 'vae')
-    numbers = {'steps': (10, 60), 'cfg': (0, 15), 'clipSkip': (1, 4)}
-    fields = set(strings) | set(numbers) | {'advancedToggle'}
-    for name, preset in db.items():
-        if not name.strip() or len(name) > 200 or name == 'default' or not isinstance(preset, dict) or set(preset) != fields:
-            raise ValueError('Некорректное имя или состав пресета модели')
-        if any(not isinstance(preset[key], str) or not preset[key] or len(preset[key]) > 4096 for key in strings):
-            raise ValueError(f'{name}: некорректное имя модели или алгоритма')
-        if not isinstance(preset['advancedToggle'], bool):
-            raise ValueError(f'{name}: некорректный переключатель дополнительных параметров')
-        for key, (low, high) in numbers.items():
-            value = preset[key]
-            if type(value) not in (int, float) or not math.isfinite(value) or not low <= value <= high or (key != 'cfg' and int(value) != value):
-                raise ValueError(f'{name}: некорректное значение {key}')
-
 def read_presets():
-    if not preset_path.exists():
-        return {'presets': {}, 'revision': None}
-    raw = preset_path.read_bytes()
-    db = json.loads(raw.decode('utf-8-sig'))
-    validate_presets(db)
-    return {'presets': db, 'revision': hashlib.sha256(raw).hexdigest()}
+    return PresetStore(preset_path).read()
 
-@routes.get('/dashboard/presets')
+@routes.get('/prism/presets')
 async def get_presets(request):
     try:
         return web.json_response(read_presets(), headers={'Cache-Control': 'no-store'})
     except (OSError, ValueError) as error:
         return web.json_response({'error': f'Не удалось прочитать model-presets.json: {error}'}, status=500)
 
-@routes.post('/dashboard/presets')
+@routes.post('/prism/presets')
 async def post_presets(request):
     try:
         body = await request.json()
         if not isinstance(body, dict) or 'revision' not in body:
             raise ValueError('Отсутствует версия данных')
-        validate_presets(body.get('presets'))
-        raw = json.dumps(body['presets'], ensure_ascii=False, indent=2, allow_nan=False).encode('utf-8')
-        if len(raw) > 2 * 1024 * 1024:
-            raise ValueError('База пресетов превышает 2 МБ')
     except (ValueError, TypeError) as error:
         return web.json_response({'error': str(error)}, status=400)
     try:
-        # Проверка версии и атомарная замена выполняются без await, как у персонажей.
-        if body['revision'] != read_presets()['revision']:
-            return web.json_response({'error': 'Пресеты изменены в другой вкладке. Обновите страницу перед сохранением.'}, status=409)
-        preset_path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = preset_path.with_suffix('.json.tmp')
-        with temporary.open('wb') as file:
-            file.write(raw)
-            file.flush()
-            os.fsync(file.fileno())
-        if preset_path.exists():
-            backup = preset_path.with_suffix('.json.bak.tmp')
-            backup.write_bytes(preset_path.read_bytes())
-            os.replace(backup, preset_path.with_suffix('.json.bak'))
-        os.replace(temporary, preset_path)
-        return web.json_response(read_presets())
+        return web.json_response(PresetStore(preset_path).save(body.get('presets'), body['revision']))
+    except InvalidDocument as error:
+        return web.json_response({'error': str(error)}, status=400)
+    except RevisionConflict as error:
+        return web.json_response({'error': str(error)}, status=409)
     except (OSError, ValueError) as error:
         return web.json_response({'error': f'Не удалось сохранить model-presets.json: {error}'}, status=500)
 
@@ -159,7 +89,7 @@ def get_lora_metadata(file_path):
         if not os.path.exists(file_path):
             return {"triggers": [], "base_model": "unknown"}
             
-        mtime = os.path.getmtime(file_path)
+        mtime = (os.path.getmtime(file_path), import_bases_path.stat().st_mtime_ns if import_bases_path.exists() else 0)
         if file_path in lora_metadata_cache:
             cached_mtime, cached_data = lora_metadata_cache[file_path]
             if cached_mtime == mtime:
@@ -206,44 +136,24 @@ def get_lora_metadata(file_path):
             sorted_triggers = sorted(list(set(clean_triggers)))
             
             # 2. Определяем базовую модель
-            base_model = "unknown"
-            base_ver = metadata.get('ss_base_model_version')
-            if base_ver:
-                base_ver_str = str(base_ver).lower()
-                if "sdxl" in base_ver_str:
-                    base_model = "sdxl"
-                elif "sd_v1" in base_ver_str or "1.5" in base_ver_str:
-                    base_model = "sd15"
-                elif "pony" in base_ver_str:
-                    base_model = "pony"
-                elif "illustrious" in base_ver_str :
-                    base_model = "illustrious"
-            
-            if base_model == "unknown":
-                path_lower = file_path.lower()
-                if "pony" in path_lower:
-                    base_model = "pony"
-                elif "illustrious" in path_lower :
-                    base_model = "illustrious"
-                elif "sdxl" in path_lower:
-                    base_model = "sdxl"
-                elif "sd15" in path_lower or "sd1.5" in path_lower or "v1-5" in path_lower:
-                    base_model = "sd15"
+            # Импорт сохраняет выбранную базу в её собственный каталог; это явное назначение пользователя.
+            assigned_base = next((base for base in read_bases(import_bases_path) if Path(file_path).parent.name.casefold() == base.casefold()), None)
+            base_model = assigned_base or declared_base(metadata) or "unknown"
                     
-            data = {"triggers": sorted_triggers, "base_model": base_model}
+            data = {"triggers": sorted_triggers, "base_model": base_model, "base_source": "import" if assigned_base else "metadata"}
             lora_metadata_cache[file_path] = (mtime, data)
             return data
     except Exception as e:
         print(f"[Dashboard] Ошибка парсинга метаданных LoRA {file_path}: {e}")
         return {"triggers": [], "base_model": "unknown"}
 
-# Редирект с /dashboard (без слэша) на /dashboard/ для корректных относительных путей в браузере
-@routes.get("/dashboard")
+# Редирект с /prism (без слэша) на /prism/ для корректных относительных путей в браузере
+@routes.get("/prism")
 async def get_dashboard_redirect(request):
-    return web.HTTPFound(location="/dashboard/")
+    return web.HTTPFound(location="/prism/")
 
 # Эндпоинт для принудительного обновления списка моделей в ComfyUI
-@routes.post("/dashboard/refresh")
+@routes.post("/prism/refresh")
 async def post_dashboard_refresh(request):
     try:
         if hasattr(folder_paths, "filename_list_cache"):
@@ -255,7 +165,7 @@ async def post_dashboard_refresh(request):
         return web.json_response({"status": "error", "message": str(e)}, status=500)
 
 # Эндпоинт для отдачи метаданных LoRA (триггеры и базовая модель)
-@routes.get("/dashboard/lora_triggers")
+@routes.get("/prism/lora_triggers")
 async def get_lora_triggers(request):
     def scan():
         return {
@@ -266,19 +176,22 @@ async def get_lora_triggers(request):
     return web.json_response(await asyncio.to_thread(scan))
 
 # Маршрут для отдачи index.html и всех остальных статических файлов (css, js)
-@routes.post('/dashboard/import/analyze')
+@routes.post('/prism/import/analyze')
 async def analyze_model_import(request):
     try:
         body = await request.json()
         if not isinstance(body, dict) or len(json.dumps(body)) > MAX_HEADER * 2:
             raise ValueError('Слишком большой или некорректный заголовок')
         result = inspect_header(body.get('header'), str(body.get('name', '')))
-        return web.json_response({**result, 'bases': BASES, 'categories': CATEGORIES})
+        bases = await asyncio.to_thread(read_bases, import_bases_path)
+        if result['base']:
+            result['base'] = next((base for base in bases if base.casefold() == result['base'].casefold()), result['base'])
+        return web.json_response({**result, 'bases': bases, 'categories': CATEGORIES})
     except (ValueError, TypeError) as error:
         return web.json_response({'error': str(error)}, status=400)
 
 
-@routes.post('/dashboard/import/upload')
+@routes.post('/prism/import/upload')
 async def upload_model_import(request):
     temporary = None
     try:
@@ -289,11 +202,12 @@ async def upload_model_import(request):
             if part is None or part.name != key or part.filename:
                 raise ValueError('Не переданы параметры импорта')
             raw = await part.read_chunk(8192)
-            if len(raw) > 128 or not part.at_eof():
+            if len(raw) > 512 or not part.at_eof():
                 raise ValueError('Некорректный параметр импорта')
             choices[key] = raw.decode('utf-8')
         kind = choices['kind']
-        if kind not in KINDS or choices['base'] not in BASES or (choices['category'] not in CATEGORIES if kind == 'loras' else choices['category'] != 'Model'):
+        validate_base(choices['base'])
+        if kind not in KINDS or (choices['category'] not in CATEGORIES if kind == 'loras' else choices['category'] != 'Model'):
             raise ValueError('Уточните тип, базовую модель и категорию')
         paths = folder_paths.get_folder_paths(kind)
         preferred = {'loras': 'lora', 'checkpoints': 'stablediffusion', 'diffusion_models': 'diffusionmodels'}[kind]
@@ -314,6 +228,10 @@ async def upload_model_import(request):
             file.flush()
             os.fsync(file.fileno())
         result = await asyncio.to_thread(install_model, temporary, root, filename, kind, choices['base'], choices['category'])
+        try:
+            await asyncio.to_thread(remember_base, choices['base'], import_bases_path)
+        except (OSError, ValueError) as error:
+            result['warning'] = f'Файл сохранён, но название базы не удалось запомнить: {error}'
         folder_paths.filename_list_cache.clear()
         return web.json_response(result)
     except FileExistsError:
@@ -327,9 +245,52 @@ async def upload_model_import(request):
             temporary.unlink(missing_ok=True)
 
 
-@routes.get('/dashboard/runtime')
+@routes.get('/prism/runtime')
 async def get_runtime(request):
     return web.json_response({'service': 'prism', 'version': 1}, headers={'Cache-Control': 'no-store'})
+
+
+@routes.get('/prism/metrics')
+async def get_metrics(request):
+    try:
+        return web.json_response(collect_runtime_metrics(), headers={'Cache-Control': 'no-store'})
+    except (ImportError, OSError, RuntimeError, AttributeError, ValueError) as error:
+        return web.json_response({'error': f'Не удалось получить метрики процесса: {error}'}, status=500)
+
+
+@routes.get('/prism/gallery')
+async def get_gallery(request):
+    try:
+        return web.json_response({'items': await asyncio.to_thread(gallery_catalog.list_items)}, headers={'Cache-Control': 'no-store'})
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        return web.json_response({'error': f'Не удалось прочитать галерею: {error}'}, status=500)
+
+
+@routes.post('/prism/gallery')
+async def post_gallery(request):
+    try:
+        body = await request.json()
+        if not isinstance(body, dict) or len(json.dumps(body, ensure_ascii=False)) > 2_000_000:
+            raise ValueError('Слишком большая или некорректная запись галереи')
+        return web.json_response({'items': await asyncio.to_thread(gallery_catalog.register, body)})
+    except (ValueError, TypeError, json.JSONDecodeError) as error:
+        return web.json_response({'error': str(error)}, status=400)
+    except OSError as error:
+        return web.json_response({'error': f'Не удалось записать галерею: {error}'}, status=500)
+
+
+@routes.patch('/prism/gallery/favorite')
+async def patch_gallery_favorite(request):
+    try:
+        body = await request.json()
+        if not isinstance(body, dict):
+            raise ValueError('Некорректное изменение избранного')
+        item = await asyncio.to_thread(gallery_catalog.set_favorite, body.get('id'), body.get('favorite'))
+        return web.json_response({'item': item})
+    except (ValueError, TypeError, json.JSONDecodeError) as error:
+        return web.json_response({'error': str(error)}, status=400)
+    except OSError as error:
+        return web.json_response({'error': f'Не удалось записать избранное: {error}'}, status=500)
 
 def library_file(name):
     if name not in folder_paths.get_filename_list('loras'):
@@ -338,20 +299,34 @@ def library_file(name):
     if not path: raise ValueError('Файл LoRA недоступен')
     return Path(path)
 
-@routes.get('/dashboard/lora-library')
+@routes.get('/prism/lora-library')
 async def get_lora_library(request):
     def scan():
         entries = []
+        categories = lora_library.read_categories()
         for name in folder_paths.get_filename_list('loras'):
             path = library_file(name)
-            entries.append(lora_library.local_entry(name, path, get_lora_metadata(str(path))))
+            entries.append(lora_library.local_entry(name, path, get_lora_metadata(str(path)), categories))
         return entries
     try:
         return web.json_response({'items': await asyncio.to_thread(scan)}, headers={'Cache-Control':'no-store'})
     except (ValueError, OSError) as error:
         return web.json_response({'error':str(error)},status=500)
 
-@routes.get('/dashboard/lora-preview')
+@routes.post('/prism/lora-library/category')
+async def set_lora_category(request):
+    try:
+        body = await request.json()
+        if not isinstance(body, dict) or not isinstance(body.get('name'), str) or body.get('category') not in (*CATEGORIES, 'Concept'):
+            raise ValueError('Выберите категорию LoRA')
+        name = body['name']; path = library_file(name)
+        await asyncio.to_thread(lora_library.save_category, name, body['category'])
+        entry = await asyncio.to_thread(lambda: lora_library.local_entry(name, path, get_lora_metadata(str(path))))
+        return web.json_response(entry)
+    except (ValueError, OSError) as error:
+        return web.json_response({'error':str(error)},status=400)
+
+@routes.get('/prism/lora-preview')
 async def get_lora_preview(request):
     try:
         path = lora_library.preview_path(library_file(request.query.get('name','')))
@@ -360,7 +335,7 @@ async def get_lora_preview(request):
     except (ValueError, OSError):
         return web.Response(status=404)
 
-@routes.get('/dashboard/lora-library/reveal')
+@routes.get('/prism/lora-library/reveal')
 async def reveal_lora_file(request):
     try:
         name = request.query.get('name','')
@@ -374,7 +349,7 @@ async def reveal_lora_file(request):
 # ponytail: один запрос Civitai за раз; очередь по файлам нужна только для массового обновления.
 library_lookup_lock = asyncio.Lock()
 
-@routes.post('/dashboard/lora-library/lookup')
+@routes.post('/prism/lora-library/lookup')
 async def lookup_lora_library(request):
     try:
         body = await request.json()
@@ -387,11 +362,11 @@ async def lookup_lora_library(request):
     except (ValueError, OSError, TimeoutError) as error:
         return web.json_response({'error':str(error)},status=400)
 
-@routes.get("/dashboard/{filename:.*}")
+@routes.get("/prism/{filename:.*}")
 async def get_dashboard_static(request):
     filename = request.match_info.get("filename", "")
     
-    # Если запрашивается корень (/dashboard/), отдаем index.html
+    # Если запрашивается корень (/prism/), отдаем index.html
     if not filename or filename == "/":
         file_to_send = "index.html"
     else:
@@ -409,10 +384,10 @@ async def get_dashboard_static(request):
     
     return web.Response(status=404, text="File Not Found")
 
-print("\n[Dashboard] Интерфейс управления успешно зарегистрирован по адресу: http://127.0.0.1:8188/dashboard/")
-print("[Dashboard] Зарегистрированные пути в routes:")
+print("\n[Prism] Интерфейс управления успешно зарегистрирован по адресу: http://127.0.0.1:8188/prism/")
+print("[Prism] Зарегистрированные пути в routes:")
 for r in routes:
-    if r.path.startswith("/dashboard"):
+    if r.path.startswith("/prism"):
         print(f"  - {r.method} {r.path}")
 print()
 

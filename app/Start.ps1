@@ -14,7 +14,7 @@ function Resolve-AppPath([string]$Path) {
 function Test-Ready {
     try {
         $stats = Invoke-RestMethod "$url/system_stats" -TimeoutSec 2
-        $identity = Invoke-RestMethod "$url/dashboard/runtime" -TimeoutSec 2
+        $identity = Invoke-RestMethod "$url/prism/runtime" -TimeoutSec 2
         return ($null -ne $stats.system.PSObject.Properties['comfyui_version'] -and $identity.service -eq 'prism')
     } catch { return $false }
 }
@@ -42,7 +42,7 @@ try {
     foreach ($name in $variables.Keys) { [Environment]::SetEnvironmentVariable($name, $variables[$name], 'Process') }
     if ($Action -eq 'Status') {
         if (-not (Test-Ready)) { throw 'Prism не готов: нет ComfyUI или на порту другой сервис.' }
-        Write-Output "Prism готов: $url/dashboard/"
+        Write-Output "Prism готов: $url/prism/"
         exit 0
     }
     $lock = [IO.File]::Open("$logs\launcher.lock", 'OpenOrCreate', 'ReadWrite', 'None')
@@ -54,11 +54,12 @@ try {
         $listeners = @(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue)
         if ($Action -eq 'Stop') {
             if (-not $listeners.Count) { Write-Output 'Backend уже остановлен.'; exit 0 }
-            if (-not (Test-Ready)) { throw 'На порту другой сервис; он не будет остановлен.' }
+            $ownerIds = @($listeners | Select-Object -ExpandProperty OwningProcess -Unique)
+            if ($ownerIds.Count -ne 1) { throw 'Порт обслуживают несколько процессов; они не будут остановлены.' }
+            $owner = Get-CimInstance Win32_Process -Filter "ProcessId=$($ownerIds[0])"
+            if ($owner.ExecutablePath -ne $python -or $owner.CommandLine -notmatch 'main\.py') { throw 'Процесс не принадлежит настроенному ComfyUI.' }
             $queue = Invoke-RestMethod "$url/queue" -TimeoutSec 5
             if ($queue.queue_running.Count -or $queue.queue_pending.Count) { throw 'Очередь не пуста; завершите задания перед остановкой.' }
-            $owner = Get-CimInstance Win32_Process -Filter "ProcessId=$($listeners[0].OwningProcess)"
-            if ($owner.ExecutablePath -ne $python -or $owner.CommandLine -notmatch 'main\.py') { throw 'Процесс не принадлежит настроенному ComfyUI.' }
             Stop-Process -Id $owner.ProcessId
             Wait-Process -Id $owner.ProcessId -Timeout 20 -ErrorAction SilentlyContinue
             Write-Output 'ComfyUI остановлен.'
@@ -103,8 +104,8 @@ try {
                 Start-Sleep -Milliseconds 700
             }
         }
-        Write-Output "Prism готов: $url/dashboard/"
-        if (-not $NoBrowser) { Start-Process "$url/dashboard/" }
+        Write-Output "Prism готов: $url/prism/"
+        if (-not $NoBrowser) { Start-Process "$url/prism/" }
     } finally { $lock.Dispose() }
 } catch {
     Write-Error $_ -ErrorAction Continue

@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Prism · Конструктор персонажа</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand" aria-label="Prism">
+        <span class="brand-mark"><i></i><i></i><i></i></span>
+        <span>PRISM</span>
+      </div>
+      <div class="page-title">
+        <strong>Подготовка образа</strong>
+        <span>Персонаж, теги и LoRA в одном рецепте</span>
+      </div>
+      <div class="top-actions">
+        <span id="storage-state" class="save-state"><span class="status-dot"></span>Локальный черновик</span>
+        <button id="reset-draft" class="button ghost" type="button">Сбросить правки</button>
+        <button id="open-recipe" class="button primary" type="button">Просмотреть рецепт</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <aside class="rail panel" aria-labelledby="characters-title">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Библиотека</p>
+            <h1 id="characters-title">Персонажи</h1>
+          </div>
+          <span id="character-count" class="count">0</span>
+        </div>
+        <label class="search">
+          <span aria-hidden="true">⌕</span>
+          <input id="character-search" type="search" placeholder="Найти персонажа" autocomplete="off">
+        </label>
+        <div id="character-list" class="character-list" role="listbox" aria-label="Персонажи"></div>
+        <div class="rail-note">
+          <span>Черновики этого варианта</span>
+          <p>Изменения сохраняются только в браузере и не меняют карточки Prism.</p>
+        </div>
+      </aside>
+
+      <section class="editor panel" aria-labelledby="editor-title">
+        <div class="identity">
+          <div id="avatar" class="avatar" aria-hidden="true">IS</div>
+          <div class="identity-copy">
+            <div class="title-line">
+              <h2 id="editor-title">Загрузка…</h2>
+              <span id="universe" class="universe"></span>
+            </div>
+            <div class="meta-line">
+              <span id="author">Карточка персонажа</span>
+              <a id="source-link" href="#" target="_blank" rel="noreferrer" hidden>Источник ↗</a>
+            </div>
+          </div>
+          <div id="draft-badge" class="draft-badge" hidden>есть правки</div>
+        </div>
+
+        <section class="scene-block" aria-labelledby="scene-title">
+          <div class="section-heading compact">
+            <div>
+              <span class="step">01</span>
+              <h3 id="scene-title">Сцена</h3>
+            </div>
+            <span class="hint">Общая часть перед персонажем</span>
+          </div>
+          <textarea id="scene-input" class="scene-input" rows="2" placeholder="portrait, looking at viewer, garden…"></textarea>
+        </section>
+
+        <section aria-labelledby="look-title">
+          <div class="section-heading">
+            <div>
+              <span class="step">02</span>
+              <h3 id="look-title">Соберите образ</h3>
+            </div>
+            <label class="link-toggle" title="При выборе варианта переключать сохранённую пару">
+              <input id="link-variants" type="checkbox">
+              <span class="switch"></span>
+              Связанные варианты
+            </label>
+          </div>
+
+          <div class="variant-grid">
+            <article class="variant-card" data-kind="appearance">
+              <div class="variant-card-head">
+                <div class="variant-icon face-icon" aria-hidden="true">◉</div>
+                <div>
+                  <span>Внешность</span>
+                  <strong id="appearance-summary">—</strong>
+                </div>
+                <select id="appearance-select" aria-label="Сохранённая внешность"></select>
+              </div>
+              <label for="appearance-input">Текущие теги внешности</label>
+              <textarea id="appearance-input" rows="4"></textarea>
+              <div class="variant-actions">
+                <button class="text-button" data-save-variant="appearance" type="button">＋ Сохранить как вариант</button>
+                <span id="appearance-count">0 тегов</span>
+              </div>
+            </article>
+
+            <article class="variant-card" data-kind="outfit">
+              <div class="variant-card-head">
+                <div class="variant-icon outfit-icon" aria-hidden="true">◇</div>
+                <div>
+                  <span>Одежда</span>
+                  <strong id="outfit-summary">—</strong>
+                </div>
+                <select id="outfit-select" aria-label="Сохранённый комплект"></select>
+              </div>
+              <div class="field-label-row">
+                <label for="outfit-input">Текущие теги одежды</label>
+                <label class="mini-toggle"><input id="outfit-enabled" type="checkbox"><span></span>В промпте</label>
+              </div>
+              <textarea id="outfit-input" rows="4"></textarea>
+              <div class="variant-actions">
+                <button class="text-button" data-save-variant="outfit" type="button">＋ Сохранить как комплект</button>
+                <span id="outfit-count">0 тегов</span>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="author-tags" aria-labelledby="tags-title">
+          <div class="section-heading compact">
+            <div>
+              <span class="step">03</span>
+              <h3 id="tags-title">Теги от автора LoRA</h3>
+            </div>
+            <div class="tag-target" role="group" aria-label="Куда добавлять тег">
+              <span>Добавлять в</span>
+              <button type="button" data-target="appearance" class="active">Внешность</button>
+              <button type="button" data-target="outfit">Одежду</button>
+              <button type="button" data-target="extra">Дополнительно</button>
+            </div>
+          </div>
+          <p class="section-help">Нажмите на тег — он попадёт в выбранный слой. Это подсказки автора, они не добавляются автоматически.</p>
+          <div id="source-tags" class="chips"></div>
+        </section>
+
+        <section class="extra-block">
+          <label for="extra-input">Дополнительные теги</label>
+          <input id="extra-input" type="text" placeholder="soft light, official style…">
+        </section>
+      </section>
+
+      <aside class="recipe panel" aria-labelledby="recipe-title">
+        <div class="panel-head recipe-head">
+          <div>
+            <p class="eyebrow">Будет отправлено</p>
+            <h2 id="recipe-title">Рецепт генерации</h2>
+          </div>
+          <span class="live"><i></i> live</span>
+        </div>
+
+        <div id="layer-list" class="layer-list"></div>
+
+        <div class="prompt-head">
+          <label for="final-prompt">Итоговый промпт</label>
+          <button id="sync-prompt" class="text-button" type="button" hidden>Собрать заново</button>
+        </div>
+        <textarea id="final-prompt" class="final-prompt" rows="7" spellcheck="false"></textarea>
+        <p id="prompt-mode" class="prompt-mode">Обновляется из слоёв выше</p>
+
+        <div class="lora-card">
+          <div class="lora-title">
+            <span class="lora-glyph" aria-hidden="true">L</span>
+            <div>
+              <span>LoRA персонажа</span>
+              <strong id="lora-title">Без LoRA</strong>
+            </div>
+            <label class="mini-toggle icon-only" title="Включить LoRA"><input id="lora-enabled" type="checkbox"><span></span></label>
+          </div>
+          <code id="lora-path">None</code>
+          <div class="strength-row">
+            <label for="lora-strength">Вес</label>
+            <input id="lora-strength" type="range" min="-1" max="2" step="0.05" value="1">
+            <output id="lora-strength-value">1.00</output>
+          </div>
+          <p id="lora-status" class="lora-status"></p>
+        </div>
+
+        <button id="open-recipe-bottom" class="button primary wide" type="button">Просмотреть рецепт</button>
+        <p class="safe-note">Покажем состав запроса. Генерация и GPU не запускаются.</p>
+      </aside>
+    </main>
+  </div>
+
+  <dialog id="variant-dialog" class="modal small-modal">
+    <form method="dialog" id="variant-form">
+      <div class="modal-head">
+        <div><p class="eyebrow">Локальный черновик</p><h2 id="variant-dialog-title">Сохранить вариант</h2></div>
+        <button class="close-button" value="cancel" aria-label="Закрыть">×</button>
+      </div>
+      <label for="variant-name">Название</label>
+      <input id="variant-name" maxlength="200" required placeholder="Например, Вечерний образ">
+      <p>Текущие теги сохранятся только в прототипе на этом устройстве.</p>
+      <div class="modal-actions">
+        <button class="button ghost" value="cancel">Отмена</button>
+        <button id="confirm-variant" class="button primary" value="default">Сохранить вариант</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="recipe-dialog" class="modal recipe-modal">
+    <div class="modal-head">
+      <div><p class="eyebrow">Предпросмотр без запуска</p><h2>Рецепт готов</h2></div>
+      <button id="close-recipe" class="close-button" aria-label="Закрыть">×</button>
+    </div>
+    <div id="recipe-preview" class="recipe-preview"></div>
+    <div class="modal-actions">
+      <button id="copy-recipe" class="button ghost" type="button">Копировать промпт</button>
+      <button id="back-to-editor" class="button primary" type="button">Вернуться к настройке</button>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

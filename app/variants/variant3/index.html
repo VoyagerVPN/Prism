@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Prism · мастерская образа</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Prism"><span class="mark">P</span><span>PRISM</span></a>
+    <div class="crumb"><span>Новая генерация</span><b>/</b><strong>Персонаж и промпт</strong></div>
+    <span class="prototype">Интерактивный прототип · GPU не используется</span>
+  </header>
+
+  <main class="shell">
+    <section class="intro">
+      <div><p class="eyebrow">Подготовка кадра</p><h1>Соберите образ в одном месте</h1><p>Выберите сохранённый вариант, поправьте теги для этого кадра и сразу увидите, что уйдёт в prompt и LoRA.</p></div>
+      <div id="save-state" class="save-state"><span></span>Черновик хранится в браузере</div>
+    </section>
+
+    <div id="loading" class="loading"><span class="spinner"></span> Загружаем библиотеку персонажей…</div>
+    <div id="error" class="error" hidden></div>
+
+    <div id="workspace" class="workspace" hidden>
+      <aside class="characters panel">
+        <div class="panel-head"><div><p class="step">01</p><h2>Персонаж</h2></div><span id="character-count" class="count"></span></div>
+        <label class="search"><span>⌕</span><input id="character-search" type="search" placeholder="Найти персонажа…"></label>
+        <div id="character-list" class="character-list"></div>
+        <div id="source-card" class="source-card"></div>
+      </aside>
+
+      <section class="composer panel">
+        <div class="panel-head composer-head">
+          <div><p class="step">02</p><h2>Образ для этого кадра</h2></div>
+          <button id="reset-session" class="ghost" type="button">Сбросить правки</button>
+        </div>
+
+        <div class="variant-grid">
+          <label><span class="field-title"><i class="dot appearance"></i>Внешность из карточки</span><select id="appearance-select"></select></label>
+          <label><span class="field-title"><i class="dot outfit"></i>Комплект одежды</span><select id="outfit-select"></select></label>
+        </div>
+
+        <div class="tag-field" data-kind="trigger">
+          <div class="tag-head"><span class="field-title"><i class="dot trigger"></i>Триггер</span><span>клик по тегу удаляет</span></div>
+          <div id="trigger-tags" class="tags"></div>
+          <input id="trigger-input" placeholder="Добавить тег и нажать Enter">
+        </div>
+        <div class="tag-field" data-kind="appearance">
+          <div class="tag-head"><span class="field-title"><i class="dot appearance"></i>Теги внешности</span><span>черновик кадра</span></div>
+          <div id="appearance-tags" class="tags"></div>
+          <input id="appearance-input" placeholder="Добавить тег и нажать Enter">
+        </div>
+        <div class="tag-field" data-kind="outfit">
+          <div class="tag-head"><span class="field-title"><i class="dot outfit"></i>Теги одежды</span><label class="mini-toggle"><input id="outfit-enabled" type="checkbox"><span></span>Включить в prompt</label></div>
+          <p id="outfit-inclusion" class="inclusion-status"></p>
+          <div id="outfit-tags" class="tags"></div>
+          <input id="outfit-input" placeholder="Добавить тег и нажать Enter">
+        </div>
+
+        <section class="author-palette">
+          <div class="tag-head"><span class="field-title">Теги автора</span><span id="palette-hint">выберите поле выше, затем добавляйте</span></div>
+          <div id="author-tags" class="author-tags"></div>
+        </section>
+
+        <label class="scene-field"><span class="field-title">Сцена и качество</span><textarea id="scene" rows="3" placeholder="Например: summer garden, warm light, medium shot…"></textarea></label>
+
+        <details class="card-draft">
+          <summary><span>Редактировать варианты карточки</span><small>локальная копия, исходник не меняется</small></summary>
+          <div class="draft-body">
+            <p>Текущие правки варианта можно сохранить как новый вариант карточки. Он появится в списке только в этом прототипе.</p>
+            <div class="draft-row"><label>Название варианта<input id="variant-name" placeholder="Например: Летний образ"></label><button id="save-appearance" type="button">+ Внешность</button><button id="save-outfit" type="button">+ Комплект</button></div>
+            <button id="discard-card-draft" class="text-button" type="button">Удалить локальные варианты этого персонажа</button>
+          </div>
+        </details>
+      </section>
+
+      <aside class="recipe panel">
+        <div class="panel-head"><div><p class="step">03</p><h2>Рецепт</h2></div><span class="live">LIVE</span></div>
+        <section class="lora-box">
+          <div class="lora-title"><label class="switch"><input id="lora-enabled" type="checkbox"><span></span></label><div><span>LoRA персонажа</span><strong id="lora-title">—</strong></div></div>
+          <div class="lora-path" id="lora-path">—</div>
+          <label class="strength"><span>Вес</span><input id="lora-strength" type="range" min="-1" max="2" step="0.05"><output id="strength-value">1.00</output></label>
+          <p id="lora-status" class="lora-status"></p>
+        </section>
+
+        <section class="prompt-preview">
+          <div class="prompt-head"><span>Итоговый prompt</span><button id="edit-final" class="text-button" type="button">Редактировать целиком</button></div>
+          <div id="prompt-segments" class="prompt-segments"></div>
+          <textarea id="final-prompt" rows="9" hidden></textarea>
+          <div id="custom-notice" class="custom-notice" hidden>Prompt отвязан от полей слева. <button id="reassemble" type="button">Собрать заново</button></div>
+        </section>
+
+        <div class="recipe-stats"><span><b id="tag-count">0</b> тегов</span><span><b id="lora-count">0</b> LoRA</span></div>
+        <button id="review-recipe" class="primary" type="button">Просмотреть рецепт</button>
+        <p class="safe-note">Кнопка только показывает состав. Запуск генерации в прототипе отключён.</p>
+      </aside>
+    </div>
+  </main>
+
+  <dialog id="recipe-dialog">
+    <form method="dialog" class="dialog-card">
+      <div class="dialog-head"><div><p class="eyebrow">Готово к переносу</p><h2>Рецепт генерации</h2></div><button class="close" value="close" aria-label="Закрыть">×</button></div>
+      <p class="dialog-lead">Это проверка подготовленных данных. Изображение не генерировалось.</p>
+      <div id="recipe-summary"></div>
+      <label class="json-label">Технический состав<textarea id="recipe-json" readonly rows="12"></textarea></label>
+      <div class="dialog-actions"><button id="copy-recipe" type="button" class="ghost">Копировать JSON</button><button value="close" class="primary">Вернуться к настройке</button></div>
+    </form>
+  </dialog>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

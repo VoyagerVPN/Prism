@@ -69,14 +69,19 @@ export const seedNextBtn = document.getElementById("seed-next-btn");
 
 export const ramVal = document.getElementById("ram-val");
 export const ramFill = document.getElementById("ram-fill");
+export const ramDetail = document.getElementById("ram-detail");
 export const vramVal = document.getElementById("vram-val");
 export const vramFill = document.getElementById("vram-fill");
+export const vramWorkingFill = document.getElementById("vram-working-fill");
+export const vramCacheFill = document.getElementById("vram-cache-fill");
+export const vramDetail = document.getElementById("vram-detail");
 
 export const interruptBtn = document.getElementById("interrupt-btn");
 export const clearQueueBtn = document.getElementById("clear-queue-btn");
 
 export const metadataBar = document.getElementById("metadata-bar");
 export const metadataSummary = document.getElementById("metadata-summary");
+export const refineBtn = document.getElementById("refine-btn");
 export const applyPromptBtn = document.getElementById("apply-prompt-btn");
 export const applySeedBtn = document.getElementById("apply-seed-btn");
 export const fullscreenBtn = document.getElementById("fullscreen-btn");
@@ -87,7 +92,7 @@ export const lightboxClose = document.getElementById("lightbox-close");
 export const lightboxPrev = document.getElementById("lightbox-prev");
 export const lightboxNext = document.getElementById("lightbox-next");
 export const lightboxImg = document.getElementById("lightbox-img");
-export const lightboxCaption = document.getElementById("lightbox-caption");
+export const lightboxFavorite = document.getElementById("lightbox-favorite-btn");
 
 // Profile Presets
 export const profileSelect = document.getElementById("profile-select");

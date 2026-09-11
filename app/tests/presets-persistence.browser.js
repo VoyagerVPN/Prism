@@ -20,7 +20,7 @@
     if (readSettings().steps!==37 || !$('update-profile-btn').disabled) throw new Error('Возврат к сохранённым не работает');
     input('steps-slider',39); $('update-profile-btn').click();
     await until(()=>$('preset-status').textContent==='Сохранено в JSON');
-    const saved=(await (await fetch('/dashboard/presets')).json()).presets[fixture.name];
+    const saved=(await (await fetch('/prism/presets')).json()).presets[fixture.name];
     if(saved.steps!==39 || Object.keys(saved).length!==8 || 'positive' in saved) throw new Error('JSON содержит не настройки модели');
     return 'Создание, dirty-state, возврат и явное обновление JSON: OK. Перезагрузить и запустить повторно.';
   }
@@ -34,7 +34,7 @@
     $('delete-profile-btn').click(); await until(()=>$('action-dialog')?.open); $('action-dialog').querySelector('[type=submit]').click();
     await until(()=>$('profile-select').value==='default');
     if(JSON.stringify(before)!==JSON.stringify(readSettings())) throw new Error('Удаление изменило форму');
-    if(Object.hasOwn((await (await fetch('/dashboard/presets')).json()).presets,fixture.name)) throw new Error('Удаление не записано');
+    if(Object.hasOwn((await (await fetch('/prism/presets')).json()).presets,fixture.name)) throw new Error('Удаление не записано');
     $('refresh-models-btn').click(); await until(()=>!$('refresh-models-btn').disabled);
     if(!$('model-scan-status').textContent.startsWith('Список обновлён:')) throw new Error('Нет результата сканирования');
     return 'Перезагрузка, отмена/удаление JSON и видимый результат сканирования: OK';

@@ -11,7 +11,7 @@ let selected = localStorage.getItem('prism_selected_model_preset') || '';
 const status = () => document.getElementById('preset-status');
 
 async function requestProfiles(options = {}) {
-  const response = await fetch('/dashboard/presets', {cache:'no-store',signal:AbortSignal.timeout(15000),...options});
+  const response = await fetch('/prism/presets', {cache:'no-store',signal:AbortSignal.timeout(15000),...options});
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
   if (!data.presets || typeof data.presets !== 'object' || Array.isArray(data.presets) || !('revision' in data)) throw new Error('Некорректный ответ хранилища пресетов');

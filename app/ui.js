@@ -2,7 +2,8 @@ import { checkpointSelect, stepsSlider, stepsVal, cfgSlider, cfgVal, samplerSele
 import { setSeedMode, offsetSeed, handleReactorFile, clearReactorFile } from './state.js';
 import { renderLoraStack } from './lora.js';
 import { setupPromptEditor } from './prompt_editor.js';
-import { modelList, loraList, upscaleModelList, samplerList, schedulerList, vaeList } from './api.js';
+import { modelList, modelCatalog, loraList, upscaleModelList, samplerList, schedulerList, vaeList } from './api.js';
+import { resolveModelSelection } from './model_loader.js';
 import { applyProfile, saveCustomProfile } from './presets.js';
 import { updateCharLoraList } from './characters.js';
 import { initImageFormats } from './formats.js';
@@ -150,6 +151,19 @@ export function setupUIEventListeners() {
   });
 
   checkpointSelect.addEventListener("change", () => {
+    const selection=resolveModelSelection(modelCatalog,checkpointSelect.value);
+    if(selection.recommended){
+      for(const [input,value,label] of [
+        [stepsSlider,selection.recommended.steps,stepsVal],
+        [cfgSlider,selection.recommended.cfg,cfgVal],
+        [samplerSelect,selection.recommended.sampler,null],
+        [schedulerSelect,selection.recommended.scheduler,null],
+      ]){
+        if([...input.options??[]].length&&input.tagName==='SELECT'&&![...input.options].some(option=>option.value===String(value)))continue;
+        input.value=String(value);if(label)label.textContent=String(value);
+      }
+    }
+    window.dispatchEvent(new CustomEvent('model-recipe-changed',{detail:{recipe:selection.recipe}}));
     // Перерисовываем стек LoRA, чтобы отфильтровать доступные варианты под новую модель
     renderLoraStack();
   });
@@ -246,6 +260,7 @@ function setupMobileLayout() {
   const mobile = matchMedia('(max-width: 1100px)');
   const moves = [
     ['.action-status-info', '#mobile-generation-controls'],
+    ['#preview-toggle', '#mobile-generation-controls'],
     ['#generate-btn', '#mobile-generation-controls'],
     ['#interrupt-btn', '#mobile-generation-controls'],
     ['#progress-container', '#mobile-generation-controls'],

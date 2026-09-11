@@ -6,11 +6,16 @@ import { promptPartsFromSettings, resolvePromptParts } from '../prompt_parts.js'
 test('Плашки LoRA показывают значки своих категорий',async()=>{
   const dom=new JSDOM('<textarea></textarea>');
   const {createPromptEditor}=await import('../prompt_editor.js');
-  const editor=createPromptEditor(dom.window.document.querySelector('textarea'));
+  let entries=[];
+  const editor=createPromptEditor(dom.window.document.querySelector('textarea'),{getLoras:()=>entries});
   try{
     const categories={Character:'person',Concept:'bulb',Style:'brush',Clothing:'shirt',Pose:'pose',Object:'cube',Background:'landscape',Utility:'tool',Other:'tag'};
     editor.write(Object.keys(categories).map(category=>({type:'lora',name:`${category}/test.safetensors`,strength:1})));
     for(const token of editor.root.querySelectorAll('.prompt-lora'))assert.equal(token.querySelector('use')?.getAttribute('href'),'#icon-'+categories[token.dataset.name.split('/')[0]]);
+    entries=[{name:'Other/test.safetensors',title:'Мой персонаж',category:'Character'}];editor.refreshLabels();
+    assert.equal(editor.root.querySelector('[data-name="Other/test.safetensors"] use').getAttribute('href'),'#icon-person','Назначенная категория обновляет уже добавленную плашку');
+    const snapshot=editor.read();editor.write(snapshot);
+    assert.equal(editor.root.querySelector('[data-name="Other/test.safetensors"] use').getAttribute('href'),'#icon-person','Снимок с прежним путём получает текущую категорию библиотеки');
   }finally{editor.destroy();dom.window.close();}
 });
 
