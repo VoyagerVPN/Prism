@@ -2,6 +2,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 
+test('устаревший backend сообщает о перезапуске вместо ошибки JSON-парсинга', async () => {
+  const originalFetch=globalThis.fetch;
+  globalThis.fetch=async ()=>new Response('File Not Found',{status:404,headers:{'Content-Type':'text/plain'}});
+  try{
+    const {loadContentRegistry}=await import('../content_registry.js');
+    await assert.rejects(
+      loadContentRegistry({force:true}),
+      error=>error.status===404&&error.message==='Хранилище контента не зарегистрировано сервером Prism. Перезапустите backend после обновления.',
+    );
+  }finally{globalThis.fetch=originalFetch;}
+});
+
+
 test('импорт создаёт и затем дополняет durable content entity вместо браузерного события-заглушки', async () => {
   const originalFetch=globalThis.fetch;
   let document={content:{},revision:null};

@@ -16,7 +16,15 @@ function validateDocument(value) {
 
 async function requestContent(options={}) {
   const response=await fetch('/prism/content',{cache:'no-store',signal:AbortSignal.timeout(15000),...options});
-  const data=await response.json();
+  const raw=await response.text();
+  let data;
+  try{data=raw?JSON.parse(raw):{};}
+  catch{
+    const message=response.status===404
+      ?'Хранилище контента не зарегистрировано сервером Prism. Перезапустите backend после обновления.'
+      :`Хранилище контента вернуло ответ не в формате JSON: HTTP ${response.status}.`;
+    const error=new Error(message);error.status=response.status;throw error;
+  }
   if(!response.ok){const error=new Error(data.error??`Хранилище контента недоступно: HTTP ${response.status}`);error.status=response.status;throw error;}
   return validateDocument(data);
 }
