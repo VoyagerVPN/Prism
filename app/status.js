@@ -9,13 +9,15 @@ export function updateStatus(state, text) {
   
   if (state === "connected" || state === "idle") {
     progressContainer.style.display = "none";
-    progressLabel.textContent = "Готов к генерации";
-    progressSub.textContent = "Настройте параметры и нажмите Запуск";
+    progressLabel.textContent = "";
+    progressSub.textContent = "";
+    progressLabel.closest('.action-status-info').hidden = true;
   }
 }
 
 export function showProgress(label, sub, percent = 0) {
   progressContainer.style.display = "block";
+  progressLabel.closest('.action-status-info').hidden = false;
   progressLabel.textContent = label;
   progressSub.textContent = sub;
   const pct = Number(percent);

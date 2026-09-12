@@ -40,6 +40,10 @@
       <img src="prism.svg" class="logo-icon" alt="" width="24" height="24">
       <h1>Prism</h1>
       <button type="button" id="prism-settings-open" class="header-meta-btn" aria-label="Настройки Prism" title="Настройки Prism"><svg class="ui-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 17h16M8 4v6M16 14v6"/></svg></button>
+      <nav id="app-nav" class="app-nav" aria-label="Разделы Prism" role="tablist">
+        <button type="button" data-app-view="generation" role="tab" aria-selected="true" aria-pressed="true" aria-controls="generation-view">Создание</button>
+        <button type="button" data-app-view="gallery" role="tab" aria-selected="false" aria-pressed="false" aria-controls="gallery-view">Галерея</button>
+      </nav>
       <div class="connection-status">
         <div id="status-dot" class="status-dot disconnected"></div>
         <span id="status-text">Подключение...</span>
@@ -47,16 +51,11 @@
       </div>
     </div>
 
-    <nav id="app-nav" class="app-nav" aria-label="Разделы Prism" role="tablist">
-      <button type="button" data-app-view="generation" role="tab" aria-selected="true" aria-pressed="true" aria-controls="generation-view">Создание</button>
-      <button type="button" data-app-view="gallery" role="tab" aria-selected="false" aria-pressed="false" aria-controls="gallery-view">Галерея</button>
-    </nav>
-
     <div class="header-monitor" aria-label="Ресурсы системы и очередь">
       <div class="control-section resources-section">
         <div class="resource-indicator" title="Оперативная память процесса Prism/ComfyUI">
           <div class="resource-header">
-            <span class="control-label">RAM Prism</span>
+            <span class="control-label">RAM</span>
             <span id="ram-val" class="resource-val">—</span>
           </div>
           <div class="resource-track"><div id="ram-fill" class="resource-fill" style="width: 0%;"></div></div>
@@ -64,7 +63,7 @@
         </div>
         <div class="resource-indicator" title="Видеопамять процесса Prism/ComfyUI">
           <div class="resource-header">
-            <span class="control-label">VRAM Prism</span>
+            <span class="control-label">VRAM</span>
             <span id="vram-val" class="resource-val">—</span>
           </div>
           <div class="resource-track resource-track-segmented">
@@ -79,9 +78,9 @@
     </div>
 
     <div class="header-actions">
-      <div class="action-status-info">
-        <span id="progress-label" class="progress-label">Готов к генерации</span>
-        <span id="progress-sub" class="progress-sub">Настройте параметры и нажмите Запуск</span>
+      <div class="action-status-info" hidden>
+        <span id="progress-label" class="progress-label"></span>
+        <span id="progress-sub" class="progress-sub"></span>
       </div>
       <button id="preview-toggle" class="header-preview-btn preview-toggle" type="button" aria-label="Скрыть превью генерации" title="Скрыть превью генерации" aria-pressed="true">
         <svg class="ui-icon" aria-hidden="true"><use href="#icon-eye"/></svg>

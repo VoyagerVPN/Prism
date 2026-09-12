@@ -38,7 +38,7 @@ test('Последний пробел перед LoRA удаляется без 
 test('@ ищет LoRA и заменяет упоминание плашкой, Escape сохраняет текст',async()=>{
   const dom=new JSDOM('<textarea>portrait </textarea>',{pretendToBeVisual:true});
   const {createPromptEditor}=await import('../prompt_editor.js');
-  const editor=createPromptEditor(dom.window.document.querySelector('textarea'),{getLoras:()=>[{name:'Style/soft.safetensors',title:'Мягкий стиль'},{name:'Utility/light.safetensors',title:'Мой свет'}]});
+  const editor=createPromptEditor(dom.window.document.querySelector('textarea'),{getLoras:()=>[{name:'Style/soft.safetensors',title:'Мягкий стиль'},{name:'Utility/light.safetensors',title:'Мой свет'},{name:'Character/source.safetensors',title:'Источник персонажа',mention:false}]});
   const type=text=>{
     editor.write([{type:'text',text}]);const node=editor.root.firstChild;
     const range=dom.window.document.createRange();range.setStart(node,node.length);range.collapse(true);
@@ -49,6 +49,8 @@ test('@ ищет LoRA и заменяет упоминание плашкой, E
     type('portrait @Мой');
     const list=dom.window.document.querySelector('[role="listbox"]');assert.ok(list&&!list.hidden);
     assert.match(list.textContent,/Мой свет/);assert.doesNotMatch(list.textContent,/light|soft/);
+    type('portrait @Источник');assert.equal(list.querySelectorAll('[role="option"]').length,0,'Character LoRA без профиля сохраняет имя, но не подключается как обычная LoRA');
+    type('portrait @Мой');
     editor.root.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
     assert.equal(resolvePromptParts(editor.read()).text,'portrait ');
     assert.deepEqual(resolvePromptParts(editor.read()).loras,[{name:'Utility/light.safetensors',strength:1}]);
@@ -77,7 +79,10 @@ test('Inline редактор: LoRA среди текста, вес, удале�
   const editor=createPromptEditor(field,{onChange:parts=>{changed=parts;}});
   try{
     editor.write([{type:'text',text:'before '},{type:'lora',name:'Style/a.safetensors',strength:0.8},{type:'text',text:' after\nnext'}]);
-    assert.equal(field.value,'before  after\nnext');assert.equal(editor.root.querySelectorAll('button').length,0,'У токена нет крестика');
+    assert.equal(field.value,'before  after\nnext');
+    const remove=editor.root.querySelector('.prompt-lora-remove');
+    assert.ok(remove,'У подключённой LoRA есть доступная мышью кнопка удаления');
+    assert.match(remove.getAttribute('aria-label'),/Удалить LoRA/);
     assert.equal(editor.root.querySelector('input'),null,'Вес отображается без числового поля');
     const selected=editor.root.querySelector('.prompt-lora');selected.click();
     for(let step=0;step<22;step++)selected.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'-',ctrlKey:true,bubbles:true,cancelable:true}));
@@ -85,7 +90,7 @@ test('Inline редактор: LoRA среди текста, вес, удале�
     selected.dispatchEvent(new dom.window.WheelEvent('wheel',{ctrlKey:true,deltaY:-100,bubbles:true,cancelable:true}));
     assert.equal(resolvePromptParts(changed).loras[0].strength,-0.25);
     selected.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'-',ctrlKey:true,bubbles:true,cancelable:true}));
-    const token=editor.root.querySelector('.prompt-lora');token.focus();token.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Backspace',bubbles:true,cancelable:true}));
+    const token=editor.root.querySelector('.prompt-lora');remove.click();
     assert.equal(resolvePromptParts(editor.read()).loras.length,0);assert.equal(field.value,'before  after\nnext');
     editor.root.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'z',ctrlKey:true,bubbles:true,cancelable:true}));
     assert.equal(resolvePromptParts(editor.read()).loras[0].strength,-0.3);

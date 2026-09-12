@@ -106,6 +106,24 @@ test('Два экземпляра одного персонажа имеют н�
   const renamed=structuredClone(parts);renamed[0].character.name='Другое имя';
   assert.equal(normalizePromptParts(renamed)[0].instanceId,first.instanceId);
 });
+
+test('Сохранённый шаблон обновляет все активные экземпляры, не стирая состояние кадра',()=>{
+  const dom=new JSDOM('<textarea></textarea>',{pretendToBeVisual:true});
+  const editor=createPromptEditor(dom.window.document.querySelector('textarea'));
+  try{
+    const first=characterPromptPart(character,{framePrompt:'sitting',disabledTags:[{kind:'appearance',variant:'Base',tag:'blue eyes'}]});
+    const second=characterPromptPart(character,{framePrompt:'standing'});
+    editor.write([first,{type:'text',text:', '},second]);
+    const updated={...character,name:'Isabella Prime',appearances:{Base:'black hair, amber scarf, blue eyes'}};
+    editor.syncCharacter('Isabella',updated);
+    const parts=editor.read().filter(part=>part.type==='character');
+    assert.deepEqual(parts.map(part=>part.character.name),['Isabella Prime','Isabella Prime']);
+    assert.deepEqual(parts.map(part=>part.framePrompt),['sitting','standing']);
+    assert.deepEqual(parts.map(part=>part.instanceId),[first.instanceId,second.instanceId]);
+    assert.deepEqual(parts[0].disabledTags,first.disabledTags);
+    assert.match(dom.window.document.querySelector('textarea').value,/amber scarf/);
+  }finally{editor.destroy();dom.window.close();}
+});
 test('Персонаж переносится в промпт целиком, снимок компилируется без дублирования',()=>{
   const parts=promptPartsFromSettings({positive:'portrait',character});
   assert.equal(parts.filter(part=>part.type==='character').length,1);

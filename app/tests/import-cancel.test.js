@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
 
-test('Клик по фону импорта прерывает загрузку и закрывает окно',async()=>{
+test('Клик по фону прерывает подтверждённую загрузку и закрывает окно',async()=>{
   const dom=new JSDOM(`
     <div id="lora-card"><button id="model-import-open"></button><div id="model-import-drop" hidden><strong></strong></div></div>
     <input id="model-import-file"><dialog id="model-import-dialog"><form id="model-import-form">
@@ -30,10 +30,12 @@ test('Клик по фону импорта прерывает загрузку 
     const input=doc.querySelector('#model-import-file');
     Object.defineProperty(input,'files',{value:[file]});
     input.dispatchEvent(new window.Event('change'));
+    for(let step=0;step<20&&doc.querySelector('#import-save').disabled;step++)await new Promise(resolve=>setTimeout(resolve,0));
+    doc.querySelector('#import-save').click();
     for(let step=0;step<20&&!doc.querySelector('#import-cancel').disabled;step++)await new Promise(resolve=>setTimeout(resolve,0));
     const dialog=doc.querySelector('#model-import-dialog');
     assert.equal(dialog.open,true);
-    assert.equal(doc.querySelector('#import-cancel').disabled,true,'Загрузка должна начаться до проверки закрытия');
+    assert.equal(doc.querySelector('#import-cancel').disabled,true,'Загрузка должна начаться после подтверждения');
     dialog.getBoundingClientRect=()=>({left:100,right:300,top:100,bottom:300});
     dialog.dispatchEvent(new window.MouseEvent('pointerdown',{bubbles:true,clientX:10,clientY:10}));
     dialog.dispatchEvent(new window.MouseEvent('click',{bubbles:true,clientX:10,clientY:10}));

@@ -8,6 +8,7 @@ test('Настройки Prism сохраняют первичные имена 
   try{
     assert.equal(readPreferences(storage).initialAppearanceName,'По умолчанию');
     assert.equal(readPreferences(storage).initialOutfitName,'По умолчанию');
+    assert.equal(readPreferences(storage).autoCivitaiMetadata,true);
     savePreferences({...readPreferences(storage),initialAppearanceName:'Базовая',initialOutfitName:'Повседневный'},storage);
     assert.equal(readPreferences(storage).initialAppearanceName,'Базовая');
     assert.equal(readPreferences(storage).initialOutfitName,'Повседневный');
@@ -26,14 +27,17 @@ test('Окно настроек сохраняет выбор, отмена ос
     doc.querySelector('#preference-appearance-name').value='Базовая';
     doc.querySelector('#preference-outfit-enabled').checked=false;
     doc.querySelector('#preference-lora-weight').value='modified';
+    doc.querySelector('#preference-civitai-metadata').checked=false;
     doc.querySelector('form').dispatchEvent(new dom.window.Event('submit',{cancelable:true}));
     assert.equal(readPreferences(storage).initialAppearanceName,'Базовая');
     assert.equal(readPreferences(storage).initialOutfitEnabled,false);
+    assert.equal(readPreferences(storage).autoCivitaiMetadata,false);
     assert.equal(doc.body.dataset.loraWeightDisplay,'modified');
     doc.querySelector('#prism-settings-open').click();doc.querySelector('#preference-appearance-name').value='Не сохранять';doc.querySelector('[data-cancel]').click();
     assert.equal(readPreferences(storage).initialAppearanceName,'Базовая');
     doc.querySelector('#prism-settings-open').click();
     assert.equal(doc.querySelector('#preference-outfit-enabled').checked,false,'Начальное состояние одежды восстанавливается');
+    assert.equal(doc.querySelector('#preference-civitai-metadata').checked,false,'Настройка Civitai восстанавливается');
     doc.querySelector('[data-defaults]').click();doc.querySelector('[data-cancel]').click();
     assert.equal(readPreferences(storage).initialOutfitEnabled,false,'Сброс требует сохранения формы');
   }finally{dom.window.close();}

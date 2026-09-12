@@ -1,6 +1,7 @@
 import {makeDialogBackdropDismissible} from './popup_behavior.js';
 import {createEditableChoice} from './editable_choice.js';
 import {syncSelectControls} from './controls.js';
+import {readPreferences} from './preferences.js';
 
 const labels = {Other: 'Прочее', Character: 'Персонаж', Style: 'Стиль', Clothing: 'Одежда', Pose: 'Поза', Object: 'Предмет', Background: 'Фон', Utility: 'Эффект / обработка', Model: 'Модель'};
 
@@ -65,21 +66,37 @@ export function setupModelImport(refresh) {
         uploadRequest = xhr;
         xhr.open('POST', '/prism/import/upload');
         xhr.responseType = 'json';
+        xhr.timeout = 120000;
         xhr.upload.onprogress = event => {
           if (event.lengthComputable) progress.value = event.loaded / event.total * 100;
           status.textContent = progress.value >= 100 ? 'Проверка и сохранение файла…' : `Загрузка: ${Math.round(progress.value)}%`;
         };
         xhr.onload = () => xhr.status >= 200 && xhr.status < 300 ? resolve(xhr.response) : reject(new Error(xhr.response?.error ?? `Ошибка загрузки: HTTP ${xhr.status}`));
         xhr.onerror = () => reject(new Error('Соединение прервано. Проверьте библиотеку перед повтором: файл мог сохраниться.'));
+        xhr.ontimeout = () => reject(new Error('Сервер не ответил за 2 минуты. Проверьте библиотеку перед повтором: файл мог сохраниться.'));
         xhr.onabort = () => reject(new Error('Загрузка отменена.'));
         xhr.send(data);
       });
+      const autoMetadata = kind.value === 'loras' && readPreferences().autoCivitaiMetadata;
       status.textContent = `Сохранено: ${result.name}`;
       if (result.warning) status.textContent += ` · ${result.warning}`;
       destination.textContent = result.path;
       file = null;
       cancel.textContent = 'Готово';
+      cancel.disabled = false;
       try { await refresh(); } catch (error) { status.textContent += ` · Список не обновлён: ${error.message}. Нажмите обновление моделей.`; }
+      if (autoMetadata) {
+        status.textContent += ' · Метаданные CivitAI: загрузка…';
+        try {
+          const response = await fetch('/prism/lora-library/lookup', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:result.name}),signal:AbortSignal.timeout(90000)});
+          const metadata = await response.json();
+          if (!response.ok) throw new Error(metadata.error ?? `HTTP ${response.status}`);
+          status.textContent = `Сохранено: ${result.name} · ${metadata.metadataStatus === 'partial' ? metadata.warning : 'Метаданные CivitAI загружены'}`;
+        } catch (error) {
+          status.textContent = `Сохранено: ${result.name} · Метаданные CivitAI не загружены: ${error.message}. Повторите кнопкой обновления в карточке.`;
+        }
+        try { await refresh(); } catch { /* Первый refresh уже сообщил о проблеме списка. */ }
+      }
     } catch (error) {
       status.textContent = error.message;
       fields.disabled = false;
@@ -133,7 +150,6 @@ export function setupModelImport(refresh) {
       status.textContent = result.base ? (result.category||result.kind!=='loras'?'База прочитана из файла.':'База прочитана из файла. Назначение не указано — сохраняем в «Прочее».') : 'База не указана в файле. Выберите ранее добавленную или впишите свою.';
       fields.disabled = false;
       save.disabled = false;
-      if (result.kind && result.base && category.value) await upload();
     } catch (error) {
       if (current === revision) status.textContent = error.message;
     }

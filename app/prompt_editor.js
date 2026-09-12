@@ -76,7 +76,7 @@ export function createPromptEditor(textarea,{onChange=()=>{},getLoras=()=>[],onS
     const prefix=node.textContent.slice(0,selection.anchorOffset),match=prefix.match(/(?:^|[\s,(])@([^@\n,]*)$/);
     if(!match){closeMentions();return;}
     const query=match[1].toLocaleLowerCase(),parts=partsOf(root),used=new Set(resolvePromptParts(parts).loras.map(part=>loraKey(part.name)));
-    choices=getLoras().filter(item=>(item.character||item.name!=='None'&&!used.has(loraKey(item.name)))&&item.title.toLocaleLowerCase().includes(query)).slice(0,30);choiceIndex=0;
+    choices=getLoras().filter(item=>item.mention!==false&&(item.character||item.name!=='None'&&!used.has(loraKey(item.name)))&&item.title.toLocaleLowerCase().includes(query)).slice(0,30);choiceIndex=0;
     mentionRange=doc.createRange();mentionRange.setStart(node,prefix.length-query.length-1);mentionRange.setEnd(node,selection.anchorOffset);
     mentions.replaceChildren();
     for(const [index,item] of choices.entries()){
@@ -140,8 +140,10 @@ export function createPromptEditor(textarea,{onChange=()=>{},getLoras=()=>[],onS
     el.title=part.name+' · Ctrl +/− или Ctrl+колёсико: вес · Backspace: удалить';el.setAttribute('aria-label',`LoRA: ${label}, вес ${part.strength}`);
     const name=doc.createElement('span');name.className='prompt-lora-name';name.textContent=label;
     const weight=doc.createElement('span');weight.className='prompt-lora-weight';weight.textContent=String(part.strength);
+    const remove=doc.createElement('button');remove.type='button';remove.className='prompt-lora-remove';remove.title='Удалить LoRA';remove.setAttribute('aria-label',`Удалить LoRA: ${label}`);remove.textContent='×';
+    remove.onclick=event=>{event.preventDefault();event.stopPropagation();el.remove();changed();root.focus();};
     el.onclick=()=>{el.focus();const range=doc.createRange();range.selectNode(el);const selection=win.getSelection();selection.removeAllRanges();selection.addRange(range);remember();};
-    el.append(promptCategoryIcon(doc,categoryFor(part.name)),name,weight);return el;
+    el.append(promptCategoryIcon(doc,categoryFor(part.name)),name,weight,remove);return el;
   };
   const fragment=parts=>{const result=doc.createDocumentFragment();for(const part of normalizePromptParts(parts))result.append(part.type==='text'?doc.createTextNode(part.text):part.type==='character'?characterToken(part):token(part));return result;};
   const write=(parts,{save=false,resetUndo=true}={})=>{
@@ -182,6 +184,30 @@ export function createPromptEditor(textarea,{onChange=()=>{},getLoras=()=>[],onS
     }
     if(remaining.size){const range=rangeForInsert(),nodes=fragment([...remaining.values()]),last=nodes.lastChild;range.insertNode(nodes);if(last){range.setStartAfter(last);range.collapse(true);lastRange=range.cloneRange();}}
     changed(false);
+  };
+  const mergeCharacterTemplate=(current,previous,next)=>{
+    if(!previous)return structuredClone(next);
+    const merged=structuredClone(next);
+    const mergeVariants=field=>{
+      const result={...merged[field]};
+      for(const [name,value] of Object.entries(current[field]??{}))if(!Object.hasOwn(previous[field]??{},name)||previous[field][name]!==value)result[name]=value;
+      merged[field]=result;
+    };
+    mergeVariants('appearances');mergeVariants('outfits');
+    for(const field of ['trigger','strength','activeAppearanceName','activeOutfitName','outfitEnabled'])if(current[field]!==previous[field])merged[field]=current[field];
+    merged.name=next.name;
+    return merged;
+  };
+  const syncCharacter=(previousName,character,previousTemplate=null)=>{
+    read();let updated=0;
+    for(const el of [...root.querySelectorAll('.prompt-character')]){
+      const part=readCharacterToken(el);if(part.character.name!==previousName)continue;
+      const merged=mergeCharacterTemplate(part.character,previousTemplate,character);
+      const next=characterPromptPart(merged,{instanceId:part.instanceId,framePrompt:part.framePrompt,disabledTags:part.disabledTags});
+      replaceCharacter(el,next);updated++;
+    }
+    if(updated)changed(false);
+    return updated;
   };
   root.addEventListener('input',event=>{if(event.target===root){changed();updateMentions();}});
   root.addEventListener('focusin',event=>{if(event.target.closest('[data-character-field]'))clearControl();});
@@ -276,7 +302,7 @@ export function createPromptEditor(textarea,{onChange=()=>{},getLoras=()=>[],onS
   root.addEventListener('copy',copy);root.addEventListener('cut',copy);doc.addEventListener('selectionchange',remember);
   const fromTextarea=()=>read();textarea.addEventListener('input',fromTextarea);
   write([{type:'text',text:textarea.value}]);
-  return {root,read,write,insert,syncLoras,transformTextAtCaret,refreshLabels,destroy:()=>{closeOptions();closeTags();doc.removeEventListener('pointerdown',outsideOptions);doc.removeEventListener('selectionchange',remember);textarea.removeEventListener('input',fromTextarea);mentions.remove();root.remove();textarea.hidden=false;}};
+  return {root,read,write,insert,syncLoras,syncCharacter,transformTextAtCaret,refreshLabels,destroy:()=>{closeOptions();closeTags();doc.removeEventListener('pointerdown',outsideOptions);doc.removeEventListener('selectionchange',remember);textarea.removeEventListener('input',fromTextarea);mentions.remove();root.remove();textarea.hidden=false;}};
 }
 
 let editor;
@@ -291,6 +317,7 @@ export function setupPromptEditor() {
 export const readPositiveParts=()=>editor?.root.isConnected?editor.read():null;
 export const writePositiveParts=parts=>setupPromptEditor()?.write(parts);
 export const syncPromptLoras=loras=>setupPromptEditor()?.syncLoras(loras);
+export const syncPromptCharacter=(previousName,character,previousTemplate)=>setupPromptEditor()?.syncCharacter(previousName,character,previousTemplate);
 export function setPromptLoraCatalog(provider) {mentionCatalog=provider;editor?.refreshLabels();}
 export function setPromptCharacterActions(actions) {characterActions=actions;}
 export function insertPromptCharacter(character) {

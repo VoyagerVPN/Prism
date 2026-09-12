@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {JSDOM} from 'jsdom';
 
-test('Категория меняется по значку: обновляются фильтр, иконка и доступ к редактору персонажа',async()=>{
+test('Категория меняется явно, а просмотр Character LoRA не подменяется редактором персонажа',async()=>{
   const dom=new JSDOM(await readFile(new URL('../index.html',import.meta.url),'utf8'),{url:'http://localhost/prism/',runScripts:'outside-only',pretendToBeVisual:true});
   dom.window.eval(await readFile(new URL('../vendor-tagify.js',import.meta.url),'utf8'));
   const keys=['window','document','Event','CustomEvent','Option','MutationObserver','localStorage','fetch'];
@@ -27,16 +27,20 @@ test('Категория меняется по значку: обновляют�
   try{
     const {loadLoraLibrary}=await import('../library.js');
     await loadLoraLibrary();
+    assert.equal(document.querySelector('.library-actions > summary').textContent,'Добавить','Импорт и создание не спрятаны за безымянным плюсом');
     const firstName=item.name;
     const categoryButton=()=>document.querySelector('.library-card [aria-label="Изменить категорию: Slavya"]');
-    assert.ok(categoryButton(),'Значок категории доступен как кнопка');
+    assert.ok(categoryButton(),'Категория доступна как кнопка');
+    assert.equal(categoryButton().textContent,'','На карточке категория не расходует место на подпись');
+    assert.match(categoryButton().title,/Прочее/,'Текущая категория остаётся доступна в подсказке');
     categoryButton().click();
     const choose=value=>document.querySelector(`.library-category-menu [data-category="${value}"]`).click();
     choose('Character');await waitFor(()=>document.querySelector('.library-card .library-category-button use')?.getAttribute('href')==='#icon-person');
     assert.equal(writes,1);assert.equal(item.name,firstName,'Ссылки на файл не меняются');
     assert.match(document.getElementById('lora-library-categories').textContent,/Персонажи · 1/);
     document.querySelector('.library-open').click();
-    assert.ok(document.getElementById('library-character-editor'),'После назначения категории открывается редактор');
+    assert.equal(document.getElementById('library-character-editor'),null,'«Подробнее» оставляет просмотр метаданных');
+    assert.match(document.getElementById('lora-library-details').textContent,/slavya/,'Триггеры Character LoRA остаются видимыми');
     document.getElementById('lora-library-details').close();await loadLoraLibrary();
     assert.equal(categoryButton().querySelector('use').getAttribute('href'),'#icon-person','Повторная загрузка сохраняет категорию');
     defer=true;categoryButton().click();choose('Style');document.querySelector('.library-category-menu').remove();release();

@@ -4,7 +4,7 @@ import { createEditableChoice } from './editable_choice.js';
 import { serializePrism } from './character_format.js';
 import { askConfirm } from './dialogs.js';
 import { getSavedCharacters, saveCharactersDatabase, activateCharacter, renderCharacterSelect, loadCharacterData } from './characters.js';
-import {setPromptCharacterActions} from './prompt_editor.js';
+import {setPromptCharacterActions,syncPromptCharacter} from './prompt_editor.js';
 import {askText} from './dialogs.js';
 import {readPreferences} from './preferences.js';
 import { syncSelectControls } from './controls.js';
@@ -21,12 +21,14 @@ async function storeCharacter(previousName, character) {
   if(!name||name==='none')throw new Error('Введите имя персонажа.');
   if(previousName!==name&&Object.hasOwn(db,name))throw new Error('Это имя уже занято.');
   if(previousName&&!Object.hasOwn(db,previousName))throw new Error('Персонаж был удалён. Обновите библиотеку.');
+  const previousTemplate=previousName&&Object.hasOwn(db,previousName)?structuredClone(db[previousName]):null;
   if(previousName!==name)delete db[previousName];
   db[name]={...character,name};
   if(!await saveCharactersDatabase(db,{optimistic:false}))throw new Error(document.getElementById('character-storage-status').textContent);
   const selected=document.getElementById('character-select').value;
   if(selected===previousName){renderCharacterSelect(name);loadCharacterData(name);}
   else renderCharacterSelect(selected);
+  syncPromptCharacter(previousName,db[name],previousTemplate);
   window.dispatchEvent(new Event('save-settings'));
   return name;
 }

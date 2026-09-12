@@ -63,6 +63,32 @@ def fingerprint(path):
     stat = path.stat()
     return [stat.st_size,stat.st_mtime_ns]
 
+def read_lookup_cache(name, path):
+    cached = cache_path(name)
+    if not cached.exists(): return {}, 'idle', ''
+    try:
+        saved = json.loads(cached.read_text(encoding='utf-8'))
+        metadata = saved.get('metadata')
+        if saved.get('fingerprint') != fingerprint(path) or not isinstance(metadata, dict): return {}, 'idle', ''
+        status = saved.get('status', 'complete' if metadata else 'idle')
+        if status not in ('pending', 'complete', 'partial', 'failed'): status = 'complete' if metadata else 'idle'
+        message = saved.get('warning', '')
+        return metadata, status, message if isinstance(message, str) else ''
+    except (OSError, ValueError, TypeError):
+        return {}, 'idle', ''
+
+def write_lookup_cache(name, path, metadata, status, warning=''):
+    CACHE.mkdir(parents=True, exist_ok=True)
+    target = cache_path(name)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=CACHE, suffix='.tmp', delete=False) as file:
+            temporary = Path(file.name)
+            json.dump({'fingerprint': fingerprint(path), 'metadata': metadata, 'status': status, 'warning': warning}, file, ensure_ascii=False)
+        os.replace(temporary, target)
+    finally:
+        if temporary is not None: temporary.unlink(missing_ok=True)
+
 def local_entry(name, path, header, category_overrides=None):
     data = {}; warning = ''
     sidecar = path.with_suffix('.cm-info.json')
@@ -72,12 +98,9 @@ def local_entry(name, path, header, category_overrides=None):
             data = json.loads(sidecar.read_text(encoding='utf-8-sig'))
             if not isinstance(data,dict): raise ValueError('Некорректный JSON')
         except (OSError, ValueError) as error: data = {}; warning = f'Не удалось прочитать метаданные: {error}'
-    cached = cache_path(name)
-    if cached.exists():
-        try:
-            saved = json.loads(cached.read_text(encoding='utf-8'))
-            if saved.get('fingerprint') == fingerprint(path): data = {**data, **saved['metadata']}
-        except (OSError, ValueError, TypeError): pass
+    cached_data, metadata_status, metadata_warning = read_lookup_cache(name, path)
+    data = {**data, **cached_data}
+    warning = ' · '.join(value for value in (warning, metadata_warning) if value)
     model_id = data.get('ModelId'); version_id = data.get('VersionId')
     url = f'https://civitai.com/models/{model_id}?modelVersionId={version_id}' if type(model_id) is int and type(version_id) is int else ''
     image = data.get('PreviewUrl','')
@@ -92,41 +115,49 @@ def local_entry(name, path, header, category_overrides=None):
         base=str(header['base_model'] if header.get('base_source') == 'import' else data.get('BaseModel') or header.get('base_model','unknown')),author=str(data.get('AuthorUsername') or ''),
         description=plain(data.get('VersionDescription') or data.get('ModelDescription')),triggers=[v for v in words if isinstance(v,str)] if isinstance(words,list) else [],
         tags=[v for v in data.get('Tags',[]) if isinstance(v,str)] if isinstance(data.get('Tags',[]),list) else [],
-        url=url,preview=image,source='Civitai' if url else 'Локальный файл',warning=warning)
+        url=url,preview=image,source='Civitai' if url else 'Локальный файл',warning=warning,
+        metadataStatus=metadata_status,metadataMessage=metadata_warning)
 
 def lookup(name,path):
     initial = fingerprint(path)
-    # Полный хеш нужен только по запросу обновления, при открытии библиотеки веса не читаются.
-    with path.open('rb') as file: digest = hashlib.file_digest(file,'sha256').hexdigest()
-    req = Request('https://civitai.com/api/v1/model-versions/by-hash/'+digest,headers={'User-Agent':'Prism/1.0','Accept':'application/json'})
+    previous, _, _ = read_lookup_cache(name, path)
+    write_lookup_cache(name, path, previous, 'pending')
     try:
-        with urlopen(req,timeout=25) as response:
-            raw = response.read(2 * 1024 * 1024 + 1)
-            if len(raw) > 2 * 1024 * 1024: raise ValueError('Ответ Civitai больше 2 МБ')
-            version = json.loads(raw)
-    except HTTPError as error:
-        if error.code == 404: raise ValueError('Этот файл не найден на Civitai. Локальные данные сохранены.') from None
-        if error.code in (401,403): raise ValueError('Civitai ограничил доступ к метаданным этого файла.') from None
-        raise ValueError(f'Civitai вернул HTTP {error.code}. Повторите позже.') from None
-    if not isinstance(version,dict) or type(version.get('id')) is not int or type(version.get('modelId')) is not int: raise ValueError('Некорректный ответ Civitai')
-    model = version.get('model') or {}
-    metadata = dict(ModelId=version['modelId'],VersionId=version['id'],ModelName=model.get('name'),VersionName=version.get('name'),BaseModel=version.get('baseModel'),TrainedWords=version.get('trainedWords',[]),VersionDescription=version.get('description'))
-    # Версия содержит превью и триггеры, карточка модели — автора, теги и описание.
-    try:
-        model_req = Request(f'https://civitai.com/api/v1/models/{version["modelId"]}',headers={'User-Agent':'Prism/1.0','Accept':'application/json'})
-        with urlopen(model_req,timeout=20) as response:
-            raw_model = response.read(2 * 1024 * 1024 + 1)
-            if len(raw_model) <= 2 * 1024 * 1024:
+        # Полный хеш нужен только по запросу обновления, при открытии библиотеки веса не читаются.
+        with path.open('rb') as file: digest = hashlib.file_digest(file,'sha256').hexdigest()
+        req = Request('https://civitai.com/api/v1/model-versions/by-hash/'+digest,headers={'User-Agent':'Prism/1.0','Accept':'application/json'})
+        try:
+            with urlopen(req,timeout=25) as response:
+                raw = response.read(2 * 1024 * 1024 + 1)
+                if len(raw) > 2 * 1024 * 1024: raise ValueError('Ответ Civitai больше 2 МБ')
+                version = json.loads(raw)
+        except HTTPError as error:
+            if error.code == 404: raise ValueError('Этот файл не найден на Civitai. Локальные данные сохранены.') from None
+            if error.code in (401,403): raise ValueError('Civitai ограничил доступ к метаданным этого файла.') from None
+            raise ValueError(f'Civitai вернул HTTP {error.code}. Повторите позже.') from None
+        if not isinstance(version,dict) or type(version.get('id')) is not int or type(version.get('modelId')) is not int: raise ValueError('Некорректный ответ Civitai')
+        model = version.get('model') or {}
+        metadata = dict(ModelId=version['modelId'],VersionId=version['id'],ModelName=model.get('name'),VersionName=version.get('name'),BaseModel=version.get('baseModel'),TrainedWords=version.get('trainedWords',[]),VersionDescription=version.get('description'))
+        lookup_warning = ''
+        # Версия содержит превью и триггеры, карточка модели — автора, теги и описание.
+        try:
+            model_req = Request(f'https://civitai.com/api/v1/models/{version["modelId"]}',headers={'User-Agent':'Prism/1.0','Accept':'application/json'})
+            with urlopen(model_req,timeout=20) as response:
+                raw_model = response.read(2 * 1024 * 1024 + 1)
+                if len(raw_model) > 2 * 1024 * 1024: raise ValueError('Ответ карточки Civitai больше 2 МБ')
                 full_model = json.loads(raw_model)
-                if isinstance(full_model,dict):
-                    metadata.update(AuthorUsername=(full_model.get('creator') or {}).get('username'),Tags=full_model.get('tags',[]),ModelDescription=full_model.get('description'))
-    except (OSError, ValueError, TypeError):
-        pass  # Доступная версия остаётся полезна, даже если карточка модели закрыта.
-    if fingerprint(path) != initial: raise ValueError('Файл изменился во время поиска. Повторите обновление.')
-    images = version.get('images') or []
-    image = next((i.get('url') for i in images if isinstance(i,dict) and i.get('type','image') == 'image'), '')
-    metadata['PreviewUrl'] = image
-    CACHE.mkdir(parents=True,exist_ok=True)
-    target = cache_path(name); temp = target.with_suffix('.tmp')
-    temp.write_text(json.dumps({'fingerprint':fingerprint(path),'metadata':metadata},ensure_ascii=False),encoding='utf-8')
-    os.replace(temp,target)
+                if not isinstance(full_model,dict): raise ValueError('Некорректная карточка модели Civitai')
+                metadata.update(AuthorUsername=(full_model.get('creator') or {}).get('username'),Tags=full_model.get('tags',[]),ModelDescription=full_model.get('description'))
+        except (OSError, ValueError, TypeError) as error:
+            lookup_warning = f'Метаданные CivitAI загружены частично: {error}'
+        if fingerprint(path) != initial: raise ValueError('Файл изменился во время поиска. Повторите обновление.')
+        images = version.get('images') or []
+        image = next((i.get('url') for i in images if isinstance(i,dict) and i.get('type','image') == 'image'), '')
+        metadata['PreviewUrl'] = image
+        write_lookup_cache(name, path, metadata, 'partial' if lookup_warning else 'complete', lookup_warning)
+    except (OSError, ValueError, TypeError) as error:
+        try:
+            if fingerprint(path) == initial: write_lookup_cache(name, path, previous, 'failed', f'Не удалось загрузить метаданные CivitAI: {error}')
+        except (OSError, ValueError, TypeError):
+            pass
+        raise
