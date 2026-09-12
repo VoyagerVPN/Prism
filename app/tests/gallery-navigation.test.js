@@ -31,7 +31,7 @@ test('Сохранённая сетка открывается как пятое
     }
     window.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'ArrowRight',cancelable:true}));
     assert.equal(gallery.selectedHistoryItem.promptId,'single');
-    assert.match(document.querySelector('.gallery-group[aria-pressed="true"]').textContent,/Без LoRA/);
+    assert.match(document.querySelector('.gallery-group[aria-pressed="true"]').textContent,/Промпт/);
     assert.deepEqual(restored,[100,101,102,103,9]);
     document.querySelector('#lightbox-next').click();
     assert.match(document.querySelector('#lightbox-img').src,/filename=grid.png/,'Переход через конец истории возвращает сетку');

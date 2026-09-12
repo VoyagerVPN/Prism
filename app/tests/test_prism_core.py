@@ -59,6 +59,18 @@ class CharacterStoreContract(unittest.TestCase):
             with self.assertRaisesRegex(InvalidDocument, 'не более чем 1000 персонажами'):
                 store.save([], None)
 
+    def test_character_portrait_must_reference_managed_media(self):
+        from prism_core import CharacterStore, InvalidDocument
+
+        cache = APP_ROOT / '.cache'
+        cache.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=cache) as directory:
+            store = CharacterStore(Path(directory) / 'characters.json')
+            character = {'name': 'Тест', 'portrait': {'id': '../outside.png', 'source': {'kind': 'gallery', 'id': 'art'}}}
+
+            with self.assertRaisesRegex(InvalidDocument, 'портрет'):
+                store.save({'Тест': character}, None)
+
 
 class PresetStoreContract(unittest.TestCase):
     def test_presets_can_be_saved_and_reloaded_without_comfyui(self):

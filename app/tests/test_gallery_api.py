@@ -29,17 +29,24 @@ class GalleryApiTests(unittest.IsolatedAsyncioTestCase):
             with patch.object(dashboard, 'gallery_catalog', catalog):
                 async with TestClient(TestServer(app)) as client:
                     response = await client.post('/gallery', json={
-                        'promptId': 'job', 'createdAt': 7, 'settings': {'seed': 9},
+                        'promptId': 'job', 'createdAt': 7, 'settings': {'operation': 'txt2img', 'seed': 9},
+                        'workflow': {'save': {'class_type': 'SaveImage', 'inputs': {}}},
                         'characters': [{'name': 'Алиса', 'lora': 'Character/alice.safetensors'}],
                         'outputs': [{'filename': 'alice.png', 'subfolder': 'Prism', 'type': 'output'}],
                     })
                     self.assertEqual(response.status, 200, await response.text())
-                    item = (await response.json())['items'][0]
+                    registered = await response.json()
+                    item = registered['items'][0]
+                    self.assertEqual(registered['operation']['outputArtIds'], [item['id']])
+                    self.assertEqual(registered['operation']['workflow']['save']['class_type'], 'SaveImage')
                     self.assertFalse(item['favorite'])
                     changed = await client.patch('/gallery/favorite', json={'id': item['id'], 'favorite': True})
                     self.assertTrue((await changed.json())['item']['favorite'])
                     listed = await client.get('/gallery')
-                    self.assertTrue((await listed.json())['items'][0]['favorite'])
+                    snapshot = await listed.json()
+                    self.assertEqual(snapshot['version'], 3)
+                    self.assertTrue(snapshot['items'][0]['favorite'])
+                    self.assertEqual(snapshot['operations'][0]['promptId'], 'job')
                     invalid = await client.post('/gallery', data='{', headers={'Content-Type': 'application/json'})
                     self.assertEqual(invalid.status, 400)
 

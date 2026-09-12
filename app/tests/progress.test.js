@@ -48,3 +48,19 @@ test('Прогресс различает кадры серии и сохран�
   assert.equal(presentation.label, 'Кадр 2/2 · Диффузия');
   assert.match(presentation.detail, /Общий прогресс \d+%/);
 });
+
+test('Прогресс описывает подключение контента без названия backend-узла', () => {
+  const contentWorkflow = {content: {class_type: 'LoraLoader', inputs: {}}};
+  let progress = createProgress(contentWorkflow);
+  progress = advanceProgress(progress, contentWorkflow, 'executing', {node: 'content'});
+
+  assert.equal(describeProgress(progress, contentWorkflow, {}).label, 'Применение подключённого контента');
+});
+
+test('Прогресс не показывает технический класс неизвестного узла', () => {
+  const customWorkflow = {custom: {class_type: 'VendorPrivateNode', inputs: {}}};
+  let progress = createProgress(customWorkflow);
+  progress = advanceProgress(progress, customWorkflow, 'executing', {node: 'custom'});
+
+  assert.equal(describeProgress(progress, customWorkflow, {}).label, 'Обработка');
+});

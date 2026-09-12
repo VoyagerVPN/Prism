@@ -33,6 +33,17 @@ export function createTagInput(field,{kind,label,icon,onChange,onFocus=()=>{},to
   widget.DOM.scope.dataset.tagKind=kind;
   widget.DOM.scope.classList.add('prompt-tags');
   field.hidden=true;
+  widget.DOM.scope.addEventListener('pointerdown',event=>{
+    if(toggle||event.target!==widget.DOM.scope)return;
+    const bounds=widget.DOM.scope.getBoundingClientRect();
+    if(bounds.width&&event.clientX>=bounds.right-18)return;
+    event.preventDefault();
+    widget.DOM.input.focus({preventScroll:true});
+    const selection=win.getSelection();
+    if(!selection)return;
+    const range=field.ownerDocument.createRange();range.selectNodeContents(widget.DOM.input);range.collapse(false);
+    selection.removeAllRanges();selection.addRange(range);
+  },true);
   const refreshActions=()=>{
     if(!toggle)return;
     for(const tag of widget.getTagElms()){

@@ -1,11 +1,9 @@
 import { showNotice } from './dialogs.js';
 import {frameSettings,gridImage} from './batch.js';
-import { canvasPlaceholder, imageLoader, outputImage, galleryItems, metadataBar, metadataSummary, refineBtn, applyPromptBtn, applySeedBtn, hiresToggle, hiresScaleSelect, hiresDenoiseSlider, faceToggle, upscaleToggle, upscaleSelect, fullscreenBtn, lightbox, lightboxClose, lightboxPrev, lightboxNext, lightboxImg, lightboxFavorite, batchThumbnails, reactorToggle, reactorDetection, reactorRestore, reactorVisibility, reactorCodeformerWeight, reactorIndexSource, reactorIndexInput } from './elements.js';
+import { canvasPlaceholder, imageLoader, outputImage, galleryItems, metadataBar, metadataSummary, refineBtn, applyPromptBtn, applySeedBtn, hiresToggle, hiresScaleSelect, hiresDenoiseSlider, faceToggle, upscaleToggle, upscaleSelect, fullscreenBtn, lightbox, lightboxClose, lightboxPrev, lightboxNext, lightboxImg, lightboxFavorite, lightboxUseAs, batchThumbnails, reactorToggle, reactorDetection, reactorRestore, reactorVisibility, reactorCodeformerWeight, reactorIndexSource, reactorIndexInput } from './elements.js';
 import { setSeedMode, setLastGeneratedSeed, reactorImageName } from './state.js';
-import { selectedOutputImage } from './archive_gallery.js';
-
-
-
+import {galleryFavoriteState, galleryHistorySelection, galleryMediaSource, toggleGalleryFavorite} from './gallery_catalog_client.js';
+import {selectedOutputImage} from './result_catalog.js';
 import { imageUrl } from './api.js';
 
 export let history = [];
@@ -31,7 +29,6 @@ async function syncOutputFavoriteButton() {
   const button = document.getElementById('output-favorite-btn');
   if (!button) return;
   const item = selectedHistoryItem, index = selectedBatchIndex;
-  const {galleryFavoriteState} = await import('./archive_gallery.js');
   if (item !== selectedHistoryItem || index !== selectedBatchIndex) return;
   syncFavoriteControl(button, galleryFavoriteState(item, index));
 }
@@ -43,17 +40,27 @@ function activeLightboxSelection() {
 
 async function syncLightboxFavoriteButton() {
   const selection = activeLightboxSelection();
-  const {galleryFavoriteState} = await import('./archive_gallery.js');
   const current = activeLightboxSelection();
   if (selection.item !== current.item || selection.index !== current.index) return;
   syncFavoriteControl(lightboxFavorite, galleryFavoriteState(selection.item, selection.index));
+}
+
+function syncUseAsButton(button, item, index) {
+  if(button)button.disabled=!galleryMediaSource(item,index);
+}
+
+async function useImageAs(item,index,button) {
+  const source=galleryMediaSource(item,index);if(!source)return;
+  button.disabled=true;
+  try{const {openMediaAssignment}=await import('./library.js');await openMediaAssignment(source);}
+  catch(error){window.dispatchEvent(new CustomEvent('dashboard-warning',{detail:`Не удалось назначить изображение: ${error.message}`}));}
+  finally{syncUseAsButton(button,item,index);}
 }
 
 async function toggleFavorite(item, index, sourceButton) {
   if (!item || sourceButton?.disabled) return;
   if (sourceButton) sourceButton.disabled = true;
   try {
-    const {toggleGalleryFavorite} = await import('./archive_gallery.js');
     await toggleGalleryFavorite(item, index);
   } catch (error) {
     window.dispatchEvent(new CustomEvent('dashboard-warning', {detail: `Не удалось изменить избранное: ${error.message}`}));
@@ -63,24 +70,39 @@ async function toggleFavorite(item, index, sourceButton) {
 }
 
 function groupFor(item) {
-  const settings=item.settings??item,names=new Map();
-  const add=(name,label)=>{
-    if(typeof name!=='string'||!name||name==='None')return;
-    const key=name.replaceAll('\\','/');
-    if(!names.has(key)||label)names.set(key,label||key.split('/').pop().replace(/\.[^.]+$/,''));
+  const settings=item.settings??item,names=new Map(),characters=[],contents=[],loras=[],boundLoras=new Set();
+  const loraKey=name=>typeof name==='string'&&name&&name!=='None'?name.replaceAll('\\','/'):'';
+  const addCharacter=character=>{
+    if(typeof character?.name!=='string'||!character.name){loras.push(character?.lora);return;}
+    names.set(`character:${character.name}`,character.name);
+    const lora=loraKey(character.lora);if(lora)boundLoras.add(lora);
+  };
+  const addContent=content=>{
+    const id=typeof content?.contentId==='string'&&content.contentId?content.contentId:`${content?.contentType??'content'}:${content?.name??''}`;
+    const label=typeof content?.name==='string'&&content.name?content.name:content?.contentType??'Контент';
+    names.set(`content:${id}`,label);
+    for(const binding of content?.snapshot?.bindings??[]){
+      const lora=binding?.kind==='lora'?loraKey(binding.name):'';if(lora)boundLoras.add(lora);
+    }
+  };
+  const addLora=name=>{
+    const lora=loraKey(name);if(!lora||boundLoras.has(lora))return;
+    names.set(`lora:${lora}`,lora.split('/').pop().replace(/\.[^.]+$/,''));
   };
   if(Array.isArray(settings.positiveParts)){
     for(const part of settings.positiveParts){
-      if(part?.type==='lora')add(part.name);
-      if(part?.type==='character')add(part.character?.lora,part.character?.name);
+      if(part?.type==='lora')loras.push(part.name);
+      if(part?.type==='character')characters.push(part.character);
+      if(part?.type==='content')contents.push(part);
     }
-    if(settings.promptVersion!==2&&!settings.positiveParts.some(part=>part?.type==='character'))add(settings.character?.lora,settings.character?.name);
+    if(settings.promptVersion!==2&&!settings.positiveParts.some(part=>part?.type==='character'))characters.push(settings.character);
   }else{
-    for(const lora of settings.loras??[])add(lora?.name);
-    add(settings.character?.lora,settings.character?.name);
+    characters.push(settings.character);
+    for(const lora of settings.loras??[])loras.push(lora?.name);
   }
+  characters.forEach(addCharacter);contents.forEach(addContent);loras.forEach(addLora);
   const keys=[...names.keys()].sort();
-  return {key:JSON.stringify(keys),label:keys.map(key=>names.get(key)).join(' + ')||'Без LoRA'};
+  return {key:JSON.stringify(keys),label:keys.map(key=>names.get(key)).join(' + ')||'Промпт'};
 }
 
 function selectedSettings(item = selectedHistoryItem, index = selectedBatchIndex) {
@@ -93,15 +115,33 @@ function syncRefineButton() {
   const hasBatch = (selectedHistoryItem?.batchUrls?.length ?? selectedHistoryItem?.outputs?.length ?? 0) > 1;
   const gridSelected = hasBatch && selectedBatchIndex === 0;
   const source = selectedOutputImage(selectedHistoryItem, selectedBatchIndex);
-  refineBtn.disabled = gridSelected || source?.type !== 'output' || !outputImage.naturalWidth || !outputImage.naturalHeight;
-  refineBtn.title = gridSelected
-    ? 'Выберите отдельный кадр серии'
-    : 'Дорисовать выбранный кадр в высоком разрешении';
+  const unavailableReason = !selectedHistoryItem || !source
+    ? 'Сначала выберите готовый арт'
+    : gridSelected
+      ? 'Выберите отдельный кадр серии'
+      : source.type !== 'output'
+        ? 'Refine доступен только для сохранённого результата'
+        : !outputImage.naturalWidth || !outputImage.naturalHeight
+          ? 'Дождитесь загрузки выбранного изображения'
+          : '';
+  refineBtn.disabled = Boolean(unavailableReason);
+  refineBtn.title = unavailableReason || 'Дорисовать выбранный кадр в высоком разрешении';
 }
 
 export function updateHistory(newHistory) {
   history = newHistory;
   setLastGeneratedSeed(history[0]?.seed);
+}
+
+export function openCatalogArt(itemId) {
+  const selection = galleryHistorySelection(itemId);
+  if (!selection) return false;
+  const existingIndex = history.findIndex(item => item.operationId === selection.historyItem.operationId);
+  if (existingIndex >= 0) history[existingIndex] = selection.historyItem;
+  else history = [selection.historyItem, ...history].slice(0, 15);
+  renderGallery();
+  selectHistoryItem(selection.historyItem, selection.batchIndex);
+  return true;
 }
 
 export function displayOutputImage(job) {
@@ -192,6 +232,7 @@ export function selectHistoryItem(item, batchIndex = 0, {restorePrompt=false} = 
   selectedHistoryItem = item;
   selectedBatchIndex = batchIndex;
   void syncOutputFavoriteButton();
+  syncUseAsButton(document.getElementById('output-use-as-btn'),item,batchIndex);
   const group=groupFor(item);
   if(activeGalleryGroup!==group.key){activeGalleryGroup=group.key;renderGallery();}
   
@@ -235,11 +276,11 @@ export function selectHistoryItem(item, batchIndex = 0, {restorePrompt=false} = 
   }
   document.getElementById('download-btn').disabled = false;
   document.getElementById('download-btn').title = showGrid ? 'Скачать сетку PNG' : 'Скачать выбранный кадр';
-  document.getElementById('repeat-btn').disabled = !item.workflow;
-  document.getElementById('repeat-btn').title = item.workflow ? 'Повторить сохранённый граф с исходными параметрами' : 'У старой записи не сохранён точный граф';
   const repeatLabel=showGrid || (hasBatch && item.settings?.batchLayout !== 'square-v1') ? 'Повторить серию' : 'Повторить кадр';
-  document.getElementById('repeat-btn').title=repeatLabel;
-  document.getElementById('repeat-btn').setAttribute('aria-label',repeatLabel);
+  const repeatButton = document.getElementById('repeat-btn');
+  repeatButton.disabled = !item.workflow;
+  repeatButton.title = item.workflow ? repeatLabel : 'У старой записи не сохранён точный граф';
+  repeatButton.setAttribute('aria-label', repeatLabel);
   canvasPlaceholder.style.display = "none";
   
   // Рендеринг эскизов батча
@@ -321,15 +362,24 @@ export function selectHistoryItem(item, batchIndex = 0, {restorePrompt=false} = 
 
 export function initGalleryEvents() {
   const outputFavorite = document.getElementById('output-favorite-btn');
+  const outputUseAs = document.getElementById('output-use-as-btn');
   outputFavorite.addEventListener('click', () => { void toggleFavorite(selectedHistoryItem, selectedBatchIndex, outputFavorite); });
+  outputUseAs.addEventListener('click',()=>{void useImageAs(selectedHistoryItem,selectedBatchIndex,outputUseAs);});
   lightboxFavorite.addEventListener('click', event => {
     event.stopPropagation();
     const {item, index} = activeLightboxSelection();
     void toggleFavorite(item, index, lightboxFavorite);
   });
+  lightboxUseAs.addEventListener('click',event=>{event.stopPropagation();const {item,index}=activeLightboxSelection();void useImageAs(item,index,lightboxUseAs);});
   window.addEventListener('prism-gallery-catalog-change', () => {
     void syncOutputFavoriteButton();
-    if (lightbox.style.display === 'flex') void syncLightboxFavoriteButton();
+    syncUseAsButton(outputUseAs,selectedHistoryItem,selectedBatchIndex);
+    if (lightbox.style.display === 'flex'){void syncLightboxFavoriteButton();const {item,index}=activeLightboxSelection();syncUseAsButton(lightboxUseAs,item,index);}
+  });
+  window.addEventListener('prism-open-catalog-art', event => {
+    if (!openCatalogArt(event.detail?.itemId)) {
+      window.dispatchEvent(new CustomEvent('dashboard-warning', {detail: 'Не удалось восстановить операцию выбранного арта.'}));
+    }
   });
   outputImage.addEventListener('load', syncRefineButton);
   refineBtn.addEventListener('click', () => {
@@ -480,6 +530,7 @@ function showLightboxItem(item, batchIndex = 0) {
   lightbox.style.display = "flex";
   document.body.style.overflow = 'hidden';
   void syncLightboxFavoriteButton();
+  const selection=activeLightboxSelection();syncUseAsButton(lightboxUseAs,selection.item,selection.index);
 }
 
 export function openLightbox() {

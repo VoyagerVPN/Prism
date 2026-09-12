@@ -93,6 +93,7 @@ export const lightboxPrev = document.getElementById("lightbox-prev");
 export const lightboxNext = document.getElementById("lightbox-next");
 export const lightboxImg = document.getElementById("lightbox-img");
 export const lightboxFavorite = document.getElementById("lightbox-favorite-btn");
+export const lightboxUseAs = document.getElementById("lightbox-use-as-btn");
 
 // Profile Presets
 export const profileSelect = document.getElementById("profile-select");

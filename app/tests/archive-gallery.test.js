@@ -26,8 +26,27 @@ test('Отдельная галерея фильтрует арты по пер�
   try {
     const {initArchiveGallery} = await import('../archive_gallery.js');
     await initArchiveGallery({fetchImpl, migrate: false});
-    document.querySelector('[data-app-view="gallery"]').click();
+    const generationTab = document.querySelector('#app-nav [data-app-view="generation"]');
+    const galleryTab = document.querySelector('#app-nav [data-app-view="gallery"]');
+    galleryTab.click();
     assert.equal(document.body.dataset.appView, 'gallery');
+    assert.equal(galleryTab.tabIndex, 0);
+    assert.equal(generationTab.tabIndex, -1);
+    galleryTab.focus();
+    galleryTab.dispatchEvent(new dom.window.KeyboardEvent('keydown', {key: 'ArrowLeft', bubbles: true, cancelable: true}));
+    assert.equal(document.body.dataset.appView, 'generation');
+    assert.strictEqual(document.activeElement, generationTab);
+    generationTab.dispatchEvent(new dom.window.KeyboardEvent('keydown', {key: 'End', bubbles: true, cancelable: true}));
+    assert.equal(document.body.dataset.appView, 'gallery');
+    assert.strictEqual(document.activeElement, galleryTab);
+    galleryTab.dispatchEvent(new dom.window.KeyboardEvent('keydown', {key: 'Home', bubbles: true, cancelable: true}));
+    assert.strictEqual(document.activeElement, generationTab);
+    generationTab.dispatchEvent(new dom.window.KeyboardEvent('keydown', {key: 'ArrowRight', bubbles: true, cancelable: true}));
+    assert.strictEqual(document.activeElement, galleryTab);
+    const useAsTitle = 'Использовать как портрет персонажа или обложку элемента библиотеки';
+    assert.equal(document.getElementById('output-use-as-btn').title, useAsTitle);
+    assert.equal(document.getElementById('lightbox-use-as-btn').title, useAsTitle);
+    assert.equal(document.querySelector('[data-gallery-id="alice"] .archive-use-as').title, useAsTitle);
     assert.equal(document.querySelectorAll('.archive-card').length, 4);
     assert.equal(document.querySelector('[data-gallery-id="grid"]').dataset.galleryKind, 'grid');
     assert.match(document.querySelector('[data-gallery-id="grid"] .archive-kind').textContent, /Сетка/);

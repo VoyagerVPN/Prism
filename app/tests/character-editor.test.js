@@ -58,6 +58,10 @@ test('Единый редактор персонажа: прямое откры�
     for(const property of ['height','backgroundColor','padding','fontSize'])assert.equal(universeStyle[property],nameStyle[property],`Вселенная: ${property}`);
     assert.equal(universeStyle.height,'44px');
     assert.equal($('profile-character-lora').value,'None');
+    const implementation=$('profile-character-lora').closest('details');
+    assert.ok(implementation,'Backend-модель персонажа находится в техническом раскрытии');
+    assert.equal(implementation.open,false);
+    assert.equal(implementation.querySelector('summary').textContent,'Техническая реализация');
     assert.equal(writes,0,'Создание не сохраняет пустую запись');
     $('profile-character-name').value='Новый';$('profile-character-universe').value='Тестовый мир';$('profile-character-description').value='Описание героя';$('profile-character-base').value='green eyes';$('profile-outfit-text').value='blue coat';
     await submit('profile-save-character');
@@ -253,6 +257,13 @@ test('Единый редактор персонажа: прямое откры�
     assert.equal($('profile-character-base').value,'green eyes');
     assert.equal(authorTag('green eyes').dataset.assigned,'appearance');
     const tagWidget=$('profile-character-base').__tagify;
+    const outfitWidget=$('profile-outfit-text').__tagify;
+    outfitWidget.DOM.scope.getBoundingClientRect=()=>({left:0,top:0,right:400,bottom:240,width:400,height:240});
+    $('profile-character-name').focus();
+    outfitWidget.DOM.scope.dispatchEvent(new dom.window.MouseEvent('pointerdown',{bubbles:true,cancelable:true,clientX:200,clientY:200}));
+    assert.equal(document.activeElement,outfitWidget.DOM.input,'Клик по нижнему пустому фону одежды переводит фокус в ввод тегов');
+    const caret=dom.window.getSelection();
+    assert.ok(caret.anchorNode===outfitWidget.DOM.input||outfitWidget.DOM.input.contains(caret.anchorNode),'Каретка находится внутри ввода одежды');
     const paste=new Event('paste',{bubbles:true,cancelable:true});Object.defineProperty(paste,'clipboardData',{value:{getData:()=>'(red hair, long hair:1.2), blue\\,eyes\n[hat, coat], <img src=x onerror=alert(1)>'}});
     tagWidget.DOM.input.dispatchEvent(paste);await new Promise(resolve=>setImmediate(resolve));
     assert.deepEqual(Array.from(tagWidget.value,tag=>tag.value),['green eyes','(red hair, long hair:1.2)','blue\\,eyes','[hat, coat]','<img src=x onerror=alert(1)>']);

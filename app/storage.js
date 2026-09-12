@@ -4,7 +4,6 @@ import { syncImageFormats } from './formats.js';
 import {batchSizes,syncBatchControls} from './batch.js';
 import { activeWidth, activeHeight, seedMode, reactorImageName, setReactorImageName, clearReactorFile, setActiveWidth, setActiveHeight, setSeedMode, updateAllExpansions } from './state.js';
 import { activeLoras, updateActiveLoras } from './lora.js';
-import { history, updateHistory, renderGallery, selectHistoryItem } from './gallery.js';
 import { renderCharacterSelect, loadCharacterData } from './characters.js';
 import { randomUuid } from './config.js';
 import { imageUrl, modelCatalog } from './api.js';
@@ -118,7 +117,7 @@ export function applySettings(settings, { restoreCharacterSnapshot = true, parti
 export function saveSettings() {
   if (restoring) return;
   try {
-    localStorage.setItem('matrix_dashboard_v3', JSON.stringify({ ...readSettings(), version: 3, history: history.slice(0, 15) }));
+    localStorage.setItem('matrix_dashboard_v3', JSON.stringify({ ...readSettings(), version: 4 }));
   } catch (error) {
     window.dispatchEvent(new CustomEvent('dashboard-warning', { detail: `Настройки не сохранены: ${error.message}` }));
   }
@@ -132,21 +131,21 @@ export function applyHistoryPrompt(settings) {
 
 export function loadSavedSettings() {
   const raw = localStorage.getItem('matrix_dashboard_v3') ?? localStorage.getItem('comfy_dashboard_settings_v2');
-  if (!raw) return;
+  if (!raw) return [];
   try {
     const settings = JSON.parse(raw);
     if (!settings || typeof settings !== 'object' || Array.isArray(settings)) throw new Error('Некорректный формат настроек');
     // При обычной загрузке источником персонажей служит JSON, а не старый снимок формы.
     applySettings(settings, { restoreCharacterSnapshot: false });
-    if (Array.isArray(settings.history)) {
-      updateHistory(settings.history.filter(item => item && typeof item.url === 'string').slice(0, 15).map(item => ({
-        ...item, url: item.url.startsWith('data:') && item.batchUrls?.length ? item.batchUrls[0] : item.url
-      })));
-      renderGallery();
-      if (history.length) selectHistoryItem(history[0]);
-    }
+    return Array.isArray(settings.history)
+      ? settings.history.filter(item => item && typeof item.url === 'string').slice(0, 15).map(item => ({
+          ...item,
+          url: item.url.startsWith('data:') && item.batchUrls?.length ? item.batchUrls[0] : item.url,
+        }))
+      : [];
   } catch (error) {
     window.dispatchEvent(new CustomEvent('dashboard-warning', { detail: `Не удалось восстановить настройки: ${error.message}` }));
+    return [];
   }
 }
 

@@ -1,62 +1,33 @@
-import {COMFY_URL, imageUrl} from './api.js';
+import {imageUrl} from './api.js';
+import {
+  configureGalleryCatalog,
+  galleryCatalogHistory,
+  galleryCatalogItems,
+  galleryCatalogOperations,
+  loadGalleryCatalog,
+  registerGalleryHistory,
+  setGalleryFavorite,
+} from './gallery_catalog_client.js';
+import {generationFromHistory, selectedOutputImage} from './result_catalog.js';
+
+export {galleryFavoriteState, toggleGalleryFavorite} from './gallery_catalog_client.js';
+export {generationFromHistory, selectedOutputImage} from './result_catalog.js';
 
 let archiveItems = [];
+let archiveOperations = [];
 let activeFilter = 'all';
 const activeBooruTags = new Map();
-let activeFetch = globalThis.fetch;
 const PREVIEW_SIZE_KEY = 'prism.galleryPreviewSize.v1';
-
-const sameImage = (left, right) => left && right && left.filename === right.filename && (left.subfolder ?? '') === (right.subfolder ?? '') && (left.type ?? 'output') === (right.type ?? 'output');
-
-function imageFromUrl(value) {
-  if (typeof value !== 'string') return null;
-  try {
-    const url = new URL(value, document?.baseURI ?? 'http://localhost/');
-    const filename = url.searchParams.get('filename');
-    if (!filename) return null;
-    return {filename, subfolder: url.searchParams.get('subfolder') ?? '', type: url.searchParams.get('type') ?? 'output'};
-  } catch { return null; }
-}
-
-function charactersFromSettings(settings) {
-  const result = [], seen = new Set();
-  const add = character => {
-    if (!character?.name) return;
-    const value = {name: String(character.name), lora: String(character.lora ?? '').replaceAll('\\', '/')};
-    const key = `${value.name.toLocaleLowerCase()}\0${value.lora.toLocaleLowerCase()}`;
-    if (!seen.has(key)) { seen.add(key); result.push(value); }
-  };
-  for (const part of settings?.positiveParts ?? []) if (part?.type === 'character') add(part.character);
-  if (!result.length) add(settings?.character);
-  return result;
-}
-
-export function generationFromHistory(item) {
-  const settings = item?.settings ?? item ?? {};
-  const gridOutput = item?.gridOutput ?? imageFromUrl(item?.gridUrl);
-  let outputs = Array.isArray(item?.outputs) ? item.outputs.filter(output => !sameImage(output, gridOutput)) : [];
-  if (!outputs.length) {
-    const urls = item?.batchUrls?.length ? item.batchUrls : [item?.url];
-    outputs = urls.map(imageFromUrl).filter(Boolean).filter(output => !sameImage(output, gridOutput));
-  }
-  return {promptId: item?.promptId ?? '', createdAt: item?.timestamp ?? Date.now(), characters: charactersFromSettings(settings), settings, outputs, gridOutput};
-}
-
-async function request(path, options = {}) {
-  const response = await activeFetch(`${COMFY_URL}${path}`, options);
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error ?? `HTTP ${response.status}`);
-  return data;
-}
 
 function setAppView(view) {
   document.body.dataset.appView = view;
   document.getElementById('generation-view').hidden = view !== 'generation';
   document.getElementById('gallery-view').hidden = view !== 'gallery';
-  for (const button of document.querySelectorAll('[data-app-view]')) {
+  for (const button of document.querySelectorAll('#app-nav [data-app-view]')) {
     const active = button.dataset.appView === view;
     button.setAttribute('aria-selected', String(active));
     button.setAttribute('aria-pressed', String(active));
+    button.tabIndex = active ? 0 : -1;
   }
 }
 
@@ -68,9 +39,21 @@ function booruKey(kind, label) {
   return `${kind}\0${normalizeTag(label).toLocaleLowerCase()}`;
 }
 
+function operationForItem(item) {
+  return archiveOperations.find(operation => operation.id === item.operationId);
+}
+
+function settingsForItem(item) {
+  return operationForItem(item)?.settings ?? item.settings ?? {};
+}
+
+function charactersForItem(item) {
+  return operationForItem(item)?.characters ?? item.characters ?? [];
+}
+
 function promptTags(item) {
   const seen = new Set(), result = [];
-  for (const part of String(item.settings?.positive ?? '').split(',')) {
+  for (const part of String(settingsForItem(item).positive ?? '').split(',')) {
     const label = normalizeTag(part);
     const key = label.toLocaleLowerCase();
     if (!label || label.length > 80 || /^<lora:/i.test(label) || seen.has(key)) continue;
@@ -85,7 +68,7 @@ function promptTagKind(label) {
 
 function itemBooruKeys(item) {
   const keys = new Set(promptTags(item).map(label => booruKey(promptTagKind(label), label)));
-  const characters = item.characters?.map(character => normalizeTag(character.name)).filter(Boolean) ?? [];
+  const characters = charactersForItem(item).map(character => normalizeTag(character.name)).filter(Boolean);
   if (characters.length) for (const name of characters) keys.add(booruKey('character', name));
   else keys.add(booruKey('character', '__none__'));
   return keys;
@@ -99,7 +82,7 @@ function booruFacets() {
     current.count += 1; facets.set(key, current);
   };
   for (const item of archiveItems) {
-    const characters = [...new Set(item.characters?.map(character => normalizeTag(character.name)).filter(Boolean) ?? [])];
+    const characters = [...new Set(charactersForItem(item).map(character => normalizeTag(character.name)).filter(Boolean))];
     if (characters.length) for (const name of characters) add('character', name);
     else add('character', '__none__', 'Без персонажа');
     for (const tag of promptTags(item)) add(promptTagKind(tag), tag);
@@ -172,34 +155,6 @@ function syncFavoriteCard(card, item) {
   if (marker) marker.hidden = !item.favorite;
 }
 
-export function selectedOutputImage(item, batchIndex = 0) {
-  if (!item) return null;
-  const gridOutput = item.gridOutput ?? imageFromUrl(item.gridUrl);
-  const outputs = Array.isArray(item.outputs) ? item.outputs.filter(output => !sameImage(output, gridOutput)) : [];
-  const hasBatch = (item.batchUrls?.length ?? outputs.length) > 1;
-  if (hasBatch && batchIndex === 0) return gridOutput;
-  if (batchIndex > 0) return outputs[batchIndex - 1] ?? imageFromUrl(item.batchUrls?.[batchIndex - 1]);
-  return outputs[0] ?? imageFromUrl(item.url);
-}
-
-export function galleryFavoriteState(historyItem, batchIndex = 0) {
-  const image = selectedOutputImage(historyItem, batchIndex);
-  const item = image ? archiveItems.find(value => sameImage(value.image, image)) : null;
-  return {available: Boolean(item), favorite: Boolean(item?.favorite)};
-}
-
-export async function toggleGalleryFavorite(historyItem, batchIndex = 0) {
-  const image = selectedOutputImage(historyItem, batchIndex);
-  const item = image ? archiveItems.find(value => sameImage(value.image, image)) : null;
-  if (!item) throw new Error('Кадр ещё не добавлен в галерею.');
-  const {item: updated} = await request('/prism/gallery/favorite', {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: item.id, favorite: !item.favorite})});
-  Object.assign(item, updated);
-  const card = [...document.querySelectorAll('.archive-card')].find(value => value.dataset.galleryId === item.id);
-  syncFavoriteCard(card, item);
-  window.dispatchEvent(new CustomEvent('prism-gallery-catalog-change'));
-  return galleryFavoriteState(historyItem, batchIndex);
-}
-
 function syncEmptyState(items = visibleItems()) {
   const empty = document.getElementById('archive-empty');
   empty.hidden = items.length > 0;
@@ -209,9 +164,12 @@ function syncEmptyState(items = visibleItems()) {
 function cardFor(item) {
   const article = document.createElement('article'); article.className = 'archive-card'; article.dataset.galleryId = item.id;
   const kind = item.kind === 'grid' ? 'grid' : 'art'; article.dataset.galleryKind = kind;
+  const operation = operationForItem(item);
+  const characters = charactersForItem(item);
+  if (operation) article.dataset.operationId = operation.id;
   if (item.parentId) article.dataset.parentId = item.parentId;
   const imageButton = document.createElement('button'); imageButton.type = 'button'; imageButton.className = 'archive-image'; imageButton.setAttribute('aria-label', kind === 'grid' ? 'Открыть сетку' : 'Открыть арт');
-  const image = document.createElement('img'); image.src = imageUrl(item.image); image.alt = kind === 'grid' ? `Сетка из ${item.childIds?.length ?? 0} кадров` : item.characters?.length ? `Арт: ${item.characters.map(value => value.name).join(', ')}` : 'Арт без указанного персонажа'; image.loading = 'lazy';
+  const image = document.createElement('img'); image.src = imageUrl(item.image); image.alt = kind === 'grid' ? `Сетка из ${item.childIds?.length ?? 0} кадров` : characters.length ? `Арт: ${characters.map(value => value.name).join(', ')}` : 'Арт без указанного персонажа'; image.loading = 'lazy';
   const kindLabel = document.createElement('span'); kindLabel.className = 'archive-kind'; kindLabel.textContent = `Сетка · ${item.childIds?.length ?? 0}`; kindLabel.hidden = kind !== 'grid';
   const marker = document.createElement('span'); marker.className = 'archive-favorite-marker'; marker.hidden = !item.favorite; marker.setAttribute('aria-hidden', 'true');
   marker.innerHTML = '<svg class="ui-icon"><use href="#icon-heart"/></svg>';
@@ -224,16 +182,30 @@ function cardFor(item) {
     openLightboxGallery(visibleItems(), item.id);
   });
   const footer = document.createElement('footer');
-  const caption = document.createElement('span'); caption.className = 'archive-caption'; caption.textContent = kind === 'grid' ? `Сетка из ${item.childIds?.length ?? 0} кадров` : item.characters?.map(value => value.name).join(' + ') || 'Без персонажа';
+  const description = document.createElement('span'); description.className = 'archive-description';
+  const caption = document.createElement('span'); caption.className = 'archive-caption'; caption.textContent = kind === 'grid' ? `Сетка из ${item.childIds?.length ?? 0} кадров` : characters.map(value => value.name).join(' + ') || 'Без персонажа';
+  const origin = document.createElement('span'); origin.className = 'archive-origin';
+  origin.textContent = operation?.sourceArtIds?.length ? `${operation.kind === 'refine' ? 'Refine' : operation.kind} · из исходника` : '';
+  origin.hidden = !origin.textContent;
+  description.append(caption, origin);
+  const continueButton = document.createElement('button'); continueButton.type = 'button'; continueButton.className = 'archive-continue';
+  continueButton.setAttribute('aria-label', 'Продолжить с этого арта'); continueButton.title = 'Открыть арт в генерации';
+  continueButton.innerHTML = '<svg class="ui-icon" aria-hidden="true"><use href="#icon-sliders"/></svg>';
+  continueButton.hidden = kind !== 'art' || !operation;
+  continueButton.addEventListener('click', () => {
+    window.dispatchEvent(new CustomEvent('prism-open-catalog-art', {detail: {itemId: item.id}}));
+    setAppView('generation');
+  });
+  const useAs = document.createElement('button'); useAs.type = 'button'; useAs.className = 'archive-use-as';useAs.setAttribute('aria-label','Использовать изображение как…');useAs.title='Использовать как портрет персонажа или обложку элемента библиотеки';useAs.innerHTML='<svg class="ui-icon" aria-hidden="true"><use href="#icon-person"/></svg>';
+  useAs.addEventListener('click',async()=>{useAs.disabled=true;try{const {openMediaAssignment}=await import('./library.js');await openMediaAssignment({kind:'gallery',id:item.id});}catch(error){window.dispatchEvent(new CustomEvent('dashboard-warning',{detail:`Не удалось назначить изображение: ${error.message}`}));}finally{useAs.disabled=false;}});
   const favorite = document.createElement('button'); favorite.type = 'button'; favorite.className = 'archive-favorite';
   favorite.innerHTML = '<svg class="ui-icon" aria-hidden="true"><use href="#icon-heart"/></svg>';
   favorite.addEventListener('click', async () => {
     favorite.disabled = true;
     try {
-      const {item: updated} = await request('/prism/gallery/favorite', {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: item.id, favorite: !item.favorite})});
+      const updated = await setGalleryFavorite(item.id, !item.favorite);
       Object.assign(item, updated);
       syncFavoriteCard(article, item);
-      window.dispatchEvent(new CustomEvent('prism-gallery-catalog-change'));
       favorite.disabled = false;
       if (activeFilter === 'favorites' && !item.favorite) {
         article.remove();
@@ -241,7 +213,7 @@ function cardFor(item) {
       }
     } catch (error) { window.dispatchEvent(new CustomEvent('dashboard-warning', {detail: `Не удалось изменить избранное: ${error.message}`})); favorite.disabled = false; }
   });
-  footer.append(caption, favorite); article.append(imageButton, footer); syncFavoriteCard(article, item); return article;
+  footer.append(description, continueButton, useAs, favorite); article.append(imageButton, footer); syncFavoriteCard(article, item); return article;
 }
 
 export function renderArchiveGallery() {
@@ -253,21 +225,33 @@ export function renderArchiveGallery() {
 }
 
 async function register(item) {
-  const generation = generationFromHistory(item);
-  if (!generation.outputs.length && !generation.gridOutput) return;
-  const result = await request('/prism/gallery', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(generation)});
-  const byId = new Map(archiveItems.map(value => [value.id, value]));
-  for (const value of result.items) byId.set(value.id, value);
-  archiveItems = [...byId.values()].sort((a, b) => b.createdAt - a.createdAt);
+  const result = await registerGalleryHistory(item);
+  if (!result) return;
+  archiveItems = galleryCatalogItems();
+  archiveOperations = galleryCatalogOperations();
   renderArchiveGallery();
-  window.dispatchEvent(new CustomEvent('prism-gallery-catalog-change'));
 }
 
-export async function initArchiveGallery({fetchImpl = globalThis.fetch, migrate = true} = {}) {
-  activeFetch = fetchImpl;
+export async function initArchiveGallery({fetchImpl = globalThis.fetch, migrate = true, legacyHistory = []} = {}) {
+  configureGalleryCatalog({fetchImpl, imageToUrl: imageUrl});
   const compactGallery = Boolean(globalThis.matchMedia?.('(max-width: 1100px)').matches);
   document.querySelector('.archive-booru').open = !compactGallery;
-  for (const button of document.querySelectorAll('[data-app-view]')) button.addEventListener('click', () => setAppView(button.dataset.appView));
+  const viewButtons = [...document.querySelectorAll('#app-nav [data-app-view]')];
+  for (const button of viewButtons) {
+    button.addEventListener('click', () => setAppView(button.dataset.appView));
+    button.addEventListener('keydown', event => {
+      const current = viewButtons.indexOf(button);
+      let next = null;
+      if (event.key === 'ArrowLeft') next = viewButtons[(current - 1 + viewButtons.length) % viewButtons.length];
+      if (event.key === 'ArrowRight') next = viewButtons[(current + 1) % viewButtons.length];
+      if (event.key === 'Home') next = viewButtons[0];
+      if (event.key === 'End') next = viewButtons.at(-1);
+      if (!next) return;
+      event.preventDefault();
+      setAppView(next.dataset.appView);
+      next.focus();
+    });
+  }
   for (const button of document.querySelectorAll('[data-gallery-filter]')) button.addEventListener('click', () => { activeFilter = button.dataset.galleryFilter; renderArchiveGallery(); });
   document.getElementById('archive-tag-search').addEventListener('input', renderBooruPanel);
   document.getElementById('archive-tags-clear').addEventListener('click', () => { activeBooruTags.clear(); renderArchiveGallery(); });
@@ -277,10 +261,12 @@ export async function initArchiveGallery({fetchImpl = globalThis.fetch, migrate 
   try { savedPreviewSize = localStorage.getItem(PREVIEW_SIZE_KEY) ?? savedPreviewSize; } catch { /* Используем размер по умолчанию. */ }
   setPreviewSize(savedPreviewSize, {persist: false});
   window.addEventListener('prism-output-created', event => register(event.detail).catch(error => window.dispatchEvent(new CustomEvent('dashboard-warning', {detail: `Арт сохранён на диске, но не добавлен в галерею: ${error.message}`}))));
-  archiveItems = (await request('/prism/gallery')).items ?? [];
+  await loadGalleryCatalog();
+  archiveItems = galleryCatalogItems();
+  archiveOperations = galleryCatalogOperations();
   renderArchiveGallery(); setAppView('generation');
   if (migrate) {
-    const {history} = await import('./gallery.js');
-    for (const item of history) await register(item);
+    for (const item of legacyHistory) await register(item);
   }
+  return galleryCatalogHistory();
 }

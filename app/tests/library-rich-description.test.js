@@ -1,0 +1,55 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {JSDOM} from 'jsdom';
+
+test('Подробности LoRA показывают безопасное форматированное описание Civitai с цветами',async()=>{
+  const dom=new JSDOM(await readFile(new URL('../index.html',import.meta.url),'utf8'),{url:'http://localhost/prism/'});
+  const style=dom.window.document.createElement('style');style.textContent=await readFile(new URL('../controls.css',import.meta.url),'utf8');dom.window.document.head.append(style);
+  const keys=['window','document','CustomEvent','Event','Option','MutationObserver','localStorage','fetch'];
+  const originals=Object.fromEntries(keys.map(key=>[key,globalThis[key]]));
+  for(const key of keys.filter(key=>key!=='fetch'))globalThis[key]=key==='window'?dom.window:dom.window[key];
+  dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
+  dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new Event('close'));};
+  const descriptionHtml='<h2><span style="color: #ff6600">Illustrious</span></h2><ul><li><strong>Haaru</strong>: style tags</li></ul><a href="https://civitai.com/models/123" target="_blank" rel="noopener noreferrer">Civitai</a>';
+  const item={name:'Style/haaru.safetensors',title:'Haaru',category:'Style',base:'Illustrious',version:'v1',author:'artist',tags:[],triggers:[],preview:'',description:'Illustrious Haaru: style tags Civitai',descriptionHtml,url:''};
+  const legacy={...item,name:'Style/legacy.safetensors',title:'Legacy',description:'Первая строка\n\nВторая строка'};
+  delete legacy.descriptionHtml;
+  globalThis.fetch=async()=>Response.json({items:[item,legacy]});
+  try{
+    const {loadLoraLibrary}=await import('../library.js');
+    await loadLoraLibrary();
+    document.querySelector('.library-open').click();
+    const rich=document.querySelector('.library-rich-description');
+    assert.ok(rich,'Для описания создан отдельный контейнер');
+    const mode=document.querySelector('.library-description-mode');
+    const richMode=mode.querySelector('[data-description-mode="rich"]');
+    const plainMode=mode.querySelector('[data-description-mode="plain"]');
+    assert.equal(richMode.getAttribute('aria-pressed'),'true','Rich включён по умолчанию');
+    assert.equal(plainMode.getAttribute('aria-pressed'),'false');
+    assert.equal(rich.querySelector('h2 span')?.getAttribute('style'),'color: #ff6600');
+    assert.equal(dom.window.getComputedStyle(rich.querySelector('h2')).fontSize,'22px','Rich-заголовки сохраняют заметную иерархию Civitai');
+    assert.equal(rich.querySelector('li strong')?.textContent,'Haaru');
+    assert.equal(rich.querySelector('a')?.href,'https://civitai.com/models/123');
+    assert.equal(rich.innerHTML,descriptionHtml);
+    assert.equal(document.querySelector('.library-description use')?.getAttribute('href'),'#icon-document');
+    plainMode.click();
+    assert.equal(richMode.getAttribute('aria-pressed'),'false');
+    assert.equal(plainMode.getAttribute('aria-pressed'),'true');
+    assert.ok(rich.classList.contains('library-plain-description'));
+    assert.equal(rich.textContent,item.description);
+    assert.equal(rich.querySelector('h2'),null);
+    richMode.click();
+    assert.equal(richMode.getAttribute('aria-pressed'),'true');
+    assert.equal(rich.innerHTML,descriptionHtml,'Rich-разметка восстанавливается без нового запроса');
+    document.getElementById('lora-library-details').close();
+    document.querySelector('[data-name="Style/legacy.safetensors"] .library-open').click();
+    const fallback=document.querySelector('.library-rich-description');
+    assert.ok(fallback.classList.contains('library-plain-description'),'Старое plain-text описание сохраняет переносы строк');
+    assert.equal(fallback.textContent,'Первая строка\n\nВторая строка');
+    const fallbackStyle=dom.window.getComputedStyle(fallback);
+    assert.equal(fallbackStyle.whiteSpace,'pre-line');
+    assert.equal(fallbackStyle.color,'rgb(174, 183, 197)','Plain сохраняет прежний приглушённый цвет');
+    assert.equal(fallbackStyle.fontSize,'14px');
+  }finally{document.body.replaceChildren();(await import('../controls.js')).syncSelectControls();Object.assign(globalThis,originals);dom.window.close();}
+});

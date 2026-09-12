@@ -103,11 +103,12 @@ export function openCharacterSetup(item, previousName='', onSaved=()=>{}, librar
     for(const [key] of profiles)picker.add(new Option(key,key));picker.value=previousName;
     picker.onchange=()=>onSaved(picker.value);label.classList.add('profile-identity-wide');label.append(picker);identity.prepend(label);
   }
-  const loraLabel=make('label','LoRA (необязательно)'),lora=document.createElement('select');lora.id='profile-character-lora';lora.setAttribute('aria-label','LoRA персонажа');
-  lora.add(new Option('Без LoRA','None'));
+  const implementation=make('details','','character-technical profile-technical profile-identity-wide'),implementationTitle=make('summary','Техническая реализация');
+  const loraLabel=make('label','Модель образа (LoRA, необязательно)'),lora=document.createElement('select');lora.id='profile-character-lora';lora.setAttribute('aria-label','Модель образа персонажа');
+  lora.add(new Option('Без дополнительной модели','None'));
   for(const entry of libraryItems)lora.add(new Option(entry.title,entry.name));
   if(item.name!=='None'&&![...lora.options].some(option=>option.value===item.name))lora.add(new Option(`Не установлена: ${item.name}`,item.name));
-  lora.value=draft.lora;loraLabel.append(lora);identity.append(loraLabel);
+  lora.value=draft.lora;loraLabel.append(lora);implementation.append(implementationTitle,loraLabel);identity.append(implementation);
   const triggerLabel=make('label','Триггерворд — общий для всех вариантов'),trigger=document.createElement('input');
   trigger.type='text';trigger.id='profile-character-trigger';trigger.value=draft.trigger;
   trigger.placeholder='Постоянный триггер персонажа';triggerLabel.append(trigger);identity.append(triggerLabel);
@@ -212,7 +213,7 @@ export function openCharacterSetup(item, previousName='', onSaved=()=>{}, librar
   };
   const missingLora=()=>lora.value!=='None'&&!libraryItems.some(entry=>entry.name===lora.value);
   const availability=make('p','','profile-lora-status');availability.setAttribute('role','status');loraLabel.append(availability);
-  const syncLora=()=>{const missing=missingLora();availability.textContent=missing?`LoRA не установлена: ${lora.value}. Можно сохранить персонажа, затем установить модель или выбрать другую.`:'';};
+  const syncLora=()=>{const missing=missingLora();availability.textContent=missing?`Модель образа не установлена: ${lora.value}. Можно сохранить персонажа, затем установить модель или выбрать другую.`:'';if(missing)implementation.open=true;};
   lora.onchange=()=>{draft.lora=lora.value;draft.source=sourceMetadata(libraryItems.find(entry=>entry.name===lora.value));renderTags();syncLora();};
   syncLora();renderTags();
   dialog.querySelector('.profile-editor-fields').addEventListener('change',syncTags);
@@ -220,7 +221,7 @@ export function openCharacterSetup(item, previousName='', onSaved=()=>{}, librar
   for(const button of dialog.querySelectorAll('.close-profile-editor'))button.onclick=()=>close();
   $('profile-delete-character').hidden=!existing;
   $('profile-delete-character').onclick=async()=>{
-    if(!await askConfirm(`Удалить персонажа «${previousName}» и его комплекты? Файл LoRA останется в библиотеке.`))return;
+    if(!await askConfirm(`Удалить персонажа «${previousName}» и его комплекты? Дополнительная модель останется в библиотеке.`))return;
     const db=getSavedCharacters();delete db[previousName];
     if(!await saveCharactersDatabase(db)){status.textContent=document.getElementById('character-storage-status').textContent;return;}
     if(document.getElementById('character-select').value===previousName)activateCharacter('none');else renderCharacterSelect(document.getElementById('character-select').value);

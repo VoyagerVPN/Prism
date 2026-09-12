@@ -41,8 +41,8 @@
       <h1>Prism</h1>
       <button type="button" id="prism-settings-open" class="header-meta-btn" aria-label="Настройки Prism" title="Настройки Prism"><svg class="ui-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 17h16M8 4v6M16 14v6"/></svg></button>
       <nav id="app-nav" class="app-nav" aria-label="Разделы Prism" role="tablist">
-        <button type="button" data-app-view="generation" role="tab" aria-selected="true" aria-pressed="true" aria-controls="generation-view">Создание</button>
-        <button type="button" data-app-view="gallery" role="tab" aria-selected="false" aria-pressed="false" aria-controls="gallery-view">Галерея</button>
+        <button type="button" data-app-view="generation" role="tab" tabindex="0" aria-selected="true" aria-pressed="true" aria-controls="generation-view">Создание</button>
+        <button type="button" data-app-view="gallery" role="tab" tabindex="-1" aria-selected="false" aria-pressed="false" aria-controls="gallery-view">Галерея</button>
       </nav>
       <div class="connection-status">
         <div id="status-dot" class="status-dot disconnected"></div>
@@ -279,30 +279,30 @@
 
           <div class="section-card" id="character-card">
             <div class="section-title">
-              <h3>Активный персонаж</h3>
+              <h3>Персонаж в кадре</h3>
 
             </div>
             <div class="input-group">
-
-              <select id="character-select" aria-label="Персонаж">
+              <label class="input-label" for="character-select">Персонаж</label>
+              <select id="character-select">
                 <option value="none">Без персонажа</option>
               </select>
               <small id="character-storage-status" role="status" aria-live="polite"></small>
             </div>
-            <div class="character-empty empty-state"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="11" r="5"/><path d="M6 28v-3a10 10 0 0 1 20 0v3"/></svg><strong>Выберите персонажа</strong><p>Настройте персонажа в библиотеке LoRA и подключите нужный комплект одежды.</p></div><div id="character-details" class="character-details" style="display: none;">
+            <div class="character-empty empty-state"><svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="11" r="5"/><path d="M6 28v-3a10 10 0 0 1 20 0v3"/></svg><strong>Персонаж не выбран</strong><p>Выберите готового персонажа или создайте нового в библиотеке.</p></div><div id="character-details" class="character-details" style="display: none;">
               <div class="input-group">
                 <label class="input-label" for="char-name-input">Имя персонажа</label>
                 <input type="text" id="char-name-input" placeholder="Имя...">
               </div>
               <div class="input-group">
-                <label class="input-label" for="char-lora-select">LoRA персонажа</label>
+                <label class="input-label" for="char-lora-select">Файл привязки LoRA</label>
                 <select id="char-lora-select">
                   <option value="None">None</option>
                 </select>
               </div>
               <div class="input-group">
                 <div style="display: flex; justify-content: space-between;">
-                  <label class="input-label" for="char-lora-strength">Вес LoRA</label>
+                  <label class="input-label" for="char-lora-strength">Вес модели</label>
                   <span id="char-lora-strength-val" class="range-val">1.00</span>
                 </div>
                 <div class="range-container">
@@ -547,10 +547,11 @@
         <img id="output-image" class="output-image" src="" alt="Сгенерированное изображение">
         <div id="batch-grid" class="batch-grid" aria-label="Изображения серии"></div>
         <div class="viewer-controls header-art-actions image-overlay-controls" aria-label="Действия с изображением">
-          <button id="refine-btn" class="control-btn" disabled aria-label="Refine" title="Дорисовать выбранный кадр в высоком разрешении"><svg class="ui-icon" aria-hidden="true"><use href="#icon-sparkles"/></svg></button>
+          <button id="refine-btn" class="control-btn" disabled aria-label="Refine" title="Сначала выберите готовый арт"><svg class="ui-icon" aria-hidden="true"><use href="#icon-sparkles"/></svg></button>
           <button id="repeat-btn" class="control-btn" disabled aria-label="Повторить" title="Повторить весь сохранённый рецепт"><svg class="ui-icon" aria-hidden="true"><use href="#icon-repeat"/></svg></button>
           <button id="apply-prompt-btn" class="control-btn" disabled aria-label="Взять параметры" title="Перенести все настройки выбранной генерации в форму"><svg class="ui-icon" aria-hidden="true"><use href="#icon-sliders"/></svg></button>
           <button id="apply-seed-btn" class="control-btn" disabled aria-label="Взять seed кадра" title="Применить seed из выбранного кадра"><svg class="ui-icon" aria-hidden="true"><use href="#icon-seed"/></svg></button>
+          <button id="output-use-as-btn" class="control-btn" type="button" disabled aria-label="Использовать изображение как…" title="Использовать как портрет персонажа или обложку элемента библиотеки"><svg class="ui-icon" aria-hidden="true"><use href="#icon-person"/></svg></button>
           <button id="output-favorite-btn" class="control-btn output-favorite" type="button" disabled aria-label="Добавить в избранное" title="Добавить в избранное" aria-pressed="false"><svg class="ui-icon" aria-hidden="true"><use href="#icon-heart"/></svg></button>
           <button id="fullscreen-btn" class="control-btn" aria-label="На полный экран" title="На полный экран" style="display: none;">
             <svg class="ui-icon" aria-hidden="true" viewBox="0 0 24 24">
@@ -577,7 +578,7 @@
       <p class="history-empty">Здесь появится история генераций</p>
       <div class="gallery-bar" style="display: none;">
         <span class="gallery-title">Недавние результаты</span>
-        <div id="gallery-groups" class="gallery-groups" role="group" aria-label="Группы результатов по LoRA"></div>
+          <div id="gallery-groups" class="gallery-groups" role="group" aria-label="Группы результатов по содержимому"></div>
         <div id="gallery-items" class="gallery-items">
           <!-- Gallery items will dynamically append here -->
         </div>
@@ -634,6 +635,7 @@
     <div class="lightbox-content">
       <img id="lightbox-img" src="" alt="Полноэкранный просмотр">
     </div>
+    <button id="lightbox-use-as-btn" class="lightbox-use-as" type="button" disabled aria-label="Использовать изображение как…" title="Использовать как портрет персонажа или обложку элемента библиотеки"><svg class="ui-icon" aria-hidden="true"><use href="#icon-person"/></svg></button>
     <button id="lightbox-favorite-btn" class="lightbox-favorite" type="button" disabled aria-label="Добавить в избранное" title="Добавить в избранное" aria-pressed="false"><svg class="ui-icon" aria-hidden="true"><use href="#icon-heart"/></svg></button>
     <button id="lightbox-next" class="lightbox-nav-btn next-btn" title="Следующее изображение (→)">&#10095;</button>
   </div>

@@ -8,6 +8,54 @@ from gallery_catalog import GalleryCatalog
 
 
 class GalleryCatalogTests(unittest.TestCase):
+    def test_operations_preserve_refine_lineage_and_exact_recipe_after_reload(self):
+        with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[1] / '.cache') as directory:
+            path = Path(directory) / 'gallery.json'
+            catalog = GalleryCatalog(path)
+            source = {'filename': 'source.png', 'subfolder': 'Prism', 'type': 'output'}
+            generated = catalog.register({
+                'promptId': 'generate-job',
+                'createdAt': 10,
+                'settings': {'operation': 'txt2img', 'positive': 'portrait', 'seed': 42},
+                'workflow': {'save': {'class_type': 'SaveImage', 'inputs': {'filename_prefix': 'Prism'}}},
+                'outputs': [source],
+            })
+
+            source_id = generated['items'][0]['id']
+            refined = catalog.register({
+                'promptId': 'refine-job',
+                'createdAt': 20,
+                'settings': {
+                    'operation': 'refine',
+                    'positive': 'portrait',
+                    'seed': 42,
+                    'sourceImage': source,
+                },
+                'workflow': {'load': {'class_type': 'LoadImageOutput', 'inputs': {'image': 'Prism/source.png [output]'}}},
+                'outputs': [{'filename': 'refined.png', 'subfolder': 'Prism', 'type': 'output'}],
+            })
+
+            self.assertEqual(generated['operation']['kind'], 'txt2img')
+            self.assertEqual(generated['operation']['outputArtIds'], [source_id])
+            self.assertNotIn('settings', generated['items'][0])
+            self.assertNotIn('workflow', generated['items'][0])
+            self.assertEqual(refined['operation']['kind'], 'refine')
+            self.assertEqual(refined['operation']['sourceArtIds'], [source_id])
+            self.assertEqual(refined['items'][0]['operationId'], refined['operation']['id'])
+
+            snapshot = GalleryCatalog(path).snapshot()
+            self.assertEqual([operation['kind'] for operation in snapshot['operations']], ['refine', 'txt2img'])
+            self.assertEqual(snapshot['operations'][0]['workflow'], refined['operation']['workflow'])
+
+            GalleryCatalog(path).register({
+                'promptId': 'refine-job',
+                'createdAt': 20,
+                'settings': refined['operation']['settings'],
+                'workflow': refined['operation']['workflow'],
+                'outputs': [{'filename': 'refined.png', 'subfolder': 'Prism', 'type': 'output'}],
+            })
+            self.assertEqual(len(GalleryCatalog(path).snapshot()['operations']), 2)
+
     def test_prism_generation_is_split_into_art_cards_and_favorite_persists(self):
         with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[1] / '.cache') as directory:
             path = Path(directory) / 'gallery.json'
@@ -25,7 +73,8 @@ class GalleryCatalogTests(unittest.TestCase):
                 'gridOutput': {'filename': 'grid.png', 'subfolder': 'Prism', 'type': 'output'},
             }
 
-            items = catalog.register(generation)
+            registration = catalog.register(generation)
+            items = registration['items']
             self.assertEqual([item['image']['filename'] for item in items], ['grid.png', 'frame-1.png', 'frame-2.png'])
             grid, *frames = items
             self.assertEqual(grid['kind'], 'grid')
@@ -33,7 +82,8 @@ class GalleryCatalogTests(unittest.TestCase):
             self.assertEqual(grid['childIds'], [item['id'] for item in frames])
             self.assertTrue(all(item['kind'] == 'art' for item in frames))
             self.assertTrue(all(item['parentId'] == grid['id'] for item in frames))
-            self.assertTrue(all(item['characters'][0]['name'] == 'Алиса' for item in items))
+            self.assertEqual(registration['operation']['characters'][0]['name'], 'Алиса')
+            self.assertTrue(all('characters' not in item for item in items))
             self.assertTrue(all(item['favorite'] is False for item in items))
 
             favorite = catalog.set_favorite(items[0]['id'], True)
@@ -43,6 +93,7 @@ class GalleryCatalogTests(unittest.TestCase):
 
             reloaded.register(generation)
             self.assertTrue(next(item for item in reloaded.list_items() if item['id'] == items[0]['id'])['favorite'])
+            self.assertEqual(len(reloaded.list_operations()), 1)
 
     def test_catalog_rejects_paths_outside_comfy_output(self):
         with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[1] / '.cache') as directory:
@@ -59,6 +110,10 @@ class GalleryCatalogTests(unittest.TestCase):
             item = GalleryCatalog(path).list_items()[0]
             self.assertEqual(item['kind'], 'art')
             self.assertIsNone(item['parentId'])
+            operation = GalleryCatalog(path).list_operations()[0]
+            self.assertEqual(operation['kind'], 'txt2img')
+            self.assertEqual(operation['outputArtIds'], ['old'])
+            self.assertEqual(item['operationId'], operation['id'])
 
 
 if __name__ == '__main__':

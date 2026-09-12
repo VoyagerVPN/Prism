@@ -95,8 +95,17 @@ export function compileWorkflow(settings) {
   const samplerVal = settings.sampler ?? 'euler';
   const schedulerVal = settings.scheduler ?? 'normal';
   const inline=settings.positiveParts===undefined?null:resolvePromptParts(normalizePromptParts(settings.positiveParts));
+  const incompatibleContent=inline?.content.find(part=>part.snapshot.recipe&&part.snapshot.recipe!==settings.recipe);
+  if(incompatibleContent){
+    const labels={anima:'Anima',checkpoint:'checkpoint'};
+    throw new Error(`«${incompatibleContent.name}» подготовлен для ${labels[incompatibleContent.snapshot.recipe]??incompatibleContent.snapshot.recipe} и несовместим с текущей моделью. Уберите и добавьте этот контент заново.`);
+  }
+  if(inline?.workflowAugmentations.length){
+    const backend=inline.workflowAugmentations[0];
+    throw new Error(`Техническая реализация ${backend.kind} для «${backend.contentId}» ещё не подключена к компилятору.`);
+  }
   let positivePromptBase = inline?.text ?? settings.positive ?? '';
-  let negativePromptBase = settings.negative ?? '';
+  let negativePromptBase = [settings.negative ?? '',inline?.negative ?? ''].filter(value=>value.trim()).join(', ');
   if (typeof positivePromptBase !== 'string' || typeof negativePromptBase !== 'string') throw new Error('Промпты должны быть текстом.');
   if (settings.recipe === 'anima' && /anima-aesthetic/i.test(checkpointVal)) {
     const missingQuality = ['masterpiece', 'best quality'].filter(tag => !new RegExp(`(?:^|,\\s*)${tag}(?:,|$)`, 'i').test(positivePromptBase));
@@ -181,7 +190,7 @@ export function compileWorkflow(settings) {
           "clip": lastClipLink,
           "lora_name": lora.name,
           "strength_model": parseFloat(lora.strength),
-          "strength_clip": parseFloat(lora.strength)
+        "strength_clip": parseFloat(lora.clipStrength ?? lora.strength)
         }
       };
       lastModelLink = [nodeId, 0];

@@ -1,6 +1,8 @@
 import hashlib
+import html
 import json
 import os
+import re
 import tempfile
 import threading
 from pathlib import Path
@@ -53,8 +55,165 @@ def plain(value):
     parser = PlainText(); parser.feed(str(value or '')[:100000])
     return ''.join(parser.parts).strip()
 
+_RICH_TAGS = {
+    'a', 'b', 'blockquote', 'br', 'code', 'div', 'em', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'hr', 'i', 'li', 'ol', 'p', 'pre', 's', 'span', 'strong', 'u', 'ul',
+}
+_RICH_VOID_TAGS = {'br', 'hr'}
+_RICH_HIDDEN_TAGS = {'iframe', 'math', 'object', 'script', 'style', 'svg', 'template'}
+_CSS_NAMED_COLORS = {
+    'aliceblue', 'antiquewhite', 'aqua', 'aquamarine', 'azure', 'beige', 'bisque', 'black',
+    'blanchedalmond', 'blue', 'blueviolet', 'brown', 'burlywood', 'cadetblue', 'chartreuse',
+    'chocolate', 'coral', 'cornflowerblue', 'cornsilk', 'crimson', 'cyan', 'darkblue', 'darkcyan',
+    'darkgoldenrod', 'darkgray', 'darkgreen', 'darkgrey', 'darkkhaki', 'darkmagenta',
+    'darkolivegreen', 'darkorange', 'darkorchid', 'darkred', 'darksalmon', 'darkseagreen',
+    'darkslateblue', 'darkslategray', 'darkslategrey', 'darkturquoise', 'darkviolet',
+    'deeppink', 'deepskyblue', 'dimgray', 'dimgrey', 'dodgerblue', 'firebrick', 'floralwhite',
+    'forestgreen', 'fuchsia', 'gainsboro', 'ghostwhite', 'gold', 'goldenrod', 'gray', 'green',
+    'greenyellow', 'grey', 'honeydew', 'hotpink', 'indianred', 'indigo', 'ivory', 'khaki',
+    'lavender', 'lavenderblush', 'lawngreen', 'lemonchiffon', 'lightblue', 'lightcoral',
+    'lightcyan', 'lightgoldenrodyellow', 'lightgray', 'lightgreen', 'lightgrey', 'lightpink',
+    'lightsalmon', 'lightseagreen', 'lightskyblue', 'lightslategray', 'lightslategrey',
+    'lightsteelblue', 'lightyellow', 'lime', 'limegreen', 'linen', 'magenta', 'maroon',
+    'mediumaquamarine', 'mediumblue', 'mediumorchid', 'mediumpurple', 'mediumseagreen',
+    'mediumslateblue', 'mediumspringgreen', 'mediumturquoise', 'mediumvioletred',
+    'midnightblue', 'mintcream', 'mistyrose', 'moccasin', 'navajowhite', 'navy', 'oldlace',
+    'olive', 'olivedrab', 'orange', 'orangered', 'orchid', 'palegoldenrod', 'palegreen',
+    'paleturquoise', 'palevioletred', 'papayawhip', 'peachpuff', 'peru', 'pink', 'plum',
+    'powderblue', 'purple', 'rebeccapurple', 'red', 'rosybrown', 'royalblue', 'saddlebrown',
+    'salmon', 'sandybrown', 'seagreen', 'seashell', 'sienna', 'silver', 'skyblue',
+    'slateblue', 'slategray', 'slategrey', 'snow', 'springgreen', 'steelblue', 'tan', 'teal',
+    'thistle', 'tomato', 'turquoise', 'violet', 'wheat', 'white', 'whitesmoke', 'yellow',
+    'yellowgreen',
+}
+
+def _number(value, lower, upper, percent=False):
+    if percent != value.endswith('%'): return False
+    raw = value[:-1] if percent else value
+    try: number = float(raw)
+    except ValueError: return False
+    return lower <= number <= upper
+
+def _safe_color(value):
+    color = value.strip()
+    lowered = color.lower()
+    if lowered in _CSS_NAMED_COLORS or re.fullmatch(r'#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})', color):
+        return color
+    match = re.fullmatch(r'(rgb|rgba)\(\s*([^)]*?)\s*\)', color, re.IGNORECASE)
+    if match:
+        values = [part.strip() for part in match.group(2).split(',')]
+        expected = 4 if match.group(1).lower() == 'rgba' else 3
+        if len(values) == expected:
+            percent = values[0].endswith('%')
+            channels = all(_number(part, 0, 100, True) if percent else _number(part, 0, 255) for part in values[:3])
+            alpha = expected == 3 or _number(values[3], 0, 100, True) or _number(values[3], 0, 1)
+            if channels and alpha: return color
+    match = re.fullmatch(r'(hsl|hsla)\(\s*([^)]*?)\s*\)', color, re.IGNORECASE)
+    if match:
+        values = [part.strip() for part in match.group(2).split(',')]
+        expected = 4 if match.group(1).lower() == 'hsla' else 3
+        if (len(values) == expected and _number(values[0].removesuffix('deg'), 0, 360)
+                and _number(values[1], 0, 100, True) and _number(values[2], 0, 100, True)
+                and (expected == 3 or _number(values[3], 0, 100, True) or _number(values[3], 0, 1))):
+            return color
+    return ''
+
+def _color_style(value):
+    for declaration in str(value).split(';'):
+        name, separator, color = declaration.partition(':')
+        if separator and name.strip().lower() == 'color':
+            safe = _safe_color(color)
+            if safe: return f'color: {safe}'
+    return ''
+
+def _safe_href(value):
+    href = value.strip()
+    try: parsed = urlparse(href)
+    except ValueError: return ''
+    return href if parsed.scheme.lower() in ('http', 'https') and parsed.netloc else ''
+
+class RichText(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.parts = []
+        self.open_tags = []
+        self.hidden_tags = []
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.lower()
+        if tag in _RICH_HIDDEN_TAGS:
+            self.hidden_tags.append(tag)
+            return
+        if self.hidden_tags or tag not in _RICH_TAGS: return
+        safe_attrs = []
+        style = next((_color_style(value) for name, value in attrs if name.lower() == 'style' and value), '')
+        if style: safe_attrs.append(('style', style))
+        if tag == 'a':
+            href = _safe_href(next((value for name, value in attrs if name.lower() == 'href' and value), ''))
+            if href:
+                safe_attrs.insert(0, ('href', href))
+                title = next((value for name, value in attrs if name.lower() == 'title' and value), '')
+                if title: safe_attrs.append(('title', title))
+                safe_attrs.extend((('target', '_blank'), ('rel', 'noopener noreferrer')))
+        rendered = ''.join(f' {name}="{html.escape(value, quote=True)}"' for name, value in safe_attrs)
+        self.parts.append(f'<{tag}{rendered}>')
+        if tag not in _RICH_VOID_TAGS: self.open_tags.append(tag)
+
+    def handle_startendtag(self, tag, attrs):
+        if tag.lower() in _RICH_HIDDEN_TAGS: return
+        self.handle_starttag(tag, attrs)
+        tag = tag.lower()
+        if not self.hidden_tags and tag in _RICH_TAGS and tag not in _RICH_VOID_TAGS:
+            self.handle_endtag(tag)
+
+    def handle_endtag(self, tag):
+        tag = tag.lower()
+        if self.hidden_tags:
+            if tag == self.hidden_tags[-1]: self.hidden_tags.pop()
+            return
+        if tag not in self.open_tags: return
+        while self.open_tags:
+            open_tag = self.open_tags.pop()
+            self.parts.append(f'</{open_tag}>')
+            if open_tag == tag: break
+
+    def handle_data(self, data):
+        if not self.hidden_tags: self.parts.append(html.escape(data))
+
+    def result(self):
+        while self.open_tags: self.parts.append(f'</{self.open_tags.pop()}>')
+        return ''.join(self.parts).strip()
+
+def rich(value):
+    parser = RichText(); parser.feed(str(value or '')[:100000]); parser.close()
+    return parser.result()
+
 def preview_path(path):
     return next((path.with_suffix(suffix) for suffix in ('.preview.jpeg','.preview.jpg','.preview.png','.preview.webp') if path.with_suffix(suffix).is_file()), None)
+
+def civitai_images(values):
+    """Возвращает только безопасные статичные изображения CDN Civitai."""
+    result = []
+    seen = set()
+    if not isinstance(values, list): return result
+    for value in values:
+        if not isinstance(value, dict) or value.get('type', 'image') != 'image': continue
+        url = value.get('url', '')
+        parsed = urlparse(url) if isinstance(url, str) else None
+        if not parsed or parsed.scheme != 'https' or parsed.hostname != 'image.civitai.com' or url in seen: continue
+        raw_id = value.get('id')
+        image_id = str(raw_id) if type(raw_id) in (int, str) and str(raw_id) else hashlib.sha256(url.encode()).hexdigest()[:24]
+        width = value.get('width', 0); height = value.get('height', 0); nsfw = value.get('nsfwLevel', 0)
+        result.append({
+            'id': image_id,
+            'url': url,
+            'width': width if type(width) is int and width > 0 else 0,
+            'height': height if type(height) is int and height > 0 else 0,
+            'nsfwLevel': nsfw if type(nsfw) is int and nsfw >= 0 else 0,
+            'source': 'civitai',
+        })
+        seen.add(url)
+    return result
 
 def cache_path(name):
     return CACHE / (hashlib.sha256(name.encode()).hexdigest() + '.json')
@@ -89,7 +248,7 @@ def write_lookup_cache(name, path, metadata, status, warning=''):
     finally:
         if temporary is not None: temporary.unlink(missing_ok=True)
 
-def local_entry(name, path, header, category_overrides=None):
+def local_entry(name, path, header, category_overrides=None, cover=None):
     data = {}; warning = ''
     sidecar = path.with_suffix('.cm-info.json')
     if sidecar.exists():
@@ -103,19 +262,22 @@ def local_entry(name, path, header, category_overrides=None):
     warning = ' · '.join(value for value in (warning, metadata_warning) if value)
     model_id = data.get('ModelId'); version_id = data.get('VersionId')
     url = f'https://civitai.com/models/{model_id}?modelVersionId={version_id}' if type(model_id) is int and type(version_id) is int else ''
-    image = data.get('PreviewUrl','')
+    images = civitai_images(data.get('Images') or data.get('images') or [])
+    image = data.get('PreviewUrl','') or (images[0]['url'] if images else '')
     if not isinstance(image,str) or urlparse(image).scheme != 'https' or urlparse(image).hostname != 'image.civitai.com': image = ''
     if preview_path(path): image = '/prism/lora-preview?' + urlencode({'name':name})
+    if isinstance(cover, dict) and isinstance(cover.get('url'), str): image = cover['url']
     words = data.get('TrainedWords') or header.get('triggers',[])
     parts = name.replace('\\', '/').split('/')
     assigned = read_categories() if category_overrides is None else category_overrides
     category = assigned.get('/'.join(parts), parts[0] if len(parts) > 1 else 'Other')
+    raw_description = data.get('VersionDescription') or data.get('ModelDescription')
     return dict(name=name,title=str(data.get('ModelName') or path.stem),version=str(data.get('VersionName') or ''),
         category=category,
         base=str(header['base_model'] if header.get('base_source') == 'import' else data.get('BaseModel') or header.get('base_model','unknown')),author=str(data.get('AuthorUsername') or ''),
-        description=plain(data.get('VersionDescription') or data.get('ModelDescription')),triggers=[v for v in words if isinstance(v,str)] if isinstance(words,list) else [],
+        description=plain(raw_description),descriptionHtml=rich(raw_description),triggers=[v for v in words if isinstance(v,str)] if isinstance(words,list) else [],
         tags=[v for v in data.get('Tags',[]) if isinstance(v,str)] if isinstance(data.get('Tags',[]),list) else [],
-        url=url,preview=image,source='Civitai' if url else 'Локальный файл',warning=warning,
+        url=url,preview=image,cover=cover,images=images,source='Civitai' if url else 'Локальный файл',warning=warning,
         metadataStatus=metadata_status,metadataMessage=metadata_warning)
 
 def lookup(name,path):
@@ -149,15 +311,15 @@ def lookup(name,path):
                 if not isinstance(full_model,dict): raise ValueError('Некорректная карточка модели Civitai')
                 metadata.update(AuthorUsername=(full_model.get('creator') or {}).get('username'),Tags=full_model.get('tags',[]),ModelDescription=full_model.get('description'))
         except (OSError, ValueError, TypeError) as error:
-            lookup_warning = f'Метаданные CivitAI загружены частично: {error}'
+            lookup_warning = f'Метаданные Civitai загружены частично: {error}'
         if fingerprint(path) != initial: raise ValueError('Файл изменился во время поиска. Повторите обновление.')
-        images = version.get('images') or []
-        image = next((i.get('url') for i in images if isinstance(i,dict) and i.get('type','image') == 'image'), '')
-        metadata['PreviewUrl'] = image
+        images = civitai_images(version.get('images') or [])
+        metadata['Images'] = images
+        metadata['PreviewUrl'] = images[0]['url'] if images else ''
         write_lookup_cache(name, path, metadata, 'partial' if lookup_warning else 'complete', lookup_warning)
     except (OSError, ValueError, TypeError) as error:
         try:
-            if fingerprint(path) == initial: write_lookup_cache(name, path, previous, 'failed', f'Не удалось загрузить метаданные CivitAI: {error}')
+            if fingerprint(path) == initial: write_lookup_cache(name, path, previous, 'failed', f'Не удалось загрузить метаданные Civitai: {error}')
         except (OSError, ValueError, TypeError):
             pass
         raise

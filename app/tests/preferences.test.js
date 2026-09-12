@@ -22,7 +22,10 @@ test('Окно настроек сохраняет выбор, отмена ос
   dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
   dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;};
   try{
-    setupPreferences({doc,storage});doc.querySelector('button').click();
+    setupPreferences({doc,storage});
+    assert.equal(doc.querySelector('label[for="preference-lora-weight"]').textContent,'Показывать интенсивность подключённого контента');
+    assert.deepEqual([...doc.querySelectorAll('#preference-lora-weight option')].map(option=>option.textContent),['Всегда','Только изменённую']);
+    doc.querySelector('button').click();
     assert.equal(doc.querySelector('dialog').open,true);
     doc.querySelector('#preference-appearance-name').value='Базовая';
     doc.querySelector('#preference-outfit-enabled').checked=false;

@@ -1,4 +1,4 @@
-import sys,types,importlib.util,unittest,tempfile,struct,json
+import sys,types,importlib.util,unittest,tempfile,struct,json,base64
 from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
@@ -53,6 +53,22 @@ class Checks(unittest.IsolatedAsyncioTestCase):
  async def test_runtime_identifies_prism(self):
   response=await dashboard.get_runtime(None)
   self.assertEqual(json.loads(response.text),{'service':'prism','version':1})
+ async def test_content_catalog_persists_and_rejects_stale_writes(self):
+  cache=Path(__file__).resolve().parents[1]/'.cache';cache.mkdir(exist_ok=True)
+  with tempfile.TemporaryDirectory(dir=cache) as directory:
+   original=dashboard.content_path;dashboard.content_path=Path(directory)/'content.json'
+   try:
+    initial=json.loads((await dashboard.get_content(None)).text)
+    content={'style:test':{'id':'style:test','type':'Style','name':'Тестовый стиль','scopes':['global'],'bindings':[{'kind':'lora','name':'Style/test.safetensors','strength':1,'clipStrength':1}]}}
+    async def save(payload):
+     async def body():return payload
+     return await dashboard.post_content(types.SimpleNamespace(json=body))
+    saved=await save({'content':content,'revision':initial['revision']})
+    self.assertEqual(saved.status,200,saved.text)
+    self.assertEqual(json.loads((await dashboard.get_content(None)).text)['content'],content)
+    self.assertEqual((await save({'content':{},'revision':initial['revision']})).status,409)
+    self.assertEqual((await save({'content':[],'revision':json.loads(saved.text)['revision']})).status,400)
+   finally:dashboard.content_path=original
  async def test_metrics_endpoint_returns_process_snapshot_without_cache(self):
   snapshot={'process':{'pid':321,'ram':{'used':10,'capacity':100}},'devices':[]}
   with patch.object(dashboard,'collect_runtime_metrics',return_value=snapshot):
@@ -97,6 +113,63 @@ class Checks(unittest.IsolatedAsyncioTestCase):
    finally:
     dashboard.folder_paths=original
     dashboard.import_bases_path=original_bases
+ async def test_lora_upload_fetches_civitai_metadata_when_requested(self):
+  from aiohttp import web, FormData
+  from aiohttp.test_utils import TestClient, TestServer
+  cache=Path(__file__).resolve().parents[1]/'.cache'
+  with tempfile.TemporaryDirectory(dir=cache) as directory:
+   root=Path(directory);relative='Character/Illustrious/haaru.safetensors';target=root/relative
+   header={'__metadata__':{'ss_base_model_version':'sdxl_base_v1-0','category':'Character'},'lora_x.lora_down.weight':{'dtype':'F32','shape':[1],'data_offsets':[0,4]}}
+   raw=json.dumps(header).encode();binary=struct.pack('<Q',len(raw))+raw+b'\0'*4
+   class ApiResponse:
+    def __init__(self,payload):self.payload=json.dumps(payload).encode()
+    def __enter__(self):return self
+    def __exit__(self,*args):return False
+    def read(self,limit):return self.payload
+   def open_url(request,timeout):
+    if '/by-hash/' in request.full_url:
+      return ApiResponse({'id':456,'modelId':123,'name':'v1','baseModel':'Illustrious','trainedWords':['haaru style'],'description':'<p>Rich version</p>','model':{'name':'Haaru'},'images':[
+       {'id':11,'type':'image','url':'https://image.civitai.com/x/first.webp','width':768,'height':1024,'nsfwLevel':1},
+       {'id':12,'type':'image','url':'https://image.civitai.com/x/second.jpeg','width':1024,'height':768,'nsfwLevel':2},
+       {'id':13,'type':'video','url':'https://image.civitai.com/x/clip.mp4'},
+       {'id':14,'type':'image','url':'https://tracker.invalid/pixel.png'},
+      ]})
+    return ApiResponse({'creator':{'username':'Artist'},'tags':['style'],'description':'<h2>Rich model</h2>'})
+   original=dashboard.folder_paths;original_bases=dashboard.import_bases_path
+   dashboard.import_bases_path=root/'import-bases.json'
+   dashboard.folder_paths=types.SimpleNamespace(
+    get_folder_paths=lambda kind:[str(root)],filename_list_cache={},
+    get_filename_list=lambda kind:[relative] if target.exists() else [],
+    get_full_path=lambda kind,name:str(target) if name==relative and target.exists() else None,
+   )
+   app=web.Application();app.router.add_post('/upload',dashboard.upload_model_import);app.router.add_get('/library',dashboard.get_lora_library)
+   try:
+    with patch.object(dashboard.lora_library,'CACHE',root/'civitai'),patch.object(dashboard.lora_library,'CATEGORY_PATH',root/'categories.json'),patch.object(dashboard.lora_library,'urlopen',side_effect=open_url):
+     async with TestClient(TestServer(app)) as client:
+      form=FormData()
+      for key,value in [('kind','loras'),('base','Illustrious'),('category','Character'),('civitai','true')]:form.add_field(key,value)
+      form.add_field('file',binary,filename='haaru.safetensors',content_type='application/octet-stream')
+      response=await client.post('/upload',data=form);result=await response.json()
+      self.assertEqual(response.status,200,result)
+      self.assertTrue(result['metadataUpdated'])
+      entry=(await (await client.get('/library')).json())['items'][0]
+      self.assertEqual((entry['title'],entry['author'],entry['triggers']),('Haaru','Artist',['haaru style']))
+      self.assertEqual(entry['preview'],'https://image.civitai.com/x/first.webp')
+      self.assertEqual(entry['images'],[
+       {'id':'11','url':'https://image.civitai.com/x/first.webp','width':768,'height':1024,'nsfwLevel':1,'source':'civitai'},
+       {'id':'12','url':'https://image.civitai.com/x/second.jpeg','width':1024,'height':768,'nsfwLevel':2,'source':'civitai'},
+      ])
+      with patch.object(dashboard.lora_library,'urlopen',side_effect=OSError('offline')):
+       form=FormData()
+       for key,value in [('kind','loras'),('base','Offline'),('category','Character'),('civitai','true')]:form.add_field(key,value)
+       form.add_field('file',binary,filename='offline.safetensors',content_type='application/octet-stream')
+       response=await client.post('/upload',data=form);result=await response.json()
+      self.assertEqual(response.status,200,result)
+      self.assertFalse(result['metadataUpdated'])
+      self.assertIn('Civitai',result['warning'])
+      self.assertTrue((root/'Character/Offline/offline.safetensors').exists())
+   finally:
+    dashboard.folder_paths=original;dashboard.import_bases_path=original_bases
  async def test_reveal_lora_opens_only_registered_file(self):
   with tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[1]/'.cache') as directory:
    path=Path(directory)/'Character'/'test.safetensors';path.parent.mkdir();path.write_bytes(b'test')
@@ -136,6 +209,77 @@ class Checks(unittest.IsolatedAsyncioTestCase):
     self.assertEqual((await save({'revision':revision,'characters':{}})).status,500)
     self.assertEqual(dashboard.character_path.read_text(encoding='utf-8'),'broken')
    finally:dashboard.character_path=original
+ async def test_gallery_art_becomes_durable_character_portrait(self):
+  from aiohttp import web
+  from aiohttp.test_utils import TestClient, TestServer
+  cache=Path(__file__).resolve().parents[1]/'.cache';cache.mkdir(exist_ok=True)
+  with tempfile.TemporaryDirectory(dir=cache) as directory:
+   root=Path(directory);output=root/'output';image=output/'Prism'/'portrait.png';image.parent.mkdir(parents=True);lora_name='Character/test.safetensors';model=root/'test.safetensors';model.write_bytes(b'weights')
+   binary=base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=')
+   image.write_bytes(binary)
+   originals=(dashboard.folder_paths,dashboard.character_path,dashboard.gallery_catalog,getattr(dashboard,'media_library',None))
+   dashboard.folder_paths=types.SimpleNamespace(get_output_directory=lambda:str(output),get_filename_list=lambda kind:[lora_name],get_full_path=lambda kind,name:str(model) if name==lora_name else None)
+   dashboard.character_path=root/'characters.json'
+   dashboard.gallery_catalog=dashboard.GalleryCatalog(root/'gallery.json')
+   dashboard.media_library=dashboard.MediaLibrary(root/'media.json')
+   registered=dashboard.gallery_catalog.register({'promptId':'job','createdAt':1,'settings':{},'workflow':{},'outputs':[{'filename':'portrait.png','subfolder':'Prism','type':'output'}]})
+   art_id=registered['items'][0]['id']
+   store=dashboard.CharacterStore(dashboard.character_path);initial=store.read()
+   document=store.save({'Алиса':{'name':'Алиса','lora':'None','strength':1,'appearance':'','outfits':{'По умолчанию':''},'activeOutfitName':'По умолчанию','outfitEnabled':True}},initial['revision'])
+   app=web.Application();app.router.add_post('/assign',dashboard.assign_media);app.router.add_get('/media',dashboard.get_media)
+   try:
+    with patch.object(dashboard,'get_lora_metadata',return_value={'base_model':'Illustrious','triggers':[]}),patch.object(dashboard.lora_library,'CACHE',root/'civitai'),patch.object(dashboard.lora_library,'CATEGORY_PATH',root/'categories.json'):
+     async with TestClient(TestServer(app)) as client:
+      body={'source':{'kind':'gallery','id':art_id},'target':{'kind':'character','name':'Алиса'},'revision':document['revision']}
+      response=await client.post('/assign',json=body);result=await response.json()
+      self.assertEqual(response.status,200,result)
+      portrait=result['characters']['Алиса']['portrait']
+      self.assertEqual((portrait['source']['kind'],portrait['source']['id']),('gallery',art_id))
+      cover=await client.post('/assign',json={'source':{'kind':'gallery','id':art_id},'target':{'kind':'lora','name':lora_name}});cover_result=await cover.json()
+      self.assertEqual(cover.status,200,cover_result);self.assertEqual(cover_result['item']['cover']['id'],portrait['id'])
+      image.unlink()
+      media=await client.get('/media',params={'id':portrait['id']})
+      self.assertEqual((media.status,await media.read()),(200,binary))
+      stale=await client.post('/assign',json=body)
+      self.assertEqual(stale.status,409,await stale.text())
+   finally:
+    dashboard.folder_paths,dashboard.character_path,dashboard.gallery_catalog=originals[:3]
+    if originals[3] is not None:dashboard.media_library=originals[3]
+ async def test_civitai_image_becomes_lora_cover_without_arbitrary_url(self):
+  from aiohttp import web
+  from aiohttp.test_utils import TestClient, TestServer
+  cache=Path(__file__).resolve().parents[1]/'.cache';cache.mkdir(exist_ok=True)
+  with tempfile.TemporaryDirectory(dir=cache) as directory:
+   root=Path(directory);name='Character/test.safetensors';model=root/'test.safetensors';model.write_bytes(b'weights')
+   binary=base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=')
+   class ImageResponse:
+    def __enter__(self):return self
+    def __exit__(self,*args):return False
+    def geturl(self):return 'https://blobs-b2.civitai.com/file/blobs-managed-public/portrait.png'
+    def read(self,limit):return binary
+   model.with_suffix('.cm-info.json').write_text(json.dumps({'ModelName':'Test','Images':[
+    {'id':11,'type':'image','url':'https://image.civitai.com/x/first.webp'},
+    {'id':12,'type':'image','url':'https://image.civitai.com/x/cover.png'},
+   ]}),encoding='utf-8')
+   originals=(dashboard.folder_paths,dashboard.media_library)
+   dashboard.folder_paths=types.SimpleNamespace(get_filename_list=lambda kind:[name],get_full_path=lambda kind,key:str(model) if key==name else None)
+   dashboard.media_library=dashboard.MediaLibrary(root/'media.json')
+   app=web.Application();app.router.add_post('/assign',dashboard.assign_media);app.router.add_get('/library',dashboard.get_lora_library);app.router.add_get('/media',dashboard.get_media)
+   try:
+    with patch.object(dashboard.lora_library,'CACHE',root/'civitai'),patch.object(dashboard.lora_library,'CATEGORY_PATH',root/'categories.json'),patch.object(dashboard,'get_lora_metadata',return_value={'base_model':'Illustrious','triggers':[]}),patch.object(sys.modules['dashboard.media_library'],'urlopen',return_value=ImageResponse()):
+     async with TestClient(TestServer(app)) as client:
+      body={'source':{'kind':'civitai','lora':name,'id':'12'},'target':{'kind':'lora','name':name}}
+      response=await client.post('/assign',json=body);result=await response.json()
+      self.assertEqual(response.status,200,result)
+      self.assertEqual(result['item']['cover']['source'],{'kind':'civitai','id':'12','lora':name})
+      self.assertEqual(result['item']['preview'],result['item']['cover']['url'])
+      listed=(await (await client.get('/library')).json())['items'][0]
+      self.assertEqual((listed['preview'],listed['cover']), (result['item']['preview'],result['item']['cover']))
+      media=await client.get('/media',params={'id':result['media']['id']})
+      self.assertEqual(await media.read(),binary)
+      rejected=await client.post('/assign',json={'source':{'kind':'civitai','lora':name,'id':'missing','url':'https://example.com/tracker.png'},'target':{'kind':'lora','name':name}})
+      self.assertEqual(rejected.status,400,await rejected.text())
+   finally:dashboard.folder_paths,dashboard.media_library=originals
  async def test_presets_persist_and_reject_stale_writes(self):
   cache=Path(__file__).resolve().parents[1]/'.cache';cache.mkdir(exist_ok=True)
   with tempfile.TemporaryDirectory(dir=cache) as directory:

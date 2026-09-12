@@ -1,6 +1,53 @@
 import {randomUuid} from './config.js';
 import {splitPromptTags} from './tag_input.js';
 export const loraKey=name=>name.replaceAll('\\','/');
+const contentTypes=new Set(['Character','Concept','Style','Pose','Clothing','Object','Background','Effect','Processing']);
+const contentScopes=new Set(['global','subject']);
+const contentIdPattern=/^[a-z][a-z0-9-]*(?::[a-z0-9][a-z0-9._-]*)+$/;
+
+function contentStrings(value,label) {
+  if(!Array.isArray(value)||value.length>10000||value.some(text=>typeof text!=='string'))throw new Error(`Некорректный ${label} контента.`);
+  return [...value];
+}
+
+function contentBinding(value) {
+  if(!value||typeof value!=='object'||Array.isArray(value)||!['lora','control','reference','workflow'].includes(value.kind))throw new Error('Некорректная техническая реализация контента.');
+  if(value.kind==='lora'){
+    const strength=Number(value.strength??1),clipStrength=Number(value.clipStrength??strength);
+    if(typeof value.name!=='string'||!value.name||value.name==='None'||value.name.length>2000||/^[a-z]:|^[/\\]|[\x00-\x1f]/i.test(value.name)||loraKey(value.name).split('/').some(segment=>segment==='..'||segment==='.')||!Number.isFinite(strength)||!Number.isFinite(clipStrength)||strength < -1||strength > 2||clipStrength < -1||clipStrength > 2)throw new Error('Некорректная backend LoRA контента.');
+    return {kind:'lora',name:loraKey(value.name),strength,clipStrength};
+  }
+  if(typeof value.name!=='string'||!value.name.trim())throw new Error('Техническая реализация контента требует имя.');
+  const parameters=value.parameters??{};
+  if(!parameters||typeof parameters!=='object'||Array.isArray(parameters))throw new Error('Некорректные параметры технической реализации.');
+  return {kind:value.kind,name:value.name,parameters:structuredClone(parameters)};
+}
+
+export function contentPromptPart(value) {
+  if(!value||typeof value!=='object'||Array.isArray(value)||value.type!=='content')throw new Error('Некорректный элемент контента в промпте.');
+  if(typeof value.contentId!=='string'||!contentIdPattern.test(value.contentId)||/[/\\]/.test(value.contentId))throw new Error('Некорректный semantic ID контента.');
+  if(!contentTypes.has(value.contentType)||!value.contentId.startsWith(`${value.contentType.toLowerCase()}:`))throw new Error('Некорректный тип контента.');
+  if(typeof value.name!=='string'||!value.name.trim()||value.name.length>500)throw new Error('Контент требует отображаемое имя.');
+  if(!contentScopes.has(value.scope))throw new Error('Некорректная область применения контента.');
+  if(value.subjectId!==undefined&&(typeof value.subjectId!=='string'||!value.subjectId.trim()||value.subjectId.length>200))throw new Error('Некорректная цель контента.');
+  const snapshot=value.snapshot;
+  if(!snapshot||typeof snapshot!=='object'||Array.isArray(snapshot))throw new Error('Контент требует воспроизводимый снимок.');
+  const parameters=snapshot.parameters??{};
+  if(!parameters||typeof parameters!=='object'||Array.isArray(parameters))throw new Error('Некорректные параметры контента.');
+  const recipe=snapshot.recipe;
+  if(recipe!==undefined&&(typeof recipe!=='string'||!recipe.trim()))throw new Error('Некорректный recipe снимка контента.');
+  return {
+    type:'content',contentId:value.contentId,contentType:value.contentType,name:value.name,scope:value.scope,
+    ...(value.subjectId===undefined?{}:{subjectId:value.subjectId}),
+    snapshot:{
+      prompt:contentStrings(snapshot.prompt??[],'положительный prompt'),
+      negative:contentStrings(snapshot.negative??[],'отрицательный prompt'),
+      bindings:(snapshot.bindings??[]).map(contentBinding),
+      parameters:structuredClone(parameters),
+      ...(recipe===undefined?{}:{recipe}),
+    },
+  };
+}
 
 export function characterPromptPart(value,{instanceId=randomUuid(),framePrompt='',disabledTags=[]}={}) {
   if(typeof instanceId!=='string'||!/^[a-zA-Z0-9_-]{1,200}$/.test(instanceId)||typeof framePrompt!=='string')throw new Error('Некорректный экземпляр персонажа.');
@@ -41,6 +88,8 @@ export function normalizePromptParts(parts) {
     }else if(part.type==='character'){
       const normalized=characterPromptPart(part.character,{instanceId:part.instanceId??`legacy-character-${index}`,framePrompt:part.framePrompt??'',disabledTags:part.disabledTags??[]}),key='character:'+normalized.instanceId;
       if(seen.has(key))throw new Error('Повторяющийся ID экземпляра персонажа.');seen.add(key);result.push(normalized);
+    }else if(part.type==='content'){
+      result.push(contentPromptPart(part));
     }else throw new Error('Неизвестный элемент промпта.');
   }
   return result;
@@ -67,14 +116,19 @@ export function promptPartsFromSettings(settings) {
 
 export function resolvePromptParts(parts) {
   const normalized=normalizePromptParts(parts);
-  const loras=[],seen=new Map();
-  const add=lora=>{if(lora.name==='None')return;const key=loraKey(lora.name);if(seen.has(key)){if(seen.get(key)!==lora.strength)throw new Error(`У LoRA «${lora.name}» должен быть общий вес для всех персонажей.`);return;}seen.set(key,lora.strength);loras.push(lora);};
+  const loras=[],seen=new Map(),negative=[],content=[],workflowAugmentations=[];
+  const add=lora=>{if(lora.name==='None')return;const key=loraKey(lora.name),strength=Number(lora.strength),clipStrength=Number(lora.clipStrength??strength),signature=`${strength}:${clipStrength}`;if(seen.has(key)){if(seen.get(key)!==signature)throw new Error(`У backend LoRA «${lora.name}» должен быть общий вес во всех элементах контента.`);return;}seen.set(key,signature);loras.push(lora.clipStrength===undefined?{name:lora.name,strength}:{name:lora.name,strength,clipStrength});};
   const text=normalized.map(part=>{
     if(part.type==='text')return part.text;
     if(part.type==='lora'){add({name:part.name,strength:part.strength});return '';}
+    if(part.type==='content'){
+      content.push(part);negative.push(...part.snapshot.negative);
+      for(const binding of part.snapshot.bindings){if(binding.kind==='lora')add({name:binding.name,strength:binding.strength,clipStrength:binding.clipStrength});else workflowAugmentations.push({contentId:part.contentId,contentType:part.contentType,scope:part.scope,...binding});}
+      return part.snapshot.prompt.filter(Boolean).join(', ');
+    }
     const c=part.character;add({name:c.lora,strength:c.strength});
     const visible=(kind,variant,source)=>{const disabled=new Set(part.disabledTags.filter(entry=>entry.kind===kind&&entry.variant===variant).map(entry=>entry.tag));return disabled.size?splitPromptTags([source]).filter(tag=>!disabled.has(tag)).join(', '):source;};
     return [c.trigger,visible('appearance',c.activeAppearanceName,c.appearances[c.activeAppearanceName]),c.outfitEnabled?visible('outfit',c.activeOutfitName,c.outfits[c.activeOutfitName]):'',part.framePrompt].filter(text=>text.trim()).join(', ');
   }).join('');
-  return {text,loras};
+  return {text,negative:negative.filter(Boolean).join(', '),loras,content,workflowAugmentations};
 }

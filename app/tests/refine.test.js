@@ -14,6 +14,7 @@ test('Refine запускается для выбранного кадра и н
     gallery.initGalleryEvents();
     const button = document.getElementById('refine-btn');
     assert.ok(button, 'В панели действий должна быть кнопка Refine');
+    assert.equal(button.title, 'Сначала выберите готовый арт');
 
     const upscale = document.getElementById('upscale-select');
     upscale.append(new dom.window.Option('4x UltraSharp', '4x-UltraSharp.pth'));
@@ -21,10 +22,6 @@ test('Refine запускается для выбранного кадра и н
     document.getElementById('hires-scale').value = '2.0';
     document.getElementById('hires-denoise').value = '0.65';
     const output = document.getElementById('output-image');
-    Object.defineProperties(output, {
-      naturalWidth: {value: 1024, configurable: true},
-      naturalHeight: {value: 768, configurable: true},
-    });
 
     const frame = {filename: 'frame.png', subfolder: 'Prism', type: 'output'};
     const settings = {checkpoint: 'original.safetensors', seed: 42, positive: 'portrait', batchCount: 1, width: 512, height: 384};
@@ -32,8 +29,15 @@ test('Refine запускается для выбранного кадра и н
     let detail = null;
     window.addEventListener('refine-image', event => { detail = event.detail; });
     gallery.selectHistoryItem(item);
+    assert.equal(button.disabled, true);
+    assert.equal(button.title, 'Дождитесь загрузки выбранного изображения');
+    Object.defineProperties(output, {
+      naturalWidth: {value: 1024, configurable: true},
+      naturalHeight: {value: 768, configurable: true},
+    });
     output.dispatchEvent(new Event('load'));
     assert.equal(button.disabled, false);
+    assert.equal(button.title, 'Дорисовать выбранный кадр в высоком разрешении');
     assert.match(document.getElementById('metadata-summary').textContent, /Размер: 1024x768/);
     assert.doesNotMatch(document.getElementById('metadata-summary').textContent, /Размер: 512x384/);
     button.click();
@@ -47,6 +51,11 @@ test('Refine запускается для выбранного кадра и н
     const grid = {filename: 'grid.png', subfolder: 'Prism', type: 'output'};
     gallery.selectHistoryItem({...item, promptId: 'series', outputs: [frame], gridOutput: grid, gridUrl: '/view?filename=grid.png&subfolder=Prism&type=output', batchUrls: [item.url, '/view?filename=other.png']}, 0);
     assert.equal(button.disabled, true, 'Составную сетку нельзя повторно детализировать как один кадр');
+    assert.equal(button.title, 'Выберите отдельный кадр серии');
+    const input = {filename: 'source.png', subfolder: 'Prism', type: 'input'};
+    gallery.selectHistoryItem({...item, promptId: 'input', url: '/view?filename=source.png&subfolder=Prism&type=input', outputs: [input]}, 0);
+    assert.equal(button.disabled, true);
+    assert.equal(button.title, 'Refine доступен только для сохранённого результата');
   } finally {
     dom.window.close();
   }

@@ -82,7 +82,7 @@ test('Inline редактор: LoRA среди текста, вес, удале�
     assert.equal(field.value,'before  after\nnext');
     const remove=editor.root.querySelector('.prompt-lora-remove');
     assert.ok(remove,'У подключённой LoRA есть доступная мышью кнопка удаления');
-    assert.match(remove.getAttribute('aria-label'),/Удалить LoRA/);
+    assert.match(remove.getAttribute('aria-label'),/Убрать контент/);
     assert.equal(editor.root.querySelector('input'),null,'Вес отображается без числового поля');
     const selected=editor.root.querySelector('.prompt-lora');selected.click();
     for(let step=0;step<22;step++)selected.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'-',ctrlKey:true,bubbles:true,cancelable:true}));

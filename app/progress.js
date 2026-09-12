@@ -8,7 +8,7 @@ const stageNames = {
   CLIPLoader: 'Загрузка текстовой модели',
   DualCLIPLoader: 'Загрузка текстовой модели',
   VAELoader: 'Загрузка VAE',
-  LoraLoader: 'Применение LoRA',
+  LoraLoader: 'Применение подключённого контента',
   CLIPTextEncode: 'Подготовка промпта',
   EmptyLatentImage: 'Подготовка латента',
   KSampler: 'Диффузия',
@@ -159,7 +159,7 @@ export function describeProgress(current, workflow, settings = {}) {
 
   const frame = /^frame_(\d+)_/.exec(nodeId);
   const frameCount = Math.max(1, finite(settings.batchCount, 1));
-  const stage = stageNames[node.class_type] ?? node.class_type ?? 'Узел ComfyUI';
+  const stage = stageNames[node.class_type] ?? 'Обработка';
   const label = frame ? `Кадр ${Number(frame[1]) + 1}/${frameCount} · ${stage}` : stage;
   const parts = [`Общий прогресс ${Math.round(progress.percent)}%`];
   const plan = progressPlan(workflow);

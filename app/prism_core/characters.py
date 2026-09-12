@@ -1,4 +1,5 @@
 import math
+import re
 
 from .versioned_store import VersionedJsonStore
 
@@ -30,3 +31,16 @@ class CharacterStore(VersionedJsonStore):
                 raise ValueError(f'{name}: некорректная сила LoRA')
             if 'outfitEnabled' in character and not isinstance(character['outfitEnabled'], bool):
                 raise ValueError(f'{name}: некорректный переключатель одежды')
+            portrait = character.get('portrait')
+            if portrait is not None:
+                source = portrait.get('source') if isinstance(portrait, dict) else None
+                if (
+                    not isinstance(portrait, dict)
+                    or not isinstance(portrait.get('id'), str)
+                    or not re.fullmatch(r'[0-9a-f]{64}', portrait['id'])
+                    or not isinstance(source, dict)
+                    or source.get('kind') not in ('gallery', 'civitai')
+                    or not isinstance(source.get('id'), str)
+                    or not source['id']
+                ):
+                    raise ValueError(f'{name}: некорректный портрет персонажа')

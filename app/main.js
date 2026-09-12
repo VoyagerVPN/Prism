@@ -5,7 +5,7 @@ import * as el from './elements.js';
 import { loadSavedSettings, readSettings, saveSettings, applySettings } from './storage.js';
 import { initCharacters } from './characters.js';
 import { loadCustomProfiles, initPresetEvents, renderProfiles } from './presets.js';
-import { initGalleryEvents, displayOutputImage } from './gallery.js';
+import { initGalleryEvents, displayOutputImage, renderGallery, selectHistoryItem, updateHistory } from './gallery.js';
 import {setupLivePreview} from './live_preview.js';
 import {initArchiveGallery} from './archive_gallery.js';
 import { compileWorkflow } from './workflow.js';
@@ -70,6 +70,7 @@ async function submit(settings, workflow = compileWorkflow(settings)) {
 }
 async function generate() {
   const settings = readSettings();
+  settings.operation = 'txt2img';
   assertLoraCompatibility(settings.recipe, settings.loras, loraDetailsMap);
   const faceFile = state.reactorFile;
   settings.seed = settings.seedMode === 'random' ? Math.floor(Math.random() * 10000000000) : Number(settings.seedInput);
@@ -191,8 +192,12 @@ window.addEventListener('load', async () => {
   render();
   try {
     await refresh();
-    loadSavedSettings();
-    await Promise.all([loadCustomProfiles(), initArchiveGallery()]);
+    const legacyHistory = loadSavedSettings();
+    const [, catalogHistory] = await Promise.all([loadCustomProfiles(), initArchiveGallery({legacyHistory})]);
+    updateHistory(catalogHistory);
+    renderGallery();
+    if (catalogHistory.length) selectHistoryItem(catalogHistory[0]);
+    saveSettings();
     state.updateAllExpansions();
   } catch (error) { warn(error.message); }
   client.connect();
