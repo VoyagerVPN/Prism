@@ -19,6 +19,7 @@ function Test-Ready {
     } catch { return $false }
 }
 
+$lifetime = $null
 try {
     $settings = Get-Content -LiteralPath $Config -Raw | ConvertFrom-Json
     $comfyRoot = Resolve-AppPath $settings.backend_root
@@ -66,12 +67,22 @@ try {
             exit 0
         }
         if (Test-Path -LiteralPath "$logs\update-incomplete.txt") { throw 'Предыдущее обновление не завершено. См. .cache/runtime/update-incomplete.txt.' }
+        if (-not ('PrismProcessJob' -as [type])) { Add-Type -Path "$PSScriptRoot\ProcessLifetime.cs" }
+        $lifetime = [PrismProcessJob]::new()
         if ($listeners.Count) {
             if (-not (Test-Ready)) { throw "Порт $port занят другим или ещё не готовым сервисом." }
             $owner = Get-CimInstance Win32_Process -Filter "ProcessId=$($listeners[0].OwningProcess)"
             if ($owner.ExecutablePath -ne $python) { throw 'На порту ComfyUI из другой Python-среды.' }
+            if ($owner.CommandLine -notmatch 'main\.py') { throw 'На порту не настроенный ComfyUI.' }
+            $lifetime.Assign([int]$owner.ProcessId)
         } else {
-            $starting = @(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -eq $python -and $_.CommandLine -match 'main\.py' })
+            $starting = @(Get-CimInstance Win32_Process | Where-Object {
+                if ($_.ExecutablePath -ne $python -or $_.CommandLine -notmatch 'main\.py') { return $false }
+                # Независимый backend на другом порту не блокирует эту установку.
+                $backendPort = [regex]::Match($_.CommandLine, '(?:^|\s)--port(?:=|\s+)["'']?(\d+)')
+                if ($backendPort.Success) { return ([int]$backendPort.Groups[1].Value -eq $port) }
+                return ($port -eq 8188)
+            })
             if ($starting.Count) { throw 'PRISM_STARTING: backend уже запущен, но ещё не готов. Проверьте журнал; второй процесс не создан.' }
             foreach ($path in @($python, "$comfyRoot\main.py", $models)) {
                 if (-not (Test-Path -LiteralPath $path)) { throw "Не найдено: $path. Проверьте prism.json." }
@@ -95,19 +106,27 @@ try {
             Write-Output "Запускаю ComfyUI и ожидаю готовности. Журнал: $logs\server.stderr.log"
             $server = Start-Process -FilePath $python -WorkingDirectory $comfyRoot -WindowStyle Hidden -PassThru `
                 -ArgumentList $arguments -RedirectStandardOutput "$logs\server.stdout.log" -RedirectStandardError "$logs\server.stderr.log"
+            try { $lifetime.Assign($server.Id) }
+            catch {
+                & taskkill.exe /PID $server.Id /T /F | Out-Null
+                throw
+            }
             $server.Id | Set-Content -LiteralPath "$logs\server.pid"
             $deadline = [DateTime]::UtcNow.AddSeconds([int]$settings.startup_timeout_seconds)
             while (-not (Test-Ready)) {
                 $server.Refresh()
                 if ($server.HasExited) { throw "ComfyUI завершился. См. $logs\server.stderr.log" }
-                if ([DateTime]::UtcNow -gt $deadline) { throw "Истекло ожидание запуска. Backend не остановлен; см. $logs\server.stderr.log" }
+                if ([DateTime]::UtcNow -gt $deadline) { throw "Истекло ожидание запуска. См. $logs\server.stderr.log" }
                 Start-Sleep -Milliseconds 700
             }
         }
         Write-Output "Prism готов: $url/prism/"
         if (-not $NoBrowser) { Start-Process "$url/prism/" }
     } finally { $lock.Dispose() }
+    & "$PSScriptRoot\Show-Logs.ps1" -LogDirectory $logs
 } catch {
     Write-Error $_ -ErrorAction Continue
     exit 1
+} finally {
+    if ($null -ne $lifetime) { $lifetime.Dispose() }
 }

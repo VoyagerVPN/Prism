@@ -14,7 +14,128 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def run_hidden(*args, **kwargs):
+    kwargs.setdefault('creationflags', subprocess.CREATE_NO_WINDOW)
+    return subprocess.run(*args, **kwargs)
+
+
 class LauncherCheck(unittest.TestCase):
+    def test_backend_exits_when_launcher_console_exits(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / '.cache') as directory:
+            root = Path(directory)
+            for name in ('Start.ps1', 'Show-Logs.ps1', 'ProcessLifetime.cs', 'model-paths.json'):
+                shutil.copyfile(ROOT / name, root / name)
+            (root / 'custom_nodes').mkdir()
+            (root / 'models').mkdir()
+            (root / 'main.py').write_text(
+                """import argparse, json
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+parser = argparse.ArgumentParser()
+parser.add_argument('--port', type=int, required=True)
+args, _ = parser.parse_known_args()
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        data = {'/system_stats': {'system': {'comfyui_version': 'test'}}, '/prism/runtime': {'service': 'prism'}}.get(self.path, {})
+        raw = json.dumps(data).encode()
+        self.send_response(200); self.send_header('Content-Type', 'application/json'); self.end_headers(); self.wfile.write(raw)
+    def log_message(self, *args): pass
+ThreadingHTTPServer(('127.0.0.1', args.port), Handler).serve_forever()
+""",
+                encoding='utf-8',
+            )
+            probe = ThreadingHTTPServer(('127.0.0.1', 0), BaseHTTPRequestHandler)
+            port = probe.server_port
+            probe.server_close()
+            config = {'backend_root': str(root), 'python': sys.executable, 'models_root': str(root / 'models'),
+                      'port': port, 'lan_interface': '', 'startup_timeout_seconds': 15, 'arguments': []}
+            config_path = root / 'config.json'
+            config_path.write_text(json.dumps(config), encoding='utf-8')
+            probe = ThreadingHTTPServer(('127.0.0.1', 0), BaseHTTPRequestHandler)
+            other_port = probe.server_port
+            probe.server_close()
+            other_backend = subprocess.Popen(
+                [sys.executable, str(root / 'main.py'), '--port', str(other_port)],
+                cwd=root, creationflags=subprocess.CREATE_NO_WINDOW,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            launcher = subprocess.Popen(
+                ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(root / 'Start.ps1'),
+                 '-Config', str(config_path), '-NoBrowser'],
+                cwd=root, creationflags=subprocess.CREATE_NO_WINDOW,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            try:
+                for _ in range(100):
+                    try:
+                        with urllib.request.urlopen(f'http://127.0.0.1:{port}/prism/runtime', timeout=.2) as response:
+                            if json.load(response).get('service') == 'prism':
+                                break
+                    except OSError:
+                        time.sleep(.1)
+                else:
+                    self.fail(f'Fixture backend did not start; launcher exit code: {launcher.poll()}')
+                self.assertIsNone(launcher.poll(), 'Launcher exited while backend was running')
+                self.assertIsNone(other_backend.poll(), 'Backend on another port must remain independent')
+                launcher.kill()
+                launcher.wait(timeout=10)
+                for _ in range(100):
+                    try:
+                        urllib.request.urlopen(f'http://127.0.0.1:{port}/prism/runtime', timeout=.2).close()
+                    except OSError:
+                        break
+                    time.sleep(.1)
+                else:
+                    self.fail('Backend survived launcher termination')
+
+                existing = subprocess.Popen(
+                    [sys.executable, str(root / 'main.py'), '--port', str(port)],
+                    cwd=root, creationflags=subprocess.CREATE_NO_WINDOW,
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+                try:
+                    for _ in range(100):
+                        try:
+                            urllib.request.urlopen(f'http://127.0.0.1:{port}/prism/runtime', timeout=.2).close()
+                            break
+                        except OSError:
+                            time.sleep(.1)
+                    output_path = root / 'launcher.log'
+                    with output_path.open('wb') as output:
+                        launcher = subprocess.Popen(
+                            ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+                             str(root / 'Start.ps1'), '-Config', str(config_path), '-NoBrowser'],
+                            cwd=root, creationflags=subprocess.CREATE_NO_WINDOW,
+                            stdout=output, stderr=subprocess.STDOUT,
+                        )
+                    for _ in range(100):
+                        output = output_path.read_text(encoding='utf-8', errors='replace')
+                        if 'Prism готов:' in output:
+                            break
+                        if launcher.poll() is not None:
+                            self.fail(f'Launcher failed to adopt an existing backend: {output}')
+                        time.sleep(.1)
+                    else:
+                        self.fail(f'Launcher did not report readiness: {output}')
+                    launcher.kill()
+                    launcher.wait(timeout=10)
+                    existing.wait(timeout=10)
+                finally:
+                    if existing.poll() is None:
+                        existing.kill()
+                        existing.wait(timeout=10)
+            finally:
+                if other_backend.poll() is None:
+                    other_backend.kill()
+                other_backend.wait(timeout=10)
+                if launcher.poll() is None:
+                    launcher.kill()
+                    launcher.wait(timeout=10)
+                pid_path = root / '.cache' / 'runtime' / 'server.pid'
+                if pid_path.exists():
+                    pid = pid_path.read_text().strip()
+                    if pid.isdigit():
+                        run_hidden(['taskkill', '/PID', pid, '/T', '/F'], capture_output=True)
+
     def test_stop_uses_process_identity_when_prism_route_is_unavailable(self):
         with tempfile.TemporaryDirectory(dir=ROOT / '.cache') as directory:
             root = Path(directory)
@@ -53,7 +174,7 @@ ThreadingHTTPServer(('127.0.0.1',int(sys.argv[1])),Handler).serve_forever()
                         break
                     except OSError:
                         time.sleep(.05)
-                result = subprocess.run(
+                result = run_hidden(
                     ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(root / 'Start.ps1'), '-Action', 'Stop', '-Config', str(config_path)],
                     capture_output=True,
                     text=True,
@@ -83,7 +204,7 @@ ThreadingHTTPServer(('127.0.0.1',int(sys.argv[1])),Handler).serve_forever()
                 pass
 
         with tempfile.TemporaryDirectory(dir=ROOT / '.cache') as directory:
-            for name in ('Start.ps1', 'Update.ps1', 'prism.json'):
+            for name in ('Start.ps1', 'Update.ps1', 'ProcessLifetime.cs', 'prism.json'):
                 shutil.copyfile(ROOT / name, Path(directory) / name)
             server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
             thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -93,7 +214,7 @@ ThreadingHTTPServer(('127.0.0.1',int(sys.argv[1])),Handler).serve_forever()
             path = Path(directory) / 'config.json'
             path.write_text(json.dumps(config), encoding='utf-8')
             def run(action='Status'):
-                return subprocess.run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(Path(directory) / 'Start.ps1'), '-Action', action, '-Config', str(path)], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30)
+                return run_hidden(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(Path(directory) / 'Start.ps1'), '-Action', action, '-Config', str(path)], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30)
             try:
                 self.assertNotEqual(run().returncode, 0)
                 responses['/system_stats']['system']['comfyui_version'] = '0.34.0'
@@ -113,12 +234,12 @@ ThreadingHTTPServer(('127.0.0.1',int(sys.argv[1])),Handler).serve_forever()
     def test_update_check_rejects_dirty_repo_and_finds_stable_release(self):
         with tempfile.TemporaryDirectory(dir=ROOT / '.cache') as directory:
             root = Path(directory)
-            for name in ('Start.ps1', 'Update.ps1', 'prism.json'):
+            for name in ('Start.ps1', 'Update.ps1', 'ProcessLifetime.cs', 'prism.json'):
                 shutil.copyfile(ROOT / name, root / name)
             upstream = root / 'upstream'
             backend = root / 'backend'
             def git(*args):
-                return subprocess.run(['git', *map(str, args)], check=True, capture_output=True)
+                return run_hidden(['git', *map(str, args)], check=True, capture_output=True)
             git('init', upstream)
             (upstream / 'README.md').write_text('v1')
             (upstream / 'requirements.txt').write_text('# no external dependencies\n')
@@ -141,7 +262,7 @@ ThreadingHTTPServer(('127.0.0.1',int(sys.argv[1])),Handler).serve_forever()
             path = root / 'config.json'
             path.write_text(json.dumps(config), encoding='utf-8')
             def run(action='CheckUpdate'):
-                return subprocess.run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(root / 'Start.ps1'), '-Action', action, '-Config', str(path)], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60)
+                return run_hidden(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(root / 'Start.ps1'), '-Action', action, '-Config', str(path)], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60)
             (backend / 'README.md').write_text('local edit')
             result = run()
             self.assertNotEqual(result.returncode, 0)
@@ -152,7 +273,12 @@ ThreadingHTTPServer(('127.0.0.1',int(sys.argv[1])),Handler).serve_forever()
             self.assertIn('v2.0.0', result.stdout)
             self.assertNotIn('v3.0.0-rc1', result.stdout)
             os.environ['PIP_CACHE_DIR'] = str(ROOT / '.cache' / 'pip')
-            subprocess.run([shutil.which('python'), '-m', 'venv', str(root / 'python')], check=True, capture_output=True)
+            os.environ['PIP_NO_INDEX'] = '1'
+            os.environ['PIP_DISABLE_PIP_VERSION_CHECK'] = '1'
+            run_hidden([shutil.which('python'), '-m', 'venv', '--without-pip', str(root / 'python')], check=True, capture_output=True)
+            # Берём установленный pip локально: fixture не требует bootstrap или сети.
+            import pip
+            shutil.copytree(Path(pip.__file__).resolve().parent, root / 'python' / 'Lib' / 'site-packages' / 'pip')
             config['python'] = str(root / 'python' / 'Scripts' / 'python.exe')
             path.write_text(json.dumps(config), encoding='utf-8')
             result = run('Update')
@@ -163,14 +289,14 @@ ThreadingHTTPServer(('127.0.0.1',int(sys.argv[1])),Handler).serve_forever()
             self.assertTrue((backups[0] / 'source.zip').is_file())
             self.assertEqual(json.loads((backups[0] / 'prism.json').read_text(encoding='utf-8-sig'))['backend_root'], str(backend))
             (backend / 'main.py').write_text('import time; time.sleep(60)\n')
-            process = subprocess.Popen([config['python'], 'main.py'], cwd=backend, creationflags=subprocess.CREATE_NO_WINDOW)
+            process = subprocess.Popen([config['python'], 'main.py', '--port', str(config['port'])], cwd=backend, creationflags=subprocess.CREATE_NO_WINDOW)
             try:
                 result = run('Start')
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn('PRISM_STARTING', result.stdout + result.stderr)
             finally:
                 # Завершаем также дочерний интерпретатор Windows venv redirector.
-                subprocess.run(['taskkill', '/PID', str(process.pid), '/T', '/F'], capture_output=True)
+                run_hidden(['taskkill', '/PID', str(process.pid), '/T', '/F'], capture_output=True)
                 process.wait(timeout=10)
 
 
