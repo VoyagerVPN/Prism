@@ -12,9 +12,12 @@
   <link rel="stylesheet" href="index.css">
   <link rel="stylesheet" href="vendor-tagify.css">
   <link rel="stylesheet" href="controls.css">
+  <link rel="stylesheet" href="image_editor.css">
 </head>
 <body>
   <svg class="icon-sprite" aria-hidden="true"><defs><symbol id="icon-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol><symbol id="icon-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol><symbol id="icon-check" viewBox="0 0 24 24"><path d="m20 6-11 11-5-5"/></symbol><symbol id="icon-save" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12l4 4v12a2 2 0 0 1-2 2Z"/><path d="M7 3v6h10V3M7 21v-8h10v8"/></symbol><symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M20 7a9 9 0 0 0-15-2L3 8m0-5v5h5M4 17a9 9 0 0 0 15 2l2-3m0 5v-5h-5"/></symbol><symbol id="icon-link" viewBox="0 0 24 24"><path d="m10 13 4-4M8 15l-1 1a4 4 0 0 1-6-6l4-4a4 4 0 0 1 6 0M16 9l1-1a4 4 0 0 1 6 6l-4 4a4 4 0 0 1-6 0"/></symbol><symbol id="icon-unlink" viewBox="0 0 24 24"><path d="m3 3 18 18M8 15l-1 1a4 4 0 0 1-6-6l2-2M16 9l1-1a4 4 0 0 1 6 6l-2 2M7 2l2 2M15 20l2 2"/></symbol><symbol id="icon-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/></symbol><symbol id="icon-layers" viewBox="0 0 24 24"><path d="m12 3 10 5-10 5L2 8Zm-10 9 10 5 10-5M2 16l10 5 10-5"/></symbol><symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol><symbol id="icon-edit" viewBox="0 0 24 24"><path d="m16 3 5 5-12 12-6 1 1-6Z M14 5l5 5"/></symbol><symbol id="icon-delete" viewBox="0 0 24 24"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/></symbol><symbol id="icon-person" viewBox="0 0 24 24"><circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></symbol>
+<symbol id="icon-chevron-left" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></symbol>
+<symbol id="icon-chevron-right" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
 <symbol id="icon-bulb" viewBox="0 0 24 24"><path d="M9 18h6m-5 3h4M8 14a7 7 0 1 1 8 0l-1 1v3H9v-3Z"/></symbol>
 <symbol id="icon-brush" viewBox="0 0 24 24"><path d="m14 6 4-4 4 4-11 11-4-4 7-7ZM7 13c-5 0-1 7-5 8 7 2 11-3 9-4"/></symbol>
 <symbol id="icon-shirt" viewBox="0 0 24 24"><path d="m8 3-6 4 3 5 3-2v11h8V10l3 2 3-5-6-4a4 4 0 0 1-8 0Z"/></symbol>
@@ -43,6 +46,7 @@
       <nav id="app-nav" class="app-nav" aria-label="Разделы Prism" role="tablist">
         <button type="button" data-app-view="generation" role="tab" tabindex="0" aria-selected="true" aria-pressed="true" aria-controls="generation-view">Создание</button>
         <button type="button" data-app-view="gallery" role="tab" tabindex="-1" aria-selected="false" aria-pressed="false" aria-controls="gallery-view">Галерея</button>
+        <button type="button" data-app-view="editor" role="tab" tabindex="-1" aria-selected="false" aria-pressed="false" aria-controls="editor-view">Редактор</button>
       </nav>
       <div class="connection-status">
         <div id="status-dot" class="status-dot disconnected"></div>
@@ -90,7 +94,7 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <polygon points="5 3 19 12 5 21 5 3"></polygon>
         </svg>
-        Запуск
+        <span id="generate-label">Запуск</span>
       </button>
           <button id="interrupt-btn" class="interrupt-btn">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right: 4px;">
@@ -142,6 +146,7 @@
               <select id="checkpoint-select" aria-label="Модель генерации">
                 <option value="" disabled selected>Загрузка моделей…</option>
               </select>
+              <small id="model-recipe-hint" hidden></small>
             </div>
             <!-- Steps & CFG Sliders -->
             <div class="grid-2-col">
@@ -525,6 +530,7 @@
         <div class="prompt-group negative-group">
           <label class="input-label" for="negative-prompt">Что исключить</label>
           <textarea id="negative-prompt" class="prompt-textarea" placeholder="worst quality, blurry, deformed..."></textarea>
+          <small id="negative-prompt-hint" hidden></small>
         </div>
       </div>
 
@@ -548,6 +554,7 @@
         <div id="batch-grid" class="batch-grid" aria-label="Изображения серии"></div>
         <div class="viewer-controls header-art-actions image-overlay-controls" aria-label="Действия с изображением">
           <button id="refine-btn" class="control-btn" disabled aria-label="Refine" title="Сначала выберите готовый арт"><svg class="ui-icon" aria-hidden="true"><use href="#icon-sparkles"/></svg></button>
+          <button id="output-edit-btn" class="control-btn" disabled aria-label="Открыть в редакторе" title="Открыть выбранное изображение в редакторе Prism"><svg class="ui-icon" aria-hidden="true"><use href="#icon-edit"/></svg></button>
           <button id="repeat-btn" class="control-btn" disabled aria-label="Повторить" title="Повторить весь сохранённый рецепт"><svg class="ui-icon" aria-hidden="true"><use href="#icon-repeat"/></svg></button>
           <button id="apply-prompt-btn" class="control-btn" disabled aria-label="Взять параметры" title="Перенести все настройки выбранной генерации в форму"><svg class="ui-icon" aria-hidden="true"><use href="#icon-sliders"/></svg></button>
           <button id="apply-seed-btn" class="control-btn" disabled aria-label="Взять seed кадра" title="Применить seed из выбранного кадра"><svg class="ui-icon" aria-hidden="true"><use href="#icon-seed"/></svg></button>
@@ -630,34 +637,85 @@
 
   <!-- Lightbox for fullscreen image viewing -->
   <div id="lightbox" class="lightbox" style="display: none;">
-    <button id="lightbox-close" class="lightbox-close" title="Закрыть (Esc)">&times;</button>
-    <button id="lightbox-prev" class="lightbox-nav-btn prev-btn" title="Предыдущее изображение (←)">&#10094;</button>
+    <button id="lightbox-close" class="lightbox-close" type="button" aria-label="Закрыть изображение" title="Закрыть (Esc)"><svg class="ui-icon" aria-hidden="true"><use href="#icon-close"/></svg></button>
+    <button id="lightbox-prev" class="lightbox-nav-btn prev-btn" type="button" aria-label="Предыдущее изображение" title="Предыдущее изображение (←)"><svg class="ui-icon" aria-hidden="true"><use href="#icon-chevron-left"/></svg></button>
     <div class="lightbox-content">
-      <img id="lightbox-img" src="" alt="Полноэкранный просмотр">
+      <div class="lightbox-track">
+        <img id="lightbox-prev-img" src="" alt="" aria-hidden="true">
+        <img id="lightbox-img" src="" alt="Полноэкранный просмотр">
+        <img id="lightbox-next-img" src="" alt="" aria-hidden="true">
+      </div>
     </div>
     <button id="lightbox-use-as-btn" class="lightbox-use-as" type="button" disabled aria-label="Использовать изображение как…" title="Использовать как портрет персонажа или обложку элемента библиотеки"><svg class="ui-icon" aria-hidden="true"><use href="#icon-person"/></svg></button>
     <button id="lightbox-favorite-btn" class="lightbox-favorite" type="button" disabled aria-label="Добавить в избранное" title="Добавить в избранное" aria-pressed="false"><svg class="ui-icon" aria-hidden="true"><use href="#icon-heart"/></svg></button>
-    <button id="lightbox-next" class="lightbox-nav-btn next-btn" title="Следующее изображение (→)">&#10095;</button>
+    <button id="lightbox-next" class="lightbox-nav-btn next-btn" type="button" aria-label="Следующее изображение" title="Следующее изображение (→)"><svg class="ui-icon" aria-hidden="true"><use href="#icon-chevron-right"/></svg></button>
   </div>
 
   <dialog id="model-import-dialog" class="app-dialog" aria-labelledby="model-import-title">
     <form id="model-import-form">
-      <h2 id="model-import-title" tabindex="-1" autofocus>Импорт в библиотеку</h2>
+      <h2 id="model-import-title" tabindex="-1" autofocus>Добавить в Prism</h2>
       <p id="import-filename"></p>
       <p id="import-status" role="status" aria-live="polite"></p>
-      <p id="import-model-summary"></p>
       <fieldset id="import-fields" disabled>
+        <section id="import-purpose">
+          <div class="import-purpose-heading"><strong id="import-purpose-name"></strong><button id="import-purpose-change" type="button" class="import-link" hidden>Изменить назначение</button></div>
+          <div id="import-purpose-picker" hidden><p>Что добавляет эта LoRA?</p><div id="import-purpose-options" role="group" aria-label="Назначение LoRA"></div></div>
+          <select id="import-content-type" data-native="true" hidden aria-label="Назначение LoRA"></select>
+        </section>
+        <section id="import-card-fields">
+          <div class="import-field"><label id="import-content-name-label" for="import-content-name">Название</label><input id="import-content-name" maxlength="200" required></div>
+          <div id="import-character-fields">
+            <div class="import-field import-universe-field"><label for="import-universe">Вселенная</label><input id="import-universe" maxlength="500" placeholder="Необязательно"></div>
+            <div class="import-field"><label for="import-appearance">Внешность</label><textarea id="import-appearance" placeholder="Лицо, волосы и другие особенности"></textarea></div>
+            <div class="import-field"><label for="import-outfit">Одежда</label><textarea id="import-outfit" placeholder="Начальный комплект одежды"></textarea></div>
+          </div>
+          <div class="import-field"><label for="import-trigger">Триггеры модели</label><input id="import-trigger" placeholder="Заполняются из файла, если указаны"></div>
+        </section>
+        <button id="import-attach" type="button" class="import-link" hidden></button>
+        <section id="import-target-fields" hidden><label id="import-target-label" for="import-entity-target"></label><select id="import-entity-target"></select><p id="import-target-note"></p><button id="import-create" type="button" class="import-link">Добавить отдельно</button></section>
+        <details id="import-technical"><summary>Параметры файла</summary>
+        <p id="import-model-summary"></p>
         <label for="import-kind">Тип файла</label>
         <select id="import-kind" required><option value="">Выберите тип</option><option value="loras">LoRA</option><option value="checkpoints">Checkpoint — полная модель</option><option value="diffusion_models">Diffusion model — отдельные веса</option></select>
         <label for="import-base">Базовая модель</label><span id="import-base-field"></span>
-        <label for="import-category">Раздел библиотеки</label><select id="import-category" required></select>
+        <select id="import-category" data-native="true" hidden aria-label="Категория файла"></select>
+        <p id="import-evidence"></p>
+        </details>
       </fieldset>
-      <details><summary>Что найдено в файле</summary><p id="import-evidence"></p></details>
       <p id="import-destination"></p>
       <progress id="import-progress" max="100" value="0" hidden aria-label="Загрузка файла"></progress>
-      <div class="dialog-actions"><button type="button" id="import-cancel">Отмена</button><button type="submit" id="import-save" class="dialog-primary" disabled>Сохранить в библиотеку</button></div>
+      <div class="dialog-actions"><button type="button" id="import-cancel">Отмена</button><button type="submit" id="import-save" class="dialog-primary" disabled>Добавить</button></div>
     </form>
   </dialog>
+  <main id="editor-view" class="image-editor" hidden aria-label="Редактор изображений">
+    <form id="edit-form" class="edit-form">
+      <div class="edit-heading"><span class="edit-eyebrow">Qwen 2.1</span><h2>Редактирование</h2><p>Измените фото по описанию или перенесите одежду с референса.</p></div>
+      <div class="edit-input-grid">
+        <section class="edit-input-card"><h3>Исходное фото</h3><label class="edit-upload" for="edit-source-file"><img id="edit-source-preview" hidden alt="Исходное фото"><span class="edit-upload-icon">＋</span><span id="edit-source-name">Выберите или перетащите фото</span><input id="edit-source-file" type="file" accept="image/png,image/jpeg,image/webp"></label><button id="edit-source-clear" type="button" class="edit-text-button" hidden>Убрать фото</button></section>
+        <section class="edit-input-card"><h3>Одежда / референс <span>необязательно</span></h3><label class="edit-upload" for="edit-reference-file"><img id="edit-reference-preview" hidden alt="Референс одежды"><span class="edit-upload-icon">＋</span><span id="edit-reference-name">Выберите или перетащите картинку</span><input id="edit-reference-file" type="file" accept="image/png,image/jpeg,image/webp"></label><button id="edit-reference-clear" type="button" class="edit-text-button" hidden>Убрать референс</button></section>
+      </div>
+      <label class="edit-label" for="edit-prompt">Что изменить</label>
+      <textarea id="edit-prompt" rows="5" maxlength="6000" placeholder="Например: переодень человека в тёмно-зелёный пиджак. Сохрани лицо, позу, освещение и фон."></textarea>
+      <div class="edit-examples" aria-label="Примеры инструкций"><button type="button" data-edit-example="clothing">Переодеть</button><button type="button" data-edit-example="background">Сменить фон</button><button type="button" data-edit-example="object">Убрать предмет</button></div>
+      <label class="edit-label" for="edit-stability-lora">LoRA стабильности</label>
+      <select id="edit-stability-lora" aria-describedby="edit-stability-hint"><option value="outfit-swap">Outfit Swap</option><option value="consistency" selected>Consistency</option></select>
+      <p id="edit-stability-hint" class="edit-caption">Сила 1,0 · Consistency — по умолчанию. Outfit Swap — альтернатива для переноса одежды.</p>
+      <label class="edit-label" for="edit-quality">Качество</label>
+      <select id="edit-quality"><option value="standard">Основной · около 1 Мп · 25 шагов</option><option value="draft">Черновик · небольшой размер · 8 шагов</option></select>
+      <div class="edit-local-control"><label><input type="checkbox" id="edit-local"> Менять только выделенную область</label><p>Остальная часть кадра сохраняется. Выделите одежду кистью на фото справа.</p></div>
+      <div id="edit-mask-tools" class="edit-mask-tools" hidden><label for="edit-brush-size">Кисть</label><input id="edit-brush-size" type="range" min="5" max="100" value="35"><button type="button" id="edit-mask-erase" aria-pressed="false">Ластик</button><button type="button" id="edit-mask-clear">Очистить выделение</button></div>
+      <details class="edit-advanced"><summary>Дополнительные настройки</summary><div class="edit-advanced-fields"><label for="edit-seed">Seed<input id="edit-seed" type="text" inputmode="numeric" placeholder="Случайный"></label><label for="edit-steps">Шаги<input id="edit-steps" type="number" min="1" max="50" placeholder="По качеству"></label></div></details>
+      <p id="edit-capability" class="edit-caption" role="status"></p>
+      <p id="edit-message" class="edit-message" role="status" aria-live="polite"></p>
+      <button type="submit" id="edit-submit" class="edit-primary">Изменить изображение</button>
+      <p class="edit-caption">Результат автоматически попадёт в галерею Prism. Без выделения возможны небольшие изменения во всём кадре.</p>
+    </form>
+    <section class="edit-output" aria-label="Предпросмотр редактирования">
+      <div class="edit-output-bar"><div class="edit-compare" role="group" aria-label="Сравнение"><button id="edit-show-source" type="button" aria-pressed="true">Исходник</button><button id="edit-show-result" type="button" aria-pressed="false" disabled>Результат</button></div><a id="edit-download" class="edit-download" download hidden>Скачать PNG</a></div>
+      <div class="edit-stage"><p id="edit-empty">Загрузите фото, чтобы начать</p><div id="edit-canvas-wrap" class="edit-canvas-wrap" hidden><img id="edit-stage-image" alt="Фото для редактирования"><canvas id="edit-mask-canvas" aria-label="Выделение области кистью" hidden></canvas></div><img id="edit-result-image" hidden alt="Результат редактирования"></div>
+      <div class="edit-output-footer"><p id="edit-result-info">Фото и результат остаются на этом компьютере.</p><button type="button" id="edit-use-result" class="edit-text-button" disabled>Продолжить редактирование</button></div>
+    </section>
+  </main>
   <script src="vendor-select.js"></script>
   <script src="vendor-tagify.js"></script>
   <script type="module" src="main.js"></script>

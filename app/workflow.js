@@ -34,6 +34,30 @@ function connectedWorkflow(graph, outputId) {
   return Object.fromEntries(Object.entries(graph).filter(([id]) => connected.has(id)));
 }
 
+const sharedPreparationTypes=new Set([
+  'CheckpointLoaderSimple','UNETLoader','CLIPLoader','VAELoader','UpscaleModelLoader',
+  'LoraLoader','LoraLoaderModelOnly','CLIPSetLastLayer','CLIPTextEncode',
+  'TextEncodeQwenImage21','QwenImage21Cache',
+]);
+
+function appendFrame(result, graph, prefix, shared) {
+  const mapped=new Map();
+  const append=id=>{
+    if(mapped.has(id))return mapped.get(id);
+    const node=graph[id];
+    const inputs=Object.fromEntries(Object.entries(node.inputs).map(([key,value])=>
+      [key,Array.isArray(value)&&Object.hasOwn(graph,value[0])?[append(value[0]),value[1]]:value]));
+    // Объединяем только одинаковую подготовку. Шум, обработка и сохранение каждого кадра независимы.
+    const signature=sharedPreparationTypes.has(node.class_type)?JSON.stringify([node.class_type,inputs]):null;
+    const target=signature&&shared.has(signature)?shared.get(signature):prefix+id;
+    mapped.set(id,target);
+    if(!Object.hasOwn(result,target))result[target]={...node,inputs};
+    if(signature)shared.set(signature,target);
+    return target;
+  };
+  for(const id of Object.keys(graph))append(id);
+}
+
 // Refine повторяет только второй Hires-проход над уже сохранённым кадром.
 export function compileRefineWorkflow(settings, source) {
   const width = numeric(source?.width, 0, 'Ширина исходника', 16, 16384, true);
@@ -63,14 +87,11 @@ export function compileWorkflow(settings) {
   const count = settings.batchCount ?? 1;
   if (!batchSizes.includes(count)) throw new Error('Количество изображений: 1, 4 или 9');
   if (count > 1) {
-    const result = {};
+    const result = {},shared=new Map();
     for (let index = 0; index < count; index++) {
       const graph = compileWorkflow(frameSettings(settings,index));
       const prefix = `frame_${index}_`;
-      for (const [id,node] of Object.entries(graph)) {
-        result[prefix+id] = {...node,inputs:Object.fromEntries(Object.entries(node.inputs).map(([key,value]) =>
-          [key,Array.isArray(value) && Object.hasOwn(graph,value[0]) ? [prefix+value[0],value[1]] : value]))};
-      }
+      appendFrame(result,graph,prefix,shared);
     }
     // Берём готовые кадры после всех обработок; размеры сетки равны сумме исходных пикселей.
     const frames = Array.from({length:count},(_,index)=>result[`frame_${index}_11`].inputs.images);
@@ -125,6 +146,7 @@ export function compileWorkflow(settings) {
   const isUpscaleEnabled = settings.upscaleToggle === true;
   const upscaleModelVal = settings.upscaleSelect;
   const isReactorEnabled = settings.reactorToggle === true;
+  if(settings.recipe==='qwen-image-2.1' && (isHiresEnabled||isFaceEnabled||isUpscaleEnabled||isReactorEnabled))throw new Error('Qwen 2.1: улучшения SDXL здесь не поддерживаются. Откройте результат в редакторе.');
   const reactorDetectionVal = settings.reactorDetection ?? 'retinaface_resnet50';
   const reactorRestoreVal = settings.reactorRestore ?? 'none';
   const reactorVisibilityValNum = numeric(settings.reactorVisibility, 1, 'Face visibility', 0, 1);
@@ -225,6 +247,7 @@ export function compileWorkflow(settings) {
     positivePrompt += (positivePrompt.trim() ? ", " : "") + loraDescriptions.join(", ");
   }
 
+  const qwen=settings.recipe==='qwen-image-2.1';
   graph["5"] = {
     "class_type": "CLIPTextEncode",
     "inputs": {
@@ -240,6 +263,13 @@ export function compileWorkflow(settings) {
       "text": negativePromptBase
     }
   };
+  const positiveLink=['5',0];
+  let negativeLink=['6',0];
+  if(qwen) {
+    graph['5']={class_type:'TextEncodeQwenImage21',inputs:{clip:lastClipLink,prompt:positivePrompt,negative_prompt:negativePromptBase,resolution:1024}};
+    delete graph['6'];
+    negativeLink=['5',1];
+  }
   
   graph["4"] = {
     "class_type": "EmptyLatentImage",
@@ -255,8 +285,8 @@ export function compileWorkflow(settings) {
     "class_type": "KSampler",
     "inputs": {
       "model": lastModelLink,
-      "positive": ["5", 0],
-      "negative": ["6", 0],
+      "positive": positiveLink,
+      "negative": negativeLink,
       "latent_image": lastLatentLink,
       "seed": seed,
             "steps": stepsValNum,
@@ -269,7 +299,7 @@ export function compileWorkflow(settings) {
   
   if (variationStrength > 0) {
     graph.variation_noise = {class_type:'PrismVariationNoise',inputs:{seed,variation_seed:variationSeed,strength:variationStrength}};
-    graph.variation_guider = {class_type:'CFGGuider',inputs:{model:lastModelLink,positive:['5',0],negative:['6',0],cfg:cfgValNum}};
+    graph.variation_guider = {class_type:'CFGGuider',inputs:{model:lastModelLink,positive:positiveLink,negative:negativeLink,cfg:cfgValNum}};
     graph.variation_sampler = {class_type:'KSamplerSelect',inputs:{sampler_name:samplerVal}};
     graph.variation_schedule = {class_type:'BasicScheduler',inputs:{model:lastModelLink,scheduler:schedulerVal,steps:stepsValNum,denoise:1.0}};
     graph['7'] = {class_type:'SamplerCustomAdvanced',inputs:{noise:['variation_noise',0],guider:['variation_guider',0],sampler:['variation_sampler',0],sigmas:['variation_schedule',0],latent_image:lastLatentLink}};
@@ -330,8 +360,8 @@ export function compileWorkflow(settings) {
       "class_type": "KSampler",
       "inputs": {
         "model": lastModelLink,
-        "positive": ["5", 0],
-        "negative": ["6", 0],
+        "positive": positiveLink,
+        "negative": negativeLink,
         "latent_image": ["34", 0],
         "seed": seed,
                 "steps": stepsValNum,
@@ -352,6 +382,7 @@ export function compileWorkflow(settings) {
       "vae": lastVaeLink
     }
   };
+  if(qwen)graph['8']={class_type:'VAEDecodeTiled',inputs:{samples:[lastLatentNode,0],vae:lastVaeLink,tile_size:512,overlap:64,temporal_size:64,temporal_overlap:8}};
   
   let lastImageNode = "8";
   
@@ -428,8 +459,8 @@ export function compileWorkflow(settings) {
         "wildcard": "",
         "cycle": 1,
         "bbox_detector": ["9", 0],
-        "positive": ["5", 0],
-        "negative": ["6", 0]
+        "positive": positiveLink,
+        "negative": negativeLink
       }
     };
     

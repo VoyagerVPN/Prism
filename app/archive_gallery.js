@@ -15,19 +15,46 @@ export {generationFromHistory, selectedOutputImage} from './result_catalog.js';
 
 let archiveItems = [];
 let archiveOperations = [];
+let operationsById = new Map();
 let activeFilter = 'all';
 const activeBooruTags = new Map();
 const PREVIEW_SIZE_KEY = 'prism.galleryPreviewSize.v1';
 
-function setAppView(view) {
+export function setAppView(view) {
   document.body.dataset.appView = view;
   document.getElementById('generation-view').hidden = view !== 'generation';
   document.getElementById('gallery-view').hidden = view !== 'gallery';
+  const editor=document.getElementById('editor-view');
+  if(editor)editor.hidden=view!=='editor';
   for (const button of document.querySelectorAll('#app-nav [data-app-view]')) {
     const active = button.dataset.appView === view;
     button.setAttribute('aria-selected', String(active));
     button.setAttribute('aria-pressed', String(active));
     button.tabIndex = active ? 0 : -1;
+  }
+  window.dispatchEvent(new window.CustomEvent('prism-view-change',{detail:view}));
+}
+
+const boundNavButtons = new WeakSet();
+
+export function initAppNavigation() {
+  const viewButtons = [...document.querySelectorAll('#app-nav [data-app-view]')];
+  for (const button of viewButtons) {
+    if(boundNavButtons.has(button))continue;
+    boundNavButtons.add(button);
+    button.addEventListener('click', () => setAppView(button.dataset.appView));
+    button.addEventListener('keydown', event => {
+      const current = viewButtons.indexOf(button);
+      let next = null;
+      if (event.key === 'ArrowLeft') next = viewButtons[(current - 1 + viewButtons.length) % viewButtons.length];
+      if (event.key === 'ArrowRight') next = viewButtons[(current + 1) % viewButtons.length];
+      if (event.key === 'Home') next = viewButtons[0];
+      if (event.key === 'End') next = viewButtons.at(-1);
+      if (!next) return;
+      event.preventDefault();
+      setAppView(next.dataset.appView);
+      next.focus();
+    });
   }
 }
 
@@ -40,7 +67,7 @@ function booruKey(kind, label) {
 }
 
 function operationForItem(item) {
-  return archiveOperations.find(operation => operation.id === item.operationId);
+  return operationsById.get(item.operationId);
 }
 
 function settingsForItem(item) {
@@ -185,7 +212,8 @@ function cardFor(item) {
   const description = document.createElement('span'); description.className = 'archive-description';
   const caption = document.createElement('span'); caption.className = 'archive-caption'; caption.textContent = kind === 'grid' ? `Сетка из ${item.childIds?.length ?? 0} кадров` : characters.map(value => value.name).join(' + ') || 'Без персонажа';
   const origin = document.createElement('span'); origin.className = 'archive-origin';
-  origin.textContent = operation?.sourceArtIds?.length ? `${operation.kind === 'refine' ? 'Refine' : operation.kind} · из исходника` : '';
+  const operationLabel=operation?.kind==='refine'?'Refine':operation?.kind==='image-edit'?'Редактирование':'Генерация';
+  origin.textContent = operation?.sourceArtIds?.length ? `${operationLabel} · из исходника` : '';
   origin.hidden = !origin.textContent;
   description.append(caption, origin);
   const continueButton = document.createElement('button'); continueButton.type = 'button'; continueButton.className = 'archive-continue';
@@ -217,6 +245,7 @@ function cardFor(item) {
 }
 
 export function renderArchiveGallery() {
+  operationsById = new Map(archiveOperations.map(operation => [operation.id, operation]));
   renderBooruPanel();
   for (const button of document.querySelectorAll('[data-gallery-filter]')) button.setAttribute('aria-pressed', String(button.dataset.galleryFilter === activeFilter));
   const grid = document.getElementById('archive-grid'), items = visibleItems();
@@ -236,22 +265,7 @@ export async function initArchiveGallery({fetchImpl = globalThis.fetch, migrate 
   configureGalleryCatalog({fetchImpl, imageToUrl: imageUrl});
   const compactGallery = Boolean(globalThis.matchMedia?.('(max-width: 1100px)').matches);
   document.querySelector('.archive-booru').open = !compactGallery;
-  const viewButtons = [...document.querySelectorAll('#app-nav [data-app-view]')];
-  for (const button of viewButtons) {
-    button.addEventListener('click', () => setAppView(button.dataset.appView));
-    button.addEventListener('keydown', event => {
-      const current = viewButtons.indexOf(button);
-      let next = null;
-      if (event.key === 'ArrowLeft') next = viewButtons[(current - 1 + viewButtons.length) % viewButtons.length];
-      if (event.key === 'ArrowRight') next = viewButtons[(current + 1) % viewButtons.length];
-      if (event.key === 'Home') next = viewButtons[0];
-      if (event.key === 'End') next = viewButtons.at(-1);
-      if (!next) return;
-      event.preventDefault();
-      setAppView(next.dataset.appView);
-      next.focus();
-    });
-  }
+  initAppNavigation();
   for (const button of document.querySelectorAll('[data-gallery-filter]')) button.addEventListener('click', () => { activeFilter = button.dataset.galleryFilter; renderArchiveGallery(); });
   document.getElementById('archive-tag-search').addEventListener('input', renderBooruPanel);
   document.getElementById('archive-tags-clear').addEventListener('click', () => { activeBooruTags.clear(); renderArchiveGallery(); });
@@ -264,7 +278,7 @@ export async function initArchiveGallery({fetchImpl = globalThis.fetch, migrate 
   await loadGalleryCatalog();
   archiveItems = galleryCatalogItems();
   archiveOperations = galleryCatalogOperations();
-  renderArchiveGallery(); setAppView('generation');
+  renderArchiveGallery(); setAppView(document.body.dataset.appView || 'generation');
   if (migrate) {
     for (const item of legacyHistory) await register(item);
   }

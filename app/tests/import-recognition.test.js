@@ -7,7 +7,7 @@ import {setupModelImport} from '../import.js';
 test('Неизвестная база вводится своим именем; следующий импорт предлагает только сохранённые базы',async()=>{
   const dom=new JSDOM(await readFile(new URL('../index.html',import.meta.url),'utf8'),{url:'http://localhost/'});
   const {window}=dom,doc=window.document,keys=['document','window','Option','FormData','XMLHttpRequest','fetch'],originals=Object.fromEntries(keys.map(key=>[key,globalThis[key]]));
-  const sent=[],known=[],lookups=[];
+  const sent=[],known=[],lookups=[];let content={};
   class Upload {
     upload={};
     open(){}
@@ -17,6 +17,7 @@ test('Неизвестная база вводится своим именем; 
   window.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new window.Event('close'));};
   Object.assign(globalThis,{document:doc,window,Option:window.Option,FormData:window.FormData,XMLHttpRequest:Upload,fetch:async(url,options={})=>{
     if(url==='/prism/lora-library/lookup'){lookups.push(JSON.parse(options.body));return Response.json({title:'Test',metadataStatus:'complete',warning:''});}
+    if(url==='/prism/content'){if(options.method==='POST')content=JSON.parse(options.body).content;return Response.json({content,revision:'r1'});}
     return Response.json({kind:'loras',base:null,category:null,categories:['Character','Other'],bases:[...known],trainingModel:'',evidence:{}});
   }});
   const waitFor=async predicate=>{for(let step=0;step<30&&!predicate();step++)await new Promise(resolve=>setTimeout(resolve,0));assert.ok(predicate());};
@@ -27,23 +28,26 @@ test('Неизвестная база вводится своим именем; 
     doc.querySelector('#model-import-file').dispatchEvent(new window.Event('change'));
   };
   try{
-    setupModelImport(async()=>{});open();await waitFor(()=>!doc.querySelector('#import-save').disabled);
+    setupModelImport(async()=>{});open();await waitFor(()=>!doc.querySelector('#import-fields').disabled);
     const base=doc.querySelector('#import-base');
     assert.equal(base.tagName,'INPUT','Тот же редактируемый селектор, что в библиотеке');
     assert.equal(base.value,'');assert.equal(sent.length,0,'Неизвестную базу не выбираем сами');
-    assert.equal(doc.querySelector('#import-category').value,'Other','Backend сохраняет совместимую папку для неразобранного источника');
-    assert.equal(doc.querySelector('#import-entity-mode').value,'inbox','Неразобранный источник остаётся во входящих до настройки');
+    assert.equal(doc.querySelector('#import-save').disabled,true);
+    assert.equal(doc.querySelector('#import-purpose-picker').hidden,false);
+    doc.querySelector('[data-import-type="Style"]').click();
     base.value='Illustrious';base.dispatchEvent(new window.Event('change'));
     doc.querySelector('#import-save').click();await waitFor(()=>sent.length===1&&lookups.length===1&&!doc.querySelector('#import-cancel').disabled);
-    assert.deepEqual(sent[0],{base:'Illustrious',category:'Other',civitai:null},'Сеть Civitai не блокирует сохранение файла');
+    assert.deepEqual(sent[0],{base:'Illustrious',category:'Style',civitai:null},'Сеть Civitai не блокирует сохранение файла');
     assert.deepEqual(lookups[0],{name:'Other/Illustrious/test.safetensors'});
-    assert.match(doc.querySelector('#import-status').textContent,/Метаданные CivitAI загружены/);
-    doc.querySelector('#import-cancel').click();open();await waitFor(()=>!doc.querySelector('#import-save').disabled);
+    await waitFor(()=>!doc.querySelector('#model-import-dialog').open);
+    doc.querySelector('#import-cancel').click();open();await waitFor(()=>!doc.querySelector('#import-fields').disabled);
     doc.querySelector('[aria-label="Выбрать: Базовая модель"]').click();
     assert.deepEqual([...doc.querySelectorAll('#import-base-options [role="option"]')].map(option=>option.textContent),['Illustrious']);
     doc.querySelector('#import-base-options [role="option"]').click();
     assert.equal(base.value,'Illustrious');assert.equal(sent.length,1,'Выбор базы не запускает импорт до подтверждения');
-    assert.equal(doc.querySelector('#import-destination').textContent,'Источник будет добавлен в библиотеку.');
+    doc.querySelector('[data-import-type="Style"]').click();
+    doc.querySelector('#import-content-name').value='Другой стиль';
+    assert.match(doc.querySelector('#import-destination').textContent,/карточка в библиотеке/);
     window.localStorage.setItem('prism_preferences_v1',JSON.stringify({autoCivitaiMetadata:false}));
     doc.querySelector('#import-save').click();await waitFor(()=>sent.length===2&&!doc.querySelector('#import-cancel').disabled);
     assert.equal(sent[1].civitai,null,'Настройка метаданных не меняет контракт загрузки файла');

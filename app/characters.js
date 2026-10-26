@@ -95,6 +95,15 @@ export function getSavedCharacters() {
   return db;
 }
 
+export function getCharacterUniverses(current='') {
+  const universes=new Map();
+  for(const value of [current,...Object.values(characters).map(character=>character.universe)]){
+    const text=value?.trim(),key=text?.toLocaleLowerCase('ru');
+    if(text&&!universes.has(key))universes.set(key,text);
+  }
+  return [...universes.values()].sort((a,b)=>a.localeCompare(b,'ru'));
+}
+
 export async function persistImportedCharacter(intent) {
   const sourceName=intent?.source?.name;
   if(typeof sourceName!=='string'||!sourceName.trim())throw new Error('Импортированный источник не содержит backend-имя.');
@@ -108,10 +117,12 @@ export async function persistImportedCharacter(intent) {
   }else if(intent.action==='create'){
     name=typeof intent.name==='string'?intent.name.trim():'';
     if(!name||name.length>200)throw new Error('Укажите имя нового персонажа.');
-    if(Object.hasOwn(db,name))throw new Error(`Персонаж «${name}» уже существует. Выберите «Привязать к существующей».`);
+    if(Object.hasOwn(db,name))throw new Error(`Персонаж «${name}» уже существует. Измените имя или выберите его для подключения модели.`);
+    const appearance=String(intent.appearance??''),outfit=String(intent.outfit??'');
     db[name]={
-      name,lora:sourceName,strength:1,appearance:'',appearances:{'По умолчанию':''},activeAppearanceName:'По умолчанию',
-      outfits:{'По умолчанию':''},activeOutfitName:'По умолчанию',outfitEnabled:true,
+      name,universe:String(intent.universe??''),lora:sourceName,strength:1,trigger:String(intent.trigger??''),
+      appearance,appearances:{'По умолчанию':appearance},activeAppearanceName:'По умолчанию',
+      outfits:{'По умолчанию':outfit},activeOutfitName:'По умолчанию',outfitEnabled:true,
     };
   }else throw new Error('Неизвестное действие с импортированным персонажем.');
   const selected=document.getElementById('character-select')?.value??'none';

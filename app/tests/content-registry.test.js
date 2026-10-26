@@ -76,3 +76,17 @@ test('attach может материализовать существующую 
     assert.equal(second.entities[0].bindings.filter(binding=>binding.kind==='lora').length,1);
   }finally{globalThis.fetch=originalFetch;}
 });
+
+test('триггеры импортированного стиля сохраняются и используют совместимый рецепт Qwen',async()=>{
+  const originalFetch=globalThis.fetch;let document={content:{},revision:null};
+  globalThis.fetch=async (_url,options={})=>{
+    if(options.method==='POST')document={content:JSON.parse(options.body).content,revision:'saved'};
+    return Response.json(document);
+  };
+  try{
+    const {loadContentRegistry,persistContentImport}=await import('../content_registry.js');await loadContentRegistry({force:true});
+    const {entity}=await persistContentImport({action:'create',contentType:'Style',name:'Тушь',base:'Qwen Image 2.1',trigger:'ink, monochrome',source:{name:'Style/Qwen/ink.safetensors'}});
+    assert.deepEqual(entity.bindings.find(binding=>binding.kind==='prompt').positive,['ink, monochrome']);
+    assert.deepEqual(entity.bindings.find(binding=>binding.kind==='lora').compatibleRecipes,['qwen-image-2.1']);
+  }finally{globalThis.fetch=originalFetch;}
+});

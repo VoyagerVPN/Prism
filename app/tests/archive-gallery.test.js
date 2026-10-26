@@ -37,8 +37,10 @@ test('Отдельная галерея фильтрует арты по пер�
     assert.equal(document.body.dataset.appView, 'generation');
     assert.strictEqual(document.activeElement, generationTab);
     generationTab.dispatchEvent(new dom.window.KeyboardEvent('keydown', {key: 'End', bubbles: true, cancelable: true}));
-    assert.equal(document.body.dataset.appView, 'gallery');
-    assert.strictEqual(document.activeElement, galleryTab);
+    const editorTab=document.querySelector('#app-nav [data-app-view="editor"]');
+    assert.equal(document.body.dataset.appView, 'editor');
+    assert.strictEqual(document.activeElement, editorTab);
+    editorTab.dispatchEvent(new dom.window.KeyboardEvent('keydown', {key: 'ArrowLeft', bubbles: true, cancelable: true}));
     galleryTab.dispatchEvent(new dom.window.KeyboardEvent('keydown', {key: 'Home', bubbles: true, cancelable: true}));
     assert.strictEqual(document.activeElement, generationTab);
     generationTab.dispatchEvent(new dom.window.KeyboardEvent('keydown', {key: 'ArrowRight', bubbles: true, cancelable: true}));
@@ -55,6 +57,15 @@ test('Отдельная галерея фильтрует арты по пер�
     document.querySelector('[data-gallery-filter="art"]').click();
     assert.deepEqual([...document.querySelectorAll('.archive-card')].map(card => card.dataset.galleryId), ['alice', 'bob', 'plain']);
     document.querySelector('[data-gallery-filter="all"]').click();
+    const lightboxStyle = document.createElement('style');
+    lightboxStyle.textContent = await readFile(new URL('../index.css', import.meta.url), 'utf8');
+    document.head.append(lightboxStyle);
+    document.querySelector('[data-gallery-id="bob"] .archive-image').click();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.match(document.getElementById('lightbox-img').src, /filename=bob.png/, 'Нажатый арт назначен центральным кадром');
+    assert.match(document.getElementById('lightbox-prev-img').src, /filename=alice.png/);
+    assert.equal(dom.window.getComputedStyle(document.querySelector('.lightbox-content')).alignItems, 'flex-start', 'Лента начинается от левого края, поэтому в центре виден нажатый кадр');
+    document.getElementById('lightbox-close').click();
     assert.equal(document.querySelector('[data-gallery-id="alice"] .archive-favorite-marker').hidden, false);
     assert.equal(document.querySelector('[data-gallery-id="bob"] .archive-favorite-marker').hidden, true);
     assert.equal(document.querySelector('[data-booru-kind="tag"][data-booru-label="blue eyes"] .archive-tag-count').textContent, '2');

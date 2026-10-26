@@ -3,7 +3,7 @@ import { selectCharacterVariant, toggleCharacterVariantLink, renameCharacterVari
 import { createEditableChoice } from './editable_choice.js';
 import { serializePrism } from './character_format.js';
 import { askConfirm } from './dialogs.js';
-import { getSavedCharacters, saveCharactersDatabase, activateCharacter, renderCharacterSelect, loadCharacterData } from './characters.js';
+import { getSavedCharacters, getCharacterUniverses, saveCharactersDatabase, activateCharacter, renderCharacterSelect, loadCharacterData } from './characters.js';
 import {setPromptCharacterActions,syncPromptCharacter} from './prompt_editor.js';
 import {askText} from './dialogs.js';
 import {readPreferences} from './preferences.js';
@@ -89,11 +89,10 @@ export function openCharacterSetup(item, previousName='', onSaved=()=>{}, librar
   const identity=name.closest('section');
   identity.classList.add('profile-identity');
   const universeLabel=make('label','Вселенная');
-  const universes=new Map();
-  for(const value of [draft.universe,...Object.values(getSavedCharacters()).map(character=>character.universe)]){const text=value?.trim();if(text&&!universes.has(text.toLocaleLowerCase('ru')))universes.set(text.toLocaleLowerCase('ru'),text);}
+  const universes=getCharacterUniverses(draft.universe);
   const universeChoice=createEditableChoice({id:'profile-character-universe',label:'Вселенная',placeholder:'Укажите вселенную',maxLength:500,filter:true,onEnter:saveOnEnter,
     readName:()=>draft.universe||'',commitName:value=>{if(value.length>500)return false;draft.universe=value;return true;},
-    options:()=>[...universes.values()].sort((a,b)=>a.localeCompare(b,'ru')).map(value=>({value,label:value,selected:value===draft.universe})),choose:value=>{draft.universe=value;}});
+    options:()=>universes.map(value=>({value,label:value,selected:value===draft.universe})),choose:value=>{draft.universe=value;}});
   choices.push(universeChoice);const universe=universeChoice.input;universeLabel.append(universeChoice.root);
   const descriptionLabel=make('label','Описание персонажа'),description=document.createElement('textarea');description.id='profile-character-description';description.placeholder='Заметки о персонаже (не добавляются в промпт)';description.value=draft.description||'';descriptionLabel.append(description);
   identity.append(universeLabel,descriptionLabel);

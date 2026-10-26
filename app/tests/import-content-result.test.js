@@ -33,14 +33,18 @@ test('импорт возвращает намерение привязать и
     Object.defineProperty(doc.querySelector('#model-import-file'),'files',{value:[file],configurable:true});
     doc.querySelector('#model-import-file').dispatchEvent(new window.Event('change'));
     await waitFor(()=>!doc.querySelector('#import-save').disabled);
-    const mode=doc.querySelector('#import-entity-mode'),target=doc.querySelector('#import-entity-target'),contentType=doc.querySelector('#import-content-type');
-    assert.deepEqual([...mode.options].map(option=>option.textContent),['Создать новую сущность','Привязать к существующей','Оставить во входящих']);
-    assert.deepEqual([...contentType.options].map(option=>option.value),['Character','Concept','Style','Pose','Clothing','Object','Background','Effect','Processing']);
-    mode.value='attach';mode.dispatchEvent(new window.Event('change'));
-    assert.equal(target.hidden,false);assert.deepEqual([...target.options].map(option=>option.textContent),['Мягкий стиль']);assert.equal(contentType.value,'Style');
+    const target=doc.querySelector('#import-entity-target'),contentType=doc.querySelector('#import-content-type');
+    assert.equal(doc.querySelector('#model-import-title').textContent,'Добавить стиль');
+    assert.equal(doc.querySelector('#import-entity-mode'),null);
+    doc.querySelector('#import-attach').click();
+    assert.equal(doc.querySelector('#import-target-fields').hidden,false);
+    assert.deepEqual([...target.options].map(option=>option.textContent),['Выберите…','Мягкий стиль']);
+    assert.equal(doc.querySelector('#import-save').disabled,true,'Карточку нужно выбрать явно');
+    target.value='style:soft';target.dispatchEvent(new window.Event('change'));
+    assert.equal(contentType.value,'Style');
     doc.querySelector('#import-save').click();await waitFor(()=>result);
     assert.equal(uploads[0].category,'Style','старый upload API получает совместимую backend-категорию');
-    assert.deepEqual(result,{action:'attach',contentType:'Style',targetId:'style:soft',source:{name:'Style/Illustrious/soft.safetensors',path:'Lora/Style/Illustrious/soft.safetensors'}});
+    assert.deepEqual({action:result.action,contentType:result.contentType,targetId:result.targetId,source:result.source},{action:'attach',contentType:'Style',targetId:'style:soft',source:{name:'Style/Illustrious/soft.safetensors',path:'Lora/Style/Illustrious/soft.safetensors'}});
     assert.equal(contentWrites.length,1,'назначение сохраняется в серверном content.json');
     assert.deepEqual(contentWrites[0].content['style:soft'].bindings.map(binding=>binding.kind),['prompt','lora']);
   }finally{Object.assign(globalThis,originals);dom.window.close();}

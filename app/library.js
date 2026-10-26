@@ -352,6 +352,7 @@ function semanticId(type, label) {
 }
 
 function sourceRecipe(item) {
+  if(/qwen.*2[._ -]?1/i.test(item.base??''))return 'qwen-image-2.1';
   return /anima/i.test(item.base??'')?'anima':'checkpoint';
 }
 
@@ -372,7 +373,8 @@ function catalogEntities() {
     for(const binding of sourceBindings)claimedSources.add(binding.name.replaceAll('\\','/'));
     const compatible=sourceBindings.find(binding=>!binding.compatibleRecipes||binding.compatibleRecipes.includes(modelRecipe));
     const item=bySource.get((compatible??sourceBindings[0])?.name.replaceAll('\\','/'))??unavailableItem(content);
-    descriptors.push({kind:'content',type:content.type,item,view:{...item,title:content.name},bindings:content.bindings,identity:content.id,content,unavailable:item.unavailable===true});
+    const triggers=content.bindings.filter(binding=>binding.kind==='prompt').flatMap(binding=>binding.positive);
+    descriptors.push({kind:'content',type:content.type,item,view:{...item,title:content.name,category:content.type,triggers},bindings:content.bindings,identity:content.id,content,unavailable:item.unavailable===true});
   }
   for(const item of items){
     if(claimedSources.has(item.name.replaceAll('\\','/')))continue;
@@ -404,7 +406,7 @@ function render() {
   const grid=$('lora-library-grid');grid.replaceChildren();
   for(const entity of visible) {
     const {kind,item,view}=entity;
-    const actionItem=kind==='content'?{...item,title:view.title}:item;
+    const actionItem=kind==='content'?view:item;
     const legacyEntity=kind==='content'?(entity.type==='Character'?'character-source':'lora'):kind;
     const card=node('article','','library-card');card.dataset.name=item.name;card.dataset.libraryEntity=legacyEntity;card.dataset.contentType=entity.type;card.dataset.contentId=entity.content?.id??'';card.dataset.metadataStatus=item.metadataStatus??'idle';
     const open=node('button','','library-open');open.type='button';open.setAttribute('aria-label',`Подробнее: ${view.title}`);open.onclick=()=>showDetails(actionItem,kind==='character'?entity.name:undefined);open.append(preview(view));
@@ -512,6 +514,19 @@ export async function loadLoraLibrary() {
       const existing=getSavedCharacters()[name];
       showDetails(item||itemForCharacter(existing||{lora,name:'Новый персонаж'}),name);
 
+    });
+    window.addEventListener('prism-import-completed',event=>{
+      const result=event.detail;if(result.modelKind!=='loras')return;
+      window.dispatchEvent(new Event('show-content-settings'));
+      document.querySelector('[data-mobile-panel="settings"]')?.click();
+      $('lora-library-search').value='';$('lora-library-base').value='all';category=result.contentType;
+      syncFilters();render();root.scrollIntoView({block:'start'});
+      const character=getSavedCharacters()[result.characterName];
+      if(character)showDetails(itemForCharacter(character),result.characterName);
+      else {
+        const entity=semanticEntities.find(entity=>entity.content?.id===result.contentId);
+        if(entity)showDetails(entity.view);
+      }
     });
     const dialog=document.createElement('dialog');dialog.id='lora-library-details';dialog.className='app-dialog';dialog.setAttribute('aria-labelledby','library-detail-title');document.body.append(dialog);makeDialogBackdropDismissible(dialog);
     $('lora-library-search').addEventListener('input',render);$('lora-library-base').addEventListener('change',render);

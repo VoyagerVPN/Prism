@@ -6,7 +6,6 @@
   const transfer = new DataTransfer();
   transfer.items.add(new File([prefix, header, new Uint8Array(4)], 'test.safetensors'));
   const dropzone = document.querySelector('#model-import-open');
-  document.querySelector('#settings-tab-image').click();
   if (!dropzone?.closest('.section-card')?.querySelector('#lora-stack-container')) throw new Error('Импорт должен находиться в блоке LoRA');
   const hint = document.querySelector('#model-import-drop');
   const card = dropzone.closest('.section-card');
@@ -28,7 +27,8 @@
   for (let i = 0; i < 100 && document.querySelector('#import-kind').value !== 'loras'; i++) await new Promise(resolve => setTimeout(resolve, 50));
   if (document.querySelector('#import-base').value !== '') throw new Error('Без метаданных база должна быть пустой');
   if (document.querySelector('#import-base').tagName !== 'INPUT') throw new Error('Базу должно быть можно вписать');
-  if (document.querySelector('#import-category').value !== 'Other') throw new Error('Для файла без назначения выбран раздел Прочее');
+  if (document.querySelector('#import-purpose-picker').hidden) throw new Error('Для файла без назначения нужен явный выбор');
+  if (!document.querySelector('#import-save').disabled) throw new Error('Неизвестное назначение не должно сохраняться автоматически');
   document.querySelector('#import-cancel').click();
   if (dialog.open) throw new Error('Отмена не закрыла импорт');
   return 'Drop распознаёт LoRA, предлагает вписать неизвестную базу; отмена не сохраняет файл';

@@ -246,22 +246,38 @@ body .ts-dropdown input.dropdown-input:focus { border-color:#343b47; outline:non
 @media(max-width:1100px), (pointer:coarse) {
   :root { --action-height:44px; --action-icon:44px; --format-height:56px; }
 }
-body button:not(:where(.library-open,.library-category-button,.gallery-thumb,.archive-image,.archive-tag,.archive-selected-tag,.archive-tags-clear,.batch-thumb,.batch-grid button,.format-action,.res-btn,.format-add)) {
+body button:not(:where(.library-open,.library-category-button,.gallery-thumb,.archive-image,.archive-tag,.archive-selected-tag,.archive-tags-clear,.batch-thumb,.batch-grid button,.format-action,.res-btn,.format-add,.lightbox-close,.lightbox-nav-btn,.lightbox-favorite,.lightbox-use-as)) {
   min-height:var(--action-height) !important; height:auto !important;
   padding:5px 9px !important; font-size:12px !important; line-height:16px;
   border-radius:6px; gap:5px;
 }
-body button:is(.icon-btn-sm,.library-add-icon,.library-copy,.library-update,.delete-lora-btn,.control-btn,.image-clear-btn,.lightbox-nav-btn),
+body button:is(.icon-btn-sm,.library-add-icon,.library-copy,.library-update,.delete-lora-btn,.control-btn,.image-clear-btn),
 body .seed-input-container .seed-btn {
   width:var(--action-icon) !important; min-width:var(--action-icon) !important;
   height:var(--action-icon) !important; min-height:var(--action-icon) !important; padding:0 !important;
 }
-body button:is(.lightbox-favorite,.lightbox-use-as) { width:44px !important; min-width:44px !important; height:44px !important; min-height:44px !important; padding:0 !important; }
 body .header-preview-btn,
 body .header-actions :is(.generate-btn,.interrupt-btn) { height:36px !important; min-height:36px !important; }
 body .header-preview-btn { padding:0 12px !important; }
 @media(max-width:1100px), (pointer:coarse) {
   body #mobile-generation-controls :is(.header-preview-btn,.generate-btn,.interrupt-btn) { height:44px !important; min-height:44px !important; }
+}
+@media(max-width:1100px) {
+  body .canvas-container .viewer-controls {
+    left:8px; right:8px; width:auto;
+    flex-wrap:wrap; justify-content:flex-end; gap:4px;
+  }
+  body .canvas-container .viewer-controls > button.control-btn,
+  body .canvas-container .viewer-controls > .metadata-bar > summary.control-btn {
+    width:36px !important; min-width:36px !important;
+    height:36px !important; min-height:36px !important; padding:0 !important;
+  }
+  body .canvas-container .viewer-controls > .metadata-bar { width:36px; height:36px; }
+}
+@media(max-width:389px) {
+  body .canvas-container .viewer-controls {
+    display:grid; grid-template-columns:repeat(5,36px); justify-content:end;
+  }
 }
 body button .ui-icon { width:16px; height:16px; }
 body #output-settings-card .res-btn,body #output-settings-card .format-add {

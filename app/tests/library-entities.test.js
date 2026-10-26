@@ -5,11 +5,13 @@ import {JSDOM} from 'jsdom';
 
 
 test('вкладка персонажей показывает профили, а остальные категории — LoRA', async () => {
-  const dom=new JSDOM(await readFile(new URL('../index.html',import.meta.url),'utf8'),{url:'http://localhost/prism/'});
+  const dom=new JSDOM(await readFile(new URL('../index.html',import.meta.url),'utf8'),{url:'http://localhost/prism/',runScripts:'outside-only',pretendToBeVisual:true});
+  dom.window.eval(await readFile(new URL('../vendor-tagify.js',import.meta.url),'utf8'));
   const keys=['window','document','CustomEvent','Event','Option','MutationObserver','localStorage','fetch'];
   const originals=Object.fromEntries(keys.map(key=>[key,globalThis[key]]));
   for(const key of keys.filter(key=>key!=='fetch'))globalThis[key]=key==='window'?dom.window:dom.window[key];
   dom.window.HTMLElement.prototype.scrollIntoView=function(){};
+  dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
   const loras=[
     {name:'Character/haaru.safetensors',title:'Haaru',category:'Character',base:'Illustrious',version:'v1',author:'Автор',tags:[],triggers:['haaru'],preview:'/haaru.webp',cover:null,images:[],description:'',url:''},
     {name:'Character/toriel.safetensors',title:'Toriel LoRA',category:'Character',base:'Illustrious',version:'v1',author:'',tags:[],triggers:['toriel'],preview:'/toriel.webp',cover:null,images:[],description:'',url:''},
@@ -50,5 +52,8 @@ test('вкладка персонажей показывает профили, �
     assert.match(document.getElementById('lora-library-categories').textContent,/Персонажи · 4/);
     document.querySelector('[data-category="Character"]').click();
     assert.deepEqual([...document.querySelectorAll('.library-card')].map(card=>card.dataset.libraryEntity),['character','character','character','character-source']);
+    window.dispatchEvent(new CustomEvent('prism-import-completed',{detail:{modelKind:'loras',contentType:'Character',characterName:'Undyne'}}));
+    assert.equal(document.querySelector('#lora-library-details').open,true,'Завершение импорта открывает сохранённую карточку');
+    assert.match(document.querySelector('#library-detail-title').textContent,/Undyne/);
   }finally{document.body.replaceChildren();(await import('../controls.js')).syncSelectControls();Object.assign(globalThis,originals);dom.window.close();}
 });

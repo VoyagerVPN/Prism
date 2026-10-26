@@ -1,0 +1,842 @@
+{
+  "id": "f58306ad-304a-4bfa-8b68-9c9c2af01939",
+  "revision": 0,
+  "last_node_id": 14,
+  "last_link_id": 16,
+  "nodes": [
+    {
+      "type": "UNETLoader",
+      "inputs": [],
+      "widgets_values": [
+        "qwen_image_2.1_int8_convrot.safetensors",
+        "default"
+      ],
+      "properties": {
+        "Node name for S&R": "UNETLoader"
+      },
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            1
+          ],
+          "slot_index": 0
+        }
+      ],
+      "id": 1,
+      "order": 0,
+      "mode": 0,
+      "flags": {},
+      "pos": [
+        0,
+        0
+      ],
+      "size": [
+        390,
+        320
+      ],
+      "title": "Load Diffusion Model"
+    },
+    {
+      "type": "CLIPLoader",
+      "inputs": [],
+      "widgets_values": [
+        "qwen3vl_8b_int8_convrot.safetensors",
+        "qwen_image",
+        "default"
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPLoader"
+      },
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            2
+          ],
+          "slot_index": 0
+        }
+      ],
+      "id": 2,
+      "order": 1,
+      "mode": 0,
+      "flags": {},
+      "pos": [
+        0,
+        380
+      ],
+      "size": [
+        390,
+        320
+      ],
+      "title": "Load CLIP"
+    },
+    {
+      "type": "VAELoader",
+      "inputs": [],
+      "widgets_values": [
+        "qwen_image_2.1_vae_bf16.safetensors"
+      ],
+      "properties": {
+        "Node name for S&R": "VAELoader"
+      },
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            4,
+            11
+          ],
+          "slot_index": 0
+        }
+      ],
+      "id": 3,
+      "order": 2,
+      "mode": 0,
+      "flags": {},
+      "pos": [
+        0,
+        760
+      ],
+      "size": [
+        390,
+        320
+      ],
+      "title": "Load VAE"
+    },
+    {
+      "type": "QwenImage21Cache",
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 1
+        }
+      ],
+      "widgets_values": [
+        "cpu",
+        "int8"
+      ],
+      "properties": {
+        "Node name for S&R": "QwenImage21Cache"
+      },
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            6
+          ],
+          "slot_index": 0
+        }
+      ],
+      "id": 4,
+      "order": 3,
+      "mode": 0,
+      "flags": {},
+      "pos": [
+        430,
+        0
+      ],
+      "size": [
+        390,
+        320
+      ],
+      "title": "Qwen Image 2.1 Cache"
+    },
+    {
+      "type": "LoadImage",
+      "inputs": [],
+      "widgets_values": [
+        "PrismEdit-demo-portrait_model_denim.png",
+        "image"
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            13
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 1
+        }
+      ],
+      "id": 5,
+      "order": 4,
+      "mode": 0,
+      "flags": {},
+      "pos": [
+        430,
+        380
+      ],
+      "size": [
+        390,
+        320
+      ],
+      "title": "1 — Исходное фото"
+    },
+    {
+      "type": "LoadImage",
+      "inputs": [],
+      "widgets_values": [
+        "PrismEdit-demo-clothing_light_blue_denim_shirt.png",
+        "image"
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            5
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 1
+        }
+      ],
+      "id": 6,
+      "order": 5,
+      "mode": 0,
+      "flags": {},
+      "pos": [
+        430,
+        760
+      ],
+      "size": [
+        390,
+        320
+      ],
+      "title": "2 — Одежда / другой референс"
+    },
+    {
+      "id": 7,
+      "type": "TextEncodeQwenImage21",
+      "pos": [
+        860,
+        0
+      ],
+      "size": [
+        390,
+        320
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "clip",
+          "name": "clip",
+          "type": "CLIP",
+          "link": 2
+        },
+        {
+          "localized_name": "image_1",
+          "name": "images.image_1",
+          "type": "IMAGE",
+          "link": 3,
+          "shape": 7
+        },
+        {
+          "localized_name": "vae",
+          "name": "vae",
+          "type": "VAE",
+          "link": 4,
+          "shape": 7
+        },
+        {
+          "localized_name": "prompt",
+          "name": "prompt",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "prompt"
+          }
+        },
+        {
+          "localized_name": "negative_prompt",
+          "name": "negative_prompt",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "negative_prompt"
+          }
+        },
+        {
+          "localized_name": "resolution",
+          "name": "resolution",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "resolution"
+          }
+        },
+        {
+          "localized_name": "image_2",
+          "name": "images.image_2",
+          "type": "IMAGE",
+          "link": 5,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "positive",
+          "name": "positive",
+          "type": "CONDITIONING",
+          "slot_index": 0,
+          "links": [
+            7
+          ]
+        },
+        {
+          "localized_name": "negative",
+          "name": "negative",
+          "type": "CONDITIONING",
+          "slot_index": 1,
+          "links": [
+            8
+          ]
+        },
+        {
+          "localized_name": "latent",
+          "name": "latent",
+          "type": "LATENT",
+          "slot_index": 2,
+          "links": [
+            9
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TextEncodeQwenImage21",
+        "cnr_id": "comfy-core"
+      },
+      "widgets_values": [
+        "Put the light blue denim shirt from <image2> on the person in <image1>. Preserve the identity, face, hair, body shape, pose, framing, lighting and background of <image1>. Transfer only the shirt, including its collar, buttons and fabric.",
+        "",
+        768
+      ],
+      "title": "3 — Инструкция и размер",
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "type": "KSampler",
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 6
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 7
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 8
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 9
+        }
+      ],
+      "widgets_values": [
+        42,
+        "fixed",
+        25,
+        1.0,
+        "euler",
+        "simple",
+        1.0
+      ],
+      "properties": {
+        "Node name for S&R": "KSampler"
+      },
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            10
+          ],
+          "slot_index": 0
+        }
+      ],
+      "id": 8,
+      "order": 7,
+      "mode": 0,
+      "flags": {},
+      "pos": [
+        860,
+        380
+      ],
+      "size": [
+        390,
+        320
+      ],
+      "title": "4 — Генерация"
+    },
+    {
+      "type": "VAEDecodeTiled",
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 10
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 11
+        }
+      ],
+      "widgets_values": [
+        512,
+        64,
+        64,
+        8
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecodeTiled"
+      },
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            16
+          ],
+          "slot_index": 0
+        }
+      ],
+      "id": 9,
+      "order": 8,
+      "mode": 0,
+      "flags": {},
+      "pos": [
+        860,
+        760
+      ],
+      "size": [
+        390,
+        320
+      ],
+      "title": "VAE Decode (Tiled)"
+    },
+    {
+      "type": "SaveImage",
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 12
+        }
+      ],
+      "widgets_values": [
+        "PrismEdit/Local"
+      ],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 0
+        }
+      ],
+      "id": 10,
+      "order": 9,
+      "mode": 0,
+      "flags": {},
+      "pos": [
+        1290,
+        0
+      ],
+      "size": [
+        390,
+        320
+      ],
+      "title": "Результат"
+    },
+    {
+      "type": "LoadImageMask",
+      "inputs": [],
+      "widgets_values": [
+        "PrismEdit-demo-shirt-mask.png",
+        "red"
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImageMask"
+      },
+      "outputs": [
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [
+            14
+          ],
+          "slot_index": 0
+        }
+      ],
+      "id": 11,
+      "order": 10,
+      "mode": 0,
+      "flags": {},
+      "pos": [
+        1290,
+        380
+      ],
+      "size": [
+        390,
+        320
+      ],
+      "title": "Маска: белым менять, чёрным сохранить"
+    },
+    {
+      "type": "InpaintCropImproved",
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 13
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 14
+        }
+      ],
+      "widgets_values": [
+        "bilinear",
+        "bicubic",
+        false,
+        "ensure minimum resolution",
+        1024,
+        1024,
+        16384,
+        16384,
+        true,
+        0,
+        false,
+        16,
+        0.1,
+        false,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.2,
+        true,
+        768,
+        768,
+        "32",
+        "cpu (compatible)"
+      ],
+      "properties": {
+        "Node name for S&R": "InpaintCropImproved"
+      },
+      "outputs": [
+        {
+          "name": "stitcher",
+          "type": "STITCHER",
+          "links": [
+            15
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "cropped_image",
+          "type": "IMAGE",
+          "links": [
+            3
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "cropped_mask",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 2
+        }
+      ],
+      "id": 12,
+      "order": 11,
+      "mode": 0,
+      "flags": {},
+      "pos": [
+        1290,
+        760
+      ],
+      "size": [
+        390,
+        320
+      ],
+      "title": "✂️ Inpaint Crop"
+    },
+    {
+      "type": "InpaintStitchImproved",
+      "inputs": [
+        {
+          "name": "stitcher",
+          "type": "STITCHER",
+          "link": 15
+        },
+        {
+          "name": "inpainted_image",
+          "type": "IMAGE",
+          "link": 16
+        }
+      ],
+      "widgets_values": [],
+      "properties": {
+        "Node name for S&R": "InpaintStitchImproved"
+      },
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            12
+          ],
+          "slot_index": 0
+        }
+      ],
+      "id": 13,
+      "order": 12,
+      "mode": 0,
+      "flags": {},
+      "pos": [
+        1720,
+        0
+      ],
+      "size": [
+        390,
+        320
+      ],
+      "title": "✂️ Inpaint Stitch"
+    },
+    {
+      "id": 14,
+      "type": "MarkdownNote",
+      "pos": [
+        -430,
+        0
+      ],
+      "size": [
+        390,
+        500
+      ],
+      "order": 13,
+      "mode": 0,
+      "flags": {},
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "## Локальная правка с сохранением кадра\nИсходное фото + инструкция + необязательный референс. Отдельная маска должна совпадать по размеру с исходником: белое меняем, чёрное сохраняем. Crop берёт контекст, Qwen редактирует вырезку, Stitch возвращает её в исходник. Чёрная область вне 16-пиксельной полосы стыка сохраняется. Это обычный editing Qwen с финальным композитингом, без специального inpaint-сэмплера. Для одежды маска должна покрывать старый и новый силуэт. Context factor 1.2 можно увеличить при потере контекста."
+      ]
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      4,
+      0,
+      "MODEL"
+    ],
+    [
+      2,
+      2,
+      0,
+      7,
+      0,
+      "CLIP"
+    ],
+    [
+      3,
+      12,
+      1,
+      7,
+      1,
+      "IMAGE"
+    ],
+    [
+      4,
+      3,
+      0,
+      7,
+      2,
+      "VAE"
+    ],
+    [
+      5,
+      6,
+      0,
+      7,
+      6,
+      "IMAGE"
+    ],
+    [
+      6,
+      4,
+      0,
+      8,
+      0,
+      "MODEL"
+    ],
+    [
+      7,
+      7,
+      0,
+      8,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      8,
+      7,
+      1,
+      8,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      9,
+      7,
+      2,
+      8,
+      3,
+      "LATENT"
+    ],
+    [
+      10,
+      8,
+      0,
+      9,
+      0,
+      "LATENT"
+    ],
+    [
+      11,
+      3,
+      0,
+      9,
+      1,
+      "VAE"
+    ],
+    [
+      12,
+      13,
+      0,
+      10,
+      0,
+      "IMAGE"
+    ],
+    [
+      13,
+      5,
+      0,
+      12,
+      0,
+      "IMAGE"
+    ],
+    [
+      14,
+      11,
+      0,
+      12,
+      1,
+      "MASK"
+    ],
+    [
+      15,
+      12,
+      0,
+      13,
+      0,
+      "STITCHER"
+    ],
+    [
+      16,
+      9,
+      0,
+      13,
+      1,
+      "IMAGE"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.65,
+      "offset": [
+        450,
+        50
+      ]
+    },
+    "linearData": {
+      "inputs": [
+        [
+          "f58306ad-304a-4bfa-8b68-9c9c2af01939:5:image",
+          "Исходное фото"
+        ],
+        [
+          "f58306ad-304a-4bfa-8b68-9c9c2af01939:6:image",
+          "Одежда / референс"
+        ],
+        [
+          "f58306ad-304a-4bfa-8b68-9c9c2af01939:11:image",
+          "Маска: белым менять"
+        ],
+        [
+          "f58306ad-304a-4bfa-8b68-9c9c2af01939:7:prompt",
+          "Что изменить"
+        ],
+        [
+          "f58306ad-304a-4bfa-8b68-9c9c2af01939:7:resolution",
+          "Размер: 512 черновик / 1024 качество"
+        ],
+        [
+          "f58306ad-304a-4bfa-8b68-9c9c2af01939:8:steps",
+          "Шаги: 8 черновик / 25 качество"
+        ],
+        [
+          "f58306ad-304a-4bfa-8b68-9c9c2af01939:8:seed",
+          "Seed"
+        ]
+      ],
+      "outputs": [
+        "10"
+      ]
+    }
+  },
+  "version": 0.4
+}

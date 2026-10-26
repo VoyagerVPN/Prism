@@ -163,3 +163,15 @@ test('Базовый граф эквивалентен официальному 
   });
   assert.deepEqual(expand(graph, '11'), expand(reference, '9'));
 });
+
+test('серия Anima использует одну подготовку модели, LoRA и текста при независимых seed каждого кадра',()=>{
+  const graph=compileWorkflow({...base,recipe:'anima',checkpoint:'anima-aesthetic-v1.1.safetensors',clipName:'qwen_3_06b_base.safetensors',vaeName:'qwen_image_vae.safetensors',batchCount:4,loras:[{name:'Character/anima/katyaANIMA.safetensors',strength:1}]});
+  const nodes=Object.values(graph),samplers=nodes.filter(node=>node.class_type==='KSampler');
+  for(const type of ['UNETLoader','CLIPLoader','VAELoader','LoraLoader'])assert.equal(nodes.filter(node=>node.class_type===type).length,1,type+' готовится один раз на серию');
+  assert.equal(nodes.filter(node=>node.class_type==='CLIPTextEncode').length,2,'Положительное и отрицательное описания кодируются один раз');
+  assert.equal(samplers.length,4);
+  assert.deepEqual(samplers.map(node=>node.inputs.seed),[12345,12346,12347,12348]);
+  assert.equal(new Set(samplers.map(node=>JSON.stringify(node.inputs.model))).size,1);
+  for(const sampler of samplers)assert.equal(graph[sampler.inputs.latent_image[0]].inputs.batch_size,1,'Кадры не объединяются в пакет, повышающий расход VRAM');
+  assert.equal(nodes.filter(node=>node.class_type==='SaveImage').length,5,'Четыре самостоятельных кадра и сетка сохраняются');
+});

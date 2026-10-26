@@ -1,15 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
 import {JSDOM} from 'jsdom';
 
 test('Клик по фону прерывает подтверждённую загрузку и закрывает окно',async()=>{
-  const dom=new JSDOM(`
-    <div id="lora-card"><button id="model-import-open"></button><div id="model-import-drop" hidden><strong></strong></div></div>
-    <input id="model-import-file"><dialog id="model-import-dialog"><form id="model-import-form">
-      <fieldset id="import-fields"><select id="import-kind"><option></option></select><select id="import-base"></select><select id="import-category"></select></fieldset>
-      <span id="import-status"></span><button id="import-save" type="submit"></button><button id="import-cancel" type="button"></button>
-      <progress id="import-progress"></progress><span id="import-destination"></span><span id="import-filename"></span><span id="import-evidence"></span>
-    </form></dialog>`,{url:'http://localhost/'});
+  const dom=new JSDOM(await readFile(new URL('../index.html',import.meta.url),'utf8'),{url:'http://localhost/'});
   const {window}=dom,doc=window.document,originals={document:globalThis.document,window:globalThis.window,Option:globalThis.Option,FormData:globalThis.FormData,XMLHttpRequest:globalThis.XMLHttpRequest,fetch:globalThis.fetch};
   let aborted=false;
   class PendingUpload {

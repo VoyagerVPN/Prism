@@ -513,7 +513,8 @@ for r in routes:
 print()
 
 from .variation_noise import VariationNoise
+from .image_edit_nodes import PrismEditSource, PrismEditRestore
 
-NODE_CLASS_MAPPINGS = {'PrismVariationNoise': VariationNoise}
-NODE_DISPLAY_NAME_MAPPINGS = {'PrismVariationNoise': 'Prism Variation Noise'}
+NODE_CLASS_MAPPINGS = {'PrismVariationNoise': VariationNoise, 'PrismEditSource': PrismEditSource, 'PrismEditRestore': PrismEditRestore}
+NODE_DISPLAY_NAME_MAPPINGS = {'PrismVariationNoise': 'Prism Variation Noise', 'PrismEditSource': 'Prism Edit Source', 'PrismEditRestore': 'Prism Edit Restore'}
 __all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS']

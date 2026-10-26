@@ -10,6 +10,7 @@ test('durable entity объединяет backend-источники и выби
   const originals=Object.fromEntries(keys.map(key=>[key,globalThis[key]]));
   for(const key of keys.filter(key=>key!=='fetch'))globalThis[key]=key==='window'?dom.window:dom.window[key];
   dom.window.HTMLElement.prototype.scrollIntoView=function(){};
+  dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
   const source=(name,base)=>({name,title:name.split('/').at(-1),category:'Style',base,version:'',author:'',tags:[],triggers:[],preview:'',cover:null,images:[],description:'',url:''});
   const items=[source('Style/Illustrious/soft.safetensors','Illustrious'),source('Style/Anima/soft.safetensors','Anima')];
   const content={'style:soft':{
@@ -48,5 +49,7 @@ test('durable entity объединяет backend-источники и выби
     document.querySelector('.library-add').click();
     token=JSON.parse(document.querySelector('.prompt-content').dataset.content);
     assert.deepEqual(token.snapshot.bindings.map(binding=>binding.name),[items[1].name]);
+    document.querySelector('.library-open').click();
+    assert.equal(document.querySelector('.library-trigger-list').textContent,'soft lighting','Карточка показывает сохранённые триггеры, а не пустые метаданные файла');
   }finally{document.body.replaceChildren();Object.assign(globalThis,originals);dom.window.close();}
 });

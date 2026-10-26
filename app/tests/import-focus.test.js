@@ -4,7 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {JSDOM} from 'jsdom';
 
 test('Первое открытие импорта удерживает нейтральный фокус и открывает именно выбранное поле',async()=>{
-  for(const first of ['import-kind','import-base','import-category']){
+  for(const first of ['import-kind','import-base']){
     const dom=new JSDOM(await readFile(new URL('../index.html',import.meta.url),'utf8'),{url:'http://localhost/',runScripts:'outside-only',pretendToBeVisual:true});
     dom.window.eval(await readFile(new URL('../vendor-select.js',import.meta.url),'utf8'));
     const keys=['window','document','Element','HTMLElement','HTMLSelectElement','Event','Option','MutationObserver','TomSelect','innerWidth','innerHeight','FormData','XMLHttpRequest','fetch'];
@@ -28,11 +28,12 @@ test('Первое открытие импорта удерживает нейт
       const file={name:'slavya.safetensors',size:14,slice:start=>start===0?{arrayBuffer:async()=>prefix}:{text:async()=>'{}'}};
       Object.defineProperty(doc.querySelector('#model-import-file'),'files',{value:[file]});
       doc.querySelector('#model-import-file').dispatchEvent(new Event('change'));
-      for(let step=0;step<30&&!doc.querySelector('#import-status').textContent.includes('уже есть');step++)await new Promise(resolve=>setTimeout(resolve,0));
+      for(let step=0;step<30&&doc.querySelector('#import-fields').disabled;step++)await new Promise(resolve=>setTimeout(resolve,0));
       const dialog=doc.querySelector('#model-import-dialog');
       assert.ok(dialog.contains(doc.activeElement),'Фокус остаётся в окне после возврата из выбора файла');
       assert.equal(doc.activeElement.closest('#import-fields'),null,'Открытие окна не фокусирует селекторы, включая исходный select');
       assert.equal(dialog.querySelector('[aria-expanded="true"]'),null);
+      doc.querySelector('#import-technical').open=true;
       const target=first==='import-base'?doc.querySelector('[aria-label="Выбрать: Базовая модель"]'):doc.getElementById(first+'-ts-control');
       target.dispatchEvent(new dom.window.MouseEvent('mousedown',{bubbles:true,cancelable:true}));target.click();
       await new Promise(resolve=>setTimeout(resolve,5));

@@ -10,9 +10,13 @@ export let history = [];
 export let selectedHistoryItem = null;
 export let selectedBatchIndex = 0;
 export let lightboxScale = 1.0;
+let lightboxSwipeTimer = null;
 let activeGalleryGroup=null;
 let lightboxGallery = null;
 let lightboxGalleryIndex = 0;
+const lightboxTrack = lightbox.querySelector('.lightbox-track');
+const lightboxPrevImg = lightbox.querySelector('#lightbox-prev-img');
+const lightboxNextImg = lightbox.querySelector('#lightbox-next-img');
 const resultKey=item=>String(item?.promptId??item?.url??'');
 
 function syncFavoriteControl(button, state) {
@@ -36,6 +40,28 @@ async function syncOutputFavoriteButton() {
 function activeLightboxSelection() {
   if (lightboxGallery?.length) return {item: lightboxGallery[lightboxGalleryIndex], index: 0};
   return {item: selectedHistoryItem, index: selectedBatchIndex};
+}
+
+function lightboxEntries() {
+  if (lightboxGallery?.length) return lightboxGallery.map(item => ({item,index:0}));
+  return history.flatMap(item=>{
+    if (!item.batchUrls?.length || item.batchUrls.length === 1) return [{item,index:0}];
+    const frames = item.batchUrls.map((_,index)=>({item,index:index+1}));
+    return item.gridUrl ? [{item,index:0},...frames] : frames;
+  });
+}
+
+function lightboxEntryUrl({item,index}) {
+  return index > 0 ? item.batchUrls?.[index - 1] ?? item.url : item.url;
+}
+
+function syncLightboxNeighbors() {
+  const entries = lightboxEntries();
+  const selection = activeLightboxSelection();
+  const current = lightboxGallery?.length ? lightboxGalleryIndex : entries.findIndex(({item,index})=>resultKey(item)===resultKey(selection.item)&&index===selection.index);
+  if (current < 0 || !entries.length) { lightboxPrevImg.src=''; lightboxNextImg.src=''; return; }
+  lightboxPrevImg.src = lightboxEntryUrl(entries[(current - 1 + entries.length) % entries.length]);
+  lightboxNextImg.src = lightboxEntryUrl(entries[(current + 1) % entries.length]);
 }
 
 async function syncLightboxFavoriteButton() {
@@ -115,6 +141,8 @@ function syncRefineButton() {
   const hasBatch = (selectedHistoryItem?.batchUrls?.length ?? selectedHistoryItem?.outputs?.length ?? 0) > 1;
   const gridSelected = hasBatch && selectedBatchIndex === 0;
   const source = selectedOutputImage(selectedHistoryItem, selectedBatchIndex);
+  const edit=document.getElementById('output-edit-btn');
+  if(edit)edit.disabled=!source || source.type!=='output' || gridSelected;
   const unavailableReason = !selectedHistoryItem || !source
     ? 'Сначала выберите готовый арт'
     : gridSelected
@@ -123,7 +151,9 @@ function syncRefineButton() {
         ? 'Refine доступен только для сохранённого результата'
         : !outputImage.naturalWidth || !outputImage.naturalHeight
           ? 'Дождитесь загрузки выбранного изображения'
-          : '';
+          : selectedSettings().operation==='image-edit' || selectedSettings().recipe==='qwen-image-2.1'
+            ? 'Используйте кнопку «Открыть в редакторе» для продолжения правки'
+            : '';
   refineBtn.disabled = Boolean(unavailableReason);
   refineBtn.title = unavailableReason || 'Дорисовать выбранный кадр в высоком разрешении';
 }
@@ -382,6 +412,10 @@ export function initGalleryEvents() {
     }
   });
   outputImage.addEventListener('load', syncRefineButton);
+  document.getElementById('output-edit-btn')?.addEventListener('click',()=>{
+    const source=selectedOutputImage(selectedHistoryItem,selectedBatchIndex);
+    if(source && !document.getElementById('output-edit-btn').disabled)window.dispatchEvent(new CustomEvent('edit-source-image',{detail:structuredClone(source)}));
+  });
   refineBtn.addEventListener('click', () => {
     const source = selectedOutputImage(selectedHistoryItem, selectedBatchIndex);
     if (!source || source.type !== 'output' || !outputImage.naturalWidth || !outputImage.naturalHeight) return;
@@ -447,8 +481,65 @@ export function initGalleryEvents() {
   outputImage.style.cursor = "zoom-in";
 
   lightboxClose.addEventListener("click", closeLightbox);
+  let touchStart = null;
+  let swipeClickUntil = 0;
+  lightbox.addEventListener('touchstart', event => {
+    if (event.touches.length !== 1 || event.target.closest('button')) { touchStart = null; return; }
+    resetLightboxMotion();
+    const touch = event.touches[0];
+    touchStart = {identifier: touch.identifier, x: touch.clientX, y: touch.clientY};
+  }, {passive: true});
+  lightbox.addEventListener('touchmove', event => {
+    if (!touchStart || event.touches.length !== 1) return;
+    const touch = event.touches[0];
+    if (touch.identifier !== touchStart.identifier) return;
+    const dx = touch.clientX - touchStart.x;
+    const dy = touch.clientY - touchStart.y;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 4) return;
+    event.preventDefault();
+    if (Math.abs(dx) > Math.abs(dy) * 1.2) {
+      const width = lightbox.clientWidth || window.innerWidth || 320;
+      lightboxTrack.style.setProperty('--swipe-offset', `${Math.max(-width, Math.min(width, dx))}px`);
+      lightboxImg.style.transform = `scale(${lightboxScale})`;
+    } else if (Math.abs(dy) > Math.abs(dx) * 1.2) {
+      lightboxTrack.style.setProperty('--swipe-offset', '0px');
+      lightboxImg.style.transition = 'none';
+      lightboxImg.style.transform = `translate3d(0, ${dy}px, 0) scale(${lightboxScale})`;
+    }
+  }, {passive: false});
+  lightbox.addEventListener('touchend', event => {
+    if (!touchStart || lightbox.style.display !== 'flex') return;
+    const touch = [...event.changedTouches].find(candidate => candidate.identifier === touchStart.identifier);
+    if (!touch) return;
+    const dx = touch.clientX - touchStart.x;
+    const dy = touch.clientY - touchStart.y;
+    touchStart = null;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 56) { settleLightboxMotion(); return; }
+    const horizontal = Math.abs(dx) > Math.abs(dy) * 1.2;
+    const vertical = Math.abs(dy) > Math.abs(dx) * 1.2;
+    if (!horizontal && !vertical) { settleLightboxMotion(); return; }
+    event.preventDefault();
+    swipeClickUntil = Date.now() + 400;
+    const duration = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : 180;
+    if (horizontal) {
+      const width = lightbox.clientWidth || window.innerWidth || 320;
+      lightboxTrack.style.transition = `transform ${duration}ms ease-out`;
+      lightboxTrack.style.setProperty('--swipe-offset', `${Math.sign(dx) * width}px`);
+    } else {
+      const height = lightbox.clientHeight || window.innerHeight || 320;
+      lightboxImg.style.transition = `transform ${duration}ms ease-out`;
+      lightboxImg.style.transform = `translate3d(0, ${Math.sign(dy) * height}px, 0) scale(${lightboxScale})`;
+    }
+    lightboxSwipeTimer = setTimeout(() => {
+      lightboxSwipeTimer = null;
+      if (vertical) { closeLightbox(); return; }
+      navigateLightbox(dx < 0 ? 1 : -1);
+    }, duration);
+  }, {passive: false});
+  lightbox.addEventListener('touchcancel', () => { touchStart = null; resetLightboxMotion(); }, {passive: true});
   
   lightbox.addEventListener("click", (e) => {
+    if (Date.now() < swipeClickUntil) { swipeClickUntil = 0; return; }
     if (e.target === lightboxImg && lightboxImg.naturalWidth > 0) {
       // object-fit оставляет поля внутри img; учитываем и текущий масштаб.
       const rect = lightboxImg.getBoundingClientRect();
@@ -516,7 +607,27 @@ export function initGalleryEvents() {
   }, { passive: false });
 }
 
+function resetLightboxMotion() {
+  if (lightboxSwipeTimer !== null) clearTimeout(lightboxSwipeTimer);
+  lightboxSwipeTimer = null;
+  lightboxTrack.style.removeProperty('transition');
+  lightboxTrack.style.setProperty('--swipe-offset', '0px');
+  lightboxImg.style.removeProperty('transition');
+  lightboxImg.style.transform = `scale(${lightboxScale})`;
+}
+
+function settleLightboxMotion() {
+  if (lightboxTrack.style.getPropertyValue('--swipe-offset') === '0px' && !lightboxImg.style.transform.includes('translate')) return;
+  const duration = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : 180;
+  lightboxTrack.style.transition = `transform ${duration}ms ease-out`;
+  lightboxTrack.style.setProperty('--swipe-offset', '0px');
+  lightboxImg.style.transition = `transform ${duration}ms ease-out`;
+  lightboxImg.style.transform = `scale(${lightboxScale})`;
+  lightboxSwipeTimer = setTimeout(resetLightboxMotion, duration);
+}
+
 function showLightboxItem(item, batchIndex = 0) {
+  resetLightboxMotion();
   let activeUrl = item.url;
   if (batchIndex > 0 && item.batchUrls && item.batchUrls[batchIndex - 1]) {
     activeUrl = item.batchUrls[batchIndex - 1];
@@ -526,6 +637,7 @@ function showLightboxItem(item, batchIndex = 0) {
   lightboxScale = 1.0;
   lightboxImg.style.transform = "scale(1)";
   lightboxImg.src=activeUrl;
+  syncLightboxNeighbors();
 
   lightbox.style.display = "flex";
   document.body.style.overflow = 'hidden';
@@ -552,9 +664,12 @@ export function openLightboxGallery(items, itemId) {
 }
 
 export function closeLightbox() {
+  resetLightboxMotion();
   document.body.style.removeProperty('overflow');
   lightbox.style.display = "none";
   lightboxImg.src = "";
+  lightboxPrevImg.src = '';
+  lightboxNextImg.src = '';
   // Сбрасываем уровень зума при закрытии
   lightboxScale = 1.0;
   lightboxImg.style.transform = "scale(1)";
@@ -569,11 +684,7 @@ export function navigateLightbox(direction) {
   }
   if (history.length === 0 || !selectedHistoryItem) return;
   // Единая последовательность проходит кадры серий и все группы LoRA.
-  const images = history.flatMap(item=>{
-    if (!item.batchUrls?.length || item.batchUrls.length === 1) return [{item,index:0}];
-    const frames = item.batchUrls.map((_,index)=>({item,index:index+1}));
-    return item.gridUrl ? [{item,index:0},...frames] : frames;
-  });
+  const images = lightboxEntries();
   const currentIndex = images.findIndex(({item,index})=>resultKey(item)===resultKey(selectedHistoryItem)&&index===selectedBatchIndex);
   if (currentIndex === -1) return;
   const next = images[(currentIndex + direction + images.length) % images.length];

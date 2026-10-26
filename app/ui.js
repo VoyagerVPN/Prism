@@ -42,6 +42,20 @@ function populateSelect(selectEl, list, defaultVal) {
 }
 
 export function setupUIEventListeners() {
+  const syncRecipeHint=()=>{
+    const qwen=modelCatalog.find(model=>model.name===checkpointSelect.value)?.recipe==='qwen-image-2.1';
+    const hint=document.getElementById('model-recipe-hint');
+    hint.hidden=!qwen;
+    hint.textContent=qwen?'Qwen Image 2.1 · INT8 · Старт: 25 шагов, CFG 1. Результат можно открыть в редакторе.':'';
+    const negativeHint=document.getElementById('negative-prompt-hint');
+    negativeHint.hidden=!qwen;
+    negativeHint.textContent=qwen?(Number(cfgSlider.value)===1?'При CFG 1 поле «Что исключить» не влияет на Qwen. При необходимости попробуйте CFG 2.':'Для Qwen обычно используют CFG 1–2; высокий CFG ухудшает результат.'):'';
+    for(const field of [advancedToggle,clipSkipSlider,vaeSelect])field.disabled=qwen;
+    if(qwen)advancedToggle.checked=false;
+  };
+  window.addEventListener('model-recipe-changed',syncRecipeHint);
+  cfgSlider.addEventListener('input',syncRecipeHint);
+  syncRecipeHint();
   setupPreferences();
   const promptEditor=setupPromptEditor();
   const adjustInlineWeight=isIncrement=>promptEditor.transformTextAtCaret((text,position)=>{

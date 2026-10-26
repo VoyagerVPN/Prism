@@ -1,0 +1,590 @@
+{
+  "id": "30a4f54f-e9e8-45fd-9809-7cade9d8b129",
+  "revision": 0,
+  "last_node_id": 11,
+  "last_link_id": 11,
+  "nodes": [
+    {
+      "type": "UNETLoader",
+      "inputs": [],
+      "widgets_values": [
+        "qwen_image_2.1_int8_convrot.safetensors",
+        "default"
+      ],
+      "properties": {
+        "Node name for S&R": "UNETLoader"
+      },
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            1
+          ],
+          "slot_index": 0
+        }
+      ],
+      "id": 1,
+      "order": 0,
+      "mode": 0,
+      "flags": {},
+      "pos": [
+        0,
+        0
+      ],
+      "size": [
+        390,
+        320
+      ],
+      "title": "Load Diffusion Model"
+    },
+    {
+      "type": "CLIPLoader",
+      "inputs": [],
+      "widgets_values": [
+        "qwen3vl_8b_int8_convrot.safetensors",
+        "qwen_image",
+        "default"
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPLoader"
+      },
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            2
+          ],
+          "slot_index": 0
+        }
+      ],
+      "id": 2,
+      "order": 1,
+      "mode": 0,
+      "flags": {},
+      "pos": [
+        0,
+        380
+      ],
+      "size": [
+        390,
+        320
+      ],
+      "title": "Load CLIP"
+    },
+    {
+      "type": "VAELoader",
+      "inputs": [],
+      "widgets_values": [
+        "qwen_image_2.1_vae_bf16.safetensors"
+      ],
+      "properties": {
+        "Node name for S&R": "VAELoader"
+      },
+      "outputs": [
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            4,
+            10
+          ],
+          "slot_index": 0
+        }
+      ],
+      "id": 3,
+      "order": 2,
+      "mode": 0,
+      "flags": {},
+      "pos": [
+        0,
+        760
+      ],
+      "size": [
+        390,
+        320
+      ],
+      "title": "Load VAE"
+    },
+    {
+      "type": "QwenImage21Cache",
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 1
+        }
+      ],
+      "widgets_values": [
+        "cpu",
+        "int8"
+      ],
+      "properties": {
+        "Node name for S&R": "QwenImage21Cache"
+      },
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            5
+          ],
+          "slot_index": 0
+        }
+      ],
+      "id": 4,
+      "order": 3,
+      "mode": 0,
+      "flags": {},
+      "pos": [
+        430,
+        0
+      ],
+      "size": [
+        390,
+        320
+      ],
+      "title": "Qwen Image 2.1 Cache"
+    },
+    {
+      "type": "LoadImage",
+      "inputs": [],
+      "widgets_values": [
+        "PrismEdit-demo-portrait_model_denim.png",
+        "image"
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            3
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": [],
+          "slot_index": 1
+        }
+      ],
+      "id": 5,
+      "order": 4,
+      "mode": 0,
+      "flags": {},
+      "pos": [
+        430,
+        380
+      ],
+      "size": [
+        390,
+        320
+      ],
+      "title": "1 — Исходное фото"
+    },
+    {
+      "id": 7,
+      "type": "TextEncodeQwenImage21",
+      "pos": [
+        430,
+        760
+      ],
+      "size": [
+        390,
+        320
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "clip",
+          "name": "clip",
+          "type": "CLIP",
+          "link": 2
+        },
+        {
+          "localized_name": "image_1",
+          "name": "images.image_1",
+          "type": "IMAGE",
+          "link": 3,
+          "shape": 7
+        },
+        {
+          "localized_name": "vae",
+          "name": "vae",
+          "type": "VAE",
+          "link": 4,
+          "shape": 7
+        },
+        {
+          "localized_name": "prompt",
+          "name": "prompt",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "prompt"
+          }
+        },
+        {
+          "localized_name": "negative_prompt",
+          "name": "negative_prompt",
+          "type": "STRING",
+          "link": null,
+          "widget": {
+            "name": "negative_prompt"
+          }
+        },
+        {
+          "localized_name": "resolution",
+          "name": "resolution",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "resolution"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "positive",
+          "name": "positive",
+          "type": "CONDITIONING",
+          "slot_index": 0,
+          "links": [
+            6
+          ]
+        },
+        {
+          "localized_name": "negative",
+          "name": "negative",
+          "type": "CONDITIONING",
+          "slot_index": 1,
+          "links": [
+            7
+          ]
+        },
+        {
+          "localized_name": "latent",
+          "name": "latent",
+          "type": "LATENT",
+          "slot_index": 2,
+          "links": [
+            8
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TextEncodeQwenImage21",
+        "cnr_id": "comfy-core"
+      },
+      "widgets_values": [
+        "Replace the clothing in <image1> with an elegant dark green wool jacket. Preserve the identity, face, hair, pose, body proportions, background and lighting. Change only the clothing.",
+        "",
+        1024
+      ],
+      "title": "3 — Инструкция и размер",
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "type": "KSampler",
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 5
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 6
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 7
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 8
+        }
+      ],
+      "widgets_values": [
+        42,
+        "fixed",
+        25,
+        1.0,
+        "euler",
+        "simple",
+        1.0
+      ],
+      "properties": {
+        "Node name for S&R": "KSampler"
+      },
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            9
+          ],
+          "slot_index": 0
+        }
+      ],
+      "id": 8,
+      "order": 6,
+      "mode": 0,
+      "flags": {},
+      "pos": [
+        860,
+        0
+      ],
+      "size": [
+        390,
+        320
+      ],
+      "title": "4 — Генерация"
+    },
+    {
+      "type": "VAEDecodeTiled",
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 9
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 10
+        }
+      ],
+      "widgets_values": [
+        512,
+        64,
+        64,
+        8
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecodeTiled"
+      },
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            11
+          ],
+          "slot_index": 0
+        }
+      ],
+      "id": 9,
+      "order": 7,
+      "mode": 0,
+      "flags": {},
+      "pos": [
+        860,
+        380
+      ],
+      "size": [
+        390,
+        320
+      ],
+      "title": "VAE Decode (Tiled)"
+    },
+    {
+      "type": "SaveImage",
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 11
+        }
+      ],
+      "widgets_values": [
+        "PrismEdit/Text"
+      ],
+      "properties": {
+        "Node name for S&R": "SaveImage"
+      },
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": [],
+          "slot_index": 0
+        }
+      ],
+      "id": 10,
+      "order": 8,
+      "mode": 0,
+      "flags": {},
+      "pos": [
+        860,
+        760
+      ],
+      "size": [
+        390,
+        320
+      ],
+      "title": "Результат"
+    },
+    {
+      "id": 11,
+      "type": "MarkdownNote",
+      "pos": [
+        -430,
+        0
+      ],
+      "size": [
+        390,
+        500
+      ],
+      "order": 9,
+      "mode": 0,
+      "flags": {},
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "## Редактирование по тексту\nЗагрузите фото в 1 и напишите, что менять и что сохранять, в 3. Поддерживает фотографии и рисунки. Для черновика: resolution 512, steps 8–12. Для качества: 1024, 25 шагов. CFG 1. Маска не нужна; вне зоны интереса возможны небольшие изменения. При необходимости строгого сохранения используйте workflow 03."
+      ]
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      4,
+      0,
+      "MODEL"
+    ],
+    [
+      2,
+      2,
+      0,
+      7,
+      0,
+      "CLIP"
+    ],
+    [
+      3,
+      5,
+      0,
+      7,
+      1,
+      "IMAGE"
+    ],
+    [
+      4,
+      3,
+      0,
+      7,
+      2,
+      "VAE"
+    ],
+    [
+      5,
+      4,
+      0,
+      8,
+      0,
+      "MODEL"
+    ],
+    [
+      6,
+      7,
+      0,
+      8,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      7,
+      7,
+      1,
+      8,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      8,
+      7,
+      2,
+      8,
+      3,
+      "LATENT"
+    ],
+    [
+      9,
+      8,
+      0,
+      9,
+      0,
+      "LATENT"
+    ],
+    [
+      10,
+      3,
+      0,
+      9,
+      1,
+      "VAE"
+    ],
+    [
+      11,
+      9,
+      0,
+      10,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.65,
+      "offset": [
+        450,
+        50
+      ]
+    },
+    "linearData": {
+      "inputs": [
+        [
+          "30a4f54f-e9e8-45fd-9809-7cade9d8b129:5:image",
+          "Исходное фото"
+        ],
+        [
+          "30a4f54f-e9e8-45fd-9809-7cade9d8b129:7:prompt",
+          "Что изменить"
+        ],
+        [
+          "30a4f54f-e9e8-45fd-9809-7cade9d8b129:7:resolution",
+          "Размер: 512 черновик / 1024 качество"
+        ],
+        [
+          "30a4f54f-e9e8-45fd-9809-7cade9d8b129:8:steps",
+          "Шаги: 8 черновик / 25 качество"
+        ],
+        [
+          "30a4f54f-e9e8-45fd-9809-7cade9d8b129:8:seed",
+          "Seed"
+        ]
+      ],
+      "outputs": [
+        "10"
+      ]
+    }
+  },
+  "version": 0.4
+}

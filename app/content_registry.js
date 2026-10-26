@@ -45,6 +45,7 @@ function semanticId(type,label) {
 }
 
 function recipeForBase(base) {
+  if(/qwen.*2[._ -]?1/i.test(String(base??'')))return 'qwen-image-2.1';
   return /anima/i.test(String(base??''))?'anima':'checkpoint';
 }
 
@@ -59,16 +60,17 @@ function importedBinding(intent) {
 
 function materialize(intent, content) {
   if(intent.action==='create'){
-    if(!CONTENT_TYPES.includes(intent.contentType)||intent.contentType==='Character')throw new Error('Выберите тип новой сущности контента.');
+    if(!CONTENT_TYPES.includes(intent.contentType)||intent.contentType==='Character')throw new Error('Выберите назначение LoRA.');
     const name=typeof intent.name==='string'?intent.name.trim():'';
-    if(!name||name.length>500)throw new Error('Укажите название новой сущности контента.');
+    if(!name||name.length>500)throw new Error('Укажите название карточки.');
     if(Object.values(content).some(entity=>entity.type===intent.contentType&&entity.name.localeCompare(name,undefined,{sensitivity:'accent'})===0)){
-      throw new Error(`«${name}» уже существует. Выберите «Привязать к существующей».`);
+      throw new Error(`«${name}» уже есть в библиотеке. Измените название или дополните существующую карточку.`);
     }
     let id=semanticId(intent.contentType,name),suffix=1;
     while(content[id])id=semanticId(intent.contentType,`${name}\0${++suffix}`);
     const scopes=['Pose','Clothing'].includes(intent.contentType)?['global','subject']:['global'];
-    return createContentEntity({id,type:intent.contentType,name,scopes,bindings:[importedBinding(intent)]});
+    const trigger=typeof intent.trigger==='string'?intent.trigger.trim():'';
+    return createContentEntity({id,type:intent.contentType,name,scopes,bindings:[importedBinding(intent),...(trigger?[{kind:'prompt',positive:[trigger],negative:[]}]:[])]});
   }
   if(intent.action!=='attach')throw new Error('Неизвестное действие с импортированным источником.');
   const targetId=intent.target?.id;
