@@ -1572,3 +1572,11 @@ body #model-import-dialog .import-link { align-self:flex-start; min-height:32px;
 #model-import-dialog textarea { min-height:70px; }
 @media(max-width:400px) { #import-card-fields:has(#import-character-fields:not([hidden])) { grid-template-columns:minmax(0,1fr); } }
 @media(max-width:600px) { #import-fields select { font-size:16px; } .lora-section-actions button { min-height:44px; } }
+:root .first-run-dialog { max-width: 680px; }
+.first-run-steps { padding-left: 24px; }
+.first-run-steps li { margin: 18px 0; }
+.first-run-steps h3 { margin: 0 0 6px; font-size: 1rem; }
+.first-run-dialog p { line-height: 1.5; overflow-wrap: anywhere; }
+.first-run-dialog a { color: var(--accent-primary); text-decoration: underline; }
+.first-run-dialog [data-error]:empty { display: none; }
+.first-run-dialog [data-error] { color: var(--text-primary, inherit); }

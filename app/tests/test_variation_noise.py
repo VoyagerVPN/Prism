@@ -1,7 +1,12 @@
 """CPU-проверка начального шума; запуск через Python установленного ComfyUI."""
 import sys
+import os
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+backend = os.environ.get('PRISM_TEST_COMFY_ROOT')
+if not backend:
+    raise SystemExit('Укажите PRISM_TEST_COMFY_ROOT с каталогом установленного тестового ComfyUI.')
+sys.path.insert(0, backend)
 from comfy.cli_args import args
 args.cpu = True
 import torch

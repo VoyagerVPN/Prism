@@ -18,13 +18,31 @@ function Test-Ready {
         return ($null -ne $stats.system.PSObject.Properties['comfyui_version'] -and $identity.service -eq 'prism')
     } catch { return $false }
 }
+function Get-ConfiguredProcessRoot($Process) {
+    if ($null -eq $Process -or $Process.CommandLine -notmatch 'main\.py') { return $null }
+    if ($Process.ExecutablePath -eq $python) { return $Process }
+    # Windows venv запускает базовый интерпретатор через redirector. Сам по себе общий Python не доказывает принадлежность среде.
+    if ([IO.Path]::GetFileName($Process.ExecutablePath) -notin @('python.exe','pythonw.exe')) { return $null }
+    $parent = Get-CimInstance Win32_Process -Filter "ProcessId=$($Process.ParentProcessId)"
+    if ($null -ne $parent -and $parent.ExecutablePath -eq $python -and $parent.CommandLine -match 'main\.py') { return $parent }
+    return $null
+}
 
 $lifetime = $null
 try {
+    if (-not $PSBoundParameters.ContainsKey('Config') -and (Test-Path -LiteralPath "$PSScriptRoot\prism.local.json")) {
+        $Config = "$PSScriptRoot\prism.local.json"
+    }
     $settings = Get-Content -LiteralPath $Config -Raw | ConvertFrom-Json
     $comfyRoot = Resolve-AppPath $settings.backend_root
     $python = Resolve-AppPath $settings.python
     $models = Resolve-AppPath $settings.models_root
+    if ($Action -eq 'Start' -and $settings.PSObject.Properties['managed_install'] -and $settings.managed_install) {
+        $installMarker = Join-Path (Split-Path -Parent $comfyRoot) 'prism-install.json'
+        if (-not (Test-Path -LiteralPath $installMarker) -or -not (Get-Content -LiteralPath $installMarker -Raw | ConvertFrom-Json).complete) {
+            throw 'PRISM_SETUP_INCOMPLETE: установка не завершена. Повторите Setup.ps1 с прежними параметрами.'
+        }
+    }
     $port = [int]$settings.port
     if ($port -lt 1024 -or $port -gt 65535) { throw 'Порт должен быть в диапазоне 1024–65535.' }
     $url = "http://127.0.0.1:$port"
@@ -35,12 +53,16 @@ try {
         PYTHONPYCACHEPREFIX = "$cache\pycache"; PIP_CACHE_DIR = "$cache\pip"
         UV_CACHE_DIR = "$cache\uv"; HF_HOME = "$cache\huggingface"
         TORCH_HOME = "$cache\torch"; XDG_CACHE_HOME = $cache
+        TORCHINDUCTOR_CACHE_DIR = "$cache\torchinductor"; TRITON_CACHE_DIR = "$cache\triton"
+        CUDA_CACHE_PATH = "$cache\cuda"; TEMP = "$cache\tmp"; TMP = "$cache\tmp"
         MPLCONFIGDIR = "$cache\matplotlib"; NUMBA_CACHE_DIR = "$cache\numba"
         YOLO_CONFIG_DIR = $cache; YOLO_OFFLINE = '1'; YOLO_AUTOINSTALL = '0'
         HF_HUB_OFFLINE = '1'; NO_ALBUMENTATIONS_UPDATE = '1'
         PIP_DISABLE_PIP_VERSION_CHECK = '1'; PYTHONUNBUFFERED = '1'
+        PYTHONNOUSERSITE = '1'; PYTHONUTF8 = '1'
     }
     foreach ($name in $variables.Keys) { [Environment]::SetEnvironmentVariable($name, $variables[$name], 'Process') }
+    New-Item -ItemType Directory -Path "$cache\tmp" -Force | Out-Null
     if ($Action -eq 'Status') {
         if (-not (Test-Ready)) { throw 'Prism не готов: нет ComfyUI или на порту другой сервис.' }
         Write-Output "Prism готов: $url/prism/"
@@ -58,7 +80,7 @@ try {
             $ownerIds = @($listeners | Select-Object -ExpandProperty OwningProcess -Unique)
             if ($ownerIds.Count -ne 1) { throw 'Порт обслуживают несколько процессов; они не будут остановлены.' }
             $owner = Get-CimInstance Win32_Process -Filter "ProcessId=$($ownerIds[0])"
-            if ($owner.ExecutablePath -ne $python -or $owner.CommandLine -notmatch 'main\.py') { throw 'Процесс не принадлежит настроенному ComfyUI.' }
+            if ($null -eq (Get-ConfiguredProcessRoot $owner)) { throw 'Процесс не принадлежит настроенному ComfyUI.' }
             $queue = Invoke-RestMethod "$url/queue" -TimeoutSec 5
             if ($queue.queue_running.Count -or $queue.queue_pending.Count) { throw 'Очередь не пуста; завершите задания перед остановкой.' }
             Stop-Process -Id $owner.ProcessId
@@ -72,9 +94,10 @@ try {
         if ($listeners.Count) {
             if (-not (Test-Ready)) { throw "Порт $port занят другим или ещё не готовым сервисом." }
             $owner = Get-CimInstance Win32_Process -Filter "ProcessId=$($listeners[0].OwningProcess)"
-            if ($owner.ExecutablePath -ne $python) { throw 'На порту ComfyUI из другой Python-среды.' }
-            if ($owner.CommandLine -notmatch 'main\.py') { throw 'На порту не настроенный ComfyUI.' }
-            $lifetime.Assign([int]$owner.ProcessId)
+            $processRoot = Get-ConfiguredProcessRoot $owner
+            if ($null -eq $processRoot) { throw 'На порту ComfyUI из другой Python-среды.' }
+            $lifetime.Assign([int]$processRoot.ProcessId)
+            # У redirector уже есть собственная Job для дочернего Python; закрытие родителя завершает и её.
         } else {
             $starting = @(Get-CimInstance Win32_Process | Where-Object {
                 if ($_.ExecutablePath -ne $python -or $_.CommandLine -notmatch 'main\.py') { return $false }
@@ -85,7 +108,7 @@ try {
             })
             if ($starting.Count) { throw 'PRISM_STARTING: backend уже запущен, но ещё не готов. Проверьте журнал; второй процесс не создан.' }
             foreach ($path in @($python, "$comfyRoot\main.py", $models)) {
-                if (-not (Test-Path -LiteralPath $path)) { throw "Не найдено: $path. Проверьте prism.json." }
+                if (-not (Test-Path -LiteralPath $path)) { throw "Не найдено: $path. Для новой установки запустите Setup.ps1 из корня Prism; для существующей проверьте $Config." }
             }
             $bridge = Join-Path $comfyRoot 'custom_nodes\prism'
             if (-not (Test-Path -LiteralPath $bridge)) {

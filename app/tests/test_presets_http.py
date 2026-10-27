@@ -1,9 +1,13 @@
 import json
+import os
 import urllib.request
 import urllib.error
 import uuid
 
-url = 'http://127.0.0.1:8188/prism/presets'
+base_url = os.environ.get('PRISM_TEST_URL')
+if not base_url:
+    raise SystemExit('Укажите PRISM_TEST_URL с адресом отдельного тестового backend; тест изменяет пресеты.')
+url = base_url.rstrip('/') + '/prism/presets'
 def request(body=None):
     req = urllib.request.Request(url, data=None if body is None else json.dumps(body).encode(), headers={'Content-Type':'application/json'})
     try:

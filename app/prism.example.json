@@ -1,0 +1,10 @@
+{
+  "backend_root": "../../ComfyUI",
+  "python": "../../ComfyUI/venv/Scripts/python.exe",
+  "models_root": "../../ComfyUI/models",
+  "port": 8188,
+  "lan_interface": "",
+  "startup_timeout_seconds": 300,
+  "arguments": ["--preview-method", "none"],
+  "managed_install": false
+}

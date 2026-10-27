@@ -20,6 +20,27 @@ def run_hidden(*args, **kwargs):
 
 
 class LauncherCheck(unittest.TestCase):
+    def test_local_config_is_used_and_incomplete_install_cannot_start(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / '.cache') as directory:
+            root = Path(directory)
+            shutil.copyfile(ROOT / 'Start.ps1', root / 'Start.ps1')
+            server = ThreadingHTTPServer(('127.0.0.1', 0), BaseHTTPRequestHandler)
+            port = server.server_port
+            server.server_close()
+            (root / 'prism.json').write_text('{}')
+            config = {'backend_root': str(root / 'backend'), 'python': sys.executable,
+                      'models_root': str(root / 'models'), 'port': port,
+                      'arguments': [], 'lan_interface': '', 'managed_install': True}
+            (root / 'prism.local.json').write_text(json.dumps(config))
+            # Маркер ищется относительно backend, без зависимости от рабочей папки теста.
+            (root / 'backend').mkdir()
+            (root / 'prism-install.json').write_text(json.dumps({'complete': False}))
+            result = run_hidden(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                                 '-File', str(root / 'Start.ps1'), '-NoBrowser'],
+                                capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('PRISM_SETUP_INCOMPLETE', result.stdout + result.stderr)
+
     def test_backend_exits_when_launcher_console_exits(self):
         with tempfile.TemporaryDirectory(dir=ROOT / '.cache') as directory:
             root = Path(directory)
@@ -255,6 +276,9 @@ ThreadingHTTPServer(('127.0.0.1',int(sys.argv[1])),Handler).serve_forever()
             git('-C', backend, 'checkout', '--detach', 'v1.0.0')
             config = json.loads((ROOT / 'prism.json').read_text(encoding='utf-8-sig'))
             config['backend_root'] = str(backend)
+            config['managed_install'] = True
+            install_marker = root / 'prism-install.json'
+            install_marker.write_text(json.dumps({'complete': True, 'comfy_commit': 'old'}))
             # Свободный порт: updater не должен трогать реальный ComfyUI.
             probe = ThreadingHTTPServer(('127.0.0.1', 0), BaseHTTPRequestHandler)
             config['port'] = probe.server_port
@@ -284,6 +308,8 @@ ThreadingHTTPServer(('127.0.0.1',int(sys.argv[1])),Handler).serve_forever()
             result = run('Update')
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertEqual((backend / 'README.md').read_text(), 'v2')
+            self.assertEqual(json.loads(install_marker.read_text(encoding='utf-8-sig'))['comfy_commit'],
+                             git('-C', backend, 'rev-parse', 'HEAD').stdout.decode().strip())
             backups = list((root / '.cache' / 'updates').iterdir())
             self.assertEqual(len(backups), 1)
             self.assertTrue((backups[0] / 'source.zip').is_file())

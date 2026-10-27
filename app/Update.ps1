@@ -40,6 +40,12 @@ foreach ($name in @('user','extra_model_paths.yaml')) {
     if (Test-Path -LiteralPath $source) { Copy-Item -LiteralPath $source -Destination $backup -Recurse }
 }
 Copy-Item -LiteralPath $Config -Destination "$backup\prism.json"
+$installMarker = Join-Path (Split-Path -Parent $comfyRoot) 'prism-install.json'
+$installation = $null
+if ($settings.PSObject.Properties['managed_install'] -and $settings.managed_install) {
+    $installation = Get-Content -LiteralPath $installMarker -Raw | ConvertFrom-Json
+    Copy-Item -LiteralPath $installMarker -Destination "$backup\prism-install.json"
+}
 Invoke-Git -Arguments @('show',"${release}:requirements.txt") |
     Set-Content -LiteralPath "$backup\requirements-next.txt" -Encoding utf8
 & $python -m pip install --dry-run -r "$backup\requirements-next.txt" -c "$backup\torch-constraints.txt"
@@ -47,10 +53,19 @@ if ($LASTEXITCODE -ne 0) { throw "Зависимости несовместим�
 
 "Обновление $release не завершено. Резервная копия: $backup. Восстановите код из source.zip и зависимости из packages.txt перед удалением этого маркера." |
     Set-Content -LiteralPath "$logs\update-incomplete.txt" -Encoding utf8
+if ($null -ne $installation) {
+    $installation.complete = $false
+    $installation | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $installMarker -Encoding utf8
+}
 Invoke-Git -Arguments @('checkout','--detach',$release) | Out-Host
 & $python -m pip install -r "$comfyRoot\requirements.txt" -c "$backup\torch-constraints.txt"
 if ($LASTEXITCODE -ne 0) { throw "Ошибка установки зависимостей; запуск заблокирован. Резервная копия: $backup" }
 & $python -m pip check
 if ($LASTEXITCODE -ne 0) { throw "Обнаружен конфликт зависимостей; запуск заблокирован. См. $backup" }
 Remove-Item -LiteralPath "$logs\update-incomplete.txt"
+if ($null -ne $installation) {
+    $installation.comfy_commit = $target
+    $installation.complete = $true
+    $installation | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $installMarker -Encoding utf8
+}
 Write-Output "ComfyUI обновлён до $release. Резервная копия: $backup. Запустите Prism.bat."

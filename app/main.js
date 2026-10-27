@@ -18,6 +18,7 @@ import { loadLoraLibrary } from './library.js';
 import { setupSelectControls } from './controls.js';
 import { describeProgress } from './progress.js';
 import { presentResourceMetrics } from './resource_metrics.js';
+import {setupFirstRun} from './first_run.js';
 
 const client = new ComfyClient();
 let preparing = false;
@@ -223,6 +224,24 @@ window.addEventListener('load', async () => {
   editor=initImageEditor();
   initPresetEvents();
   setupModelImport(refresh);
+  const guide=setupFirstRun({
+    readiness:async()=>{
+      await refresh();
+      const stats=await client.request('/system_stats');
+      if(!stats.system?.comfyui_version)throw new Error('Сервер не представился как ComfyUI');
+      return {backend:window.location.origin,version:stats.system.comfyui_version,models:modelCatalog};
+    },
+    importModel:()=>{setAppView('generation');document.getElementById('model-import-open').click();},
+    applyExample:checkpoint=>{
+      setAppView('generation');
+      applySettings({checkpoint,recipe:'checkpoint',width:512,height:512,steps:20,cfg:7,sampler:'euler',scheduler:'normal',
+        positive:'a small wooden cabin beside a lake, morning light, watercolor',negative:'',
+        positiveParts:[{type:'text',text:'a small wooden cabin beside a lake, morning light, watercolor'}],
+        batchCount:1,seedMode:'fixed',seedInput:'42',seed:42,variationStrength:0,
+        advancedToggle:false,hiresToggle:false,faceToggle:false,upscaleToggle:false,reactorToggle:false,loras:[]});
+      saveSettings();render();
+    },
+  });
   await initCharacters();
   setupSelectControls();
   initGalleryEvents();
@@ -244,6 +263,7 @@ window.addEventListener('load', async () => {
     if(client.job.settings.operation==='image-edit'){editor.restore(client.job.settings);editor.showResult(client.job);}
   }
   render();
+  void guide.openIfNeeded();
   stats();
   setInterval(stats, 5000);
 });

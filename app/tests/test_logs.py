@@ -13,7 +13,7 @@ class LogCheck(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / '.cache') as directory:
             for name in ('stdout', 'stderr'):
                 (Path(directory) / f'server.{name}.log').write_text(f'{name}-initial\n', encoding='utf-8')
-            process = subprocess.Popen(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(ROOT / 'Show-Logs.ps1'), '-LogDirectory', directory], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace')
+            process = subprocess.Popen(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(ROOT / 'Show-Logs.ps1'), '-LogDirectory', directory], creationflags=subprocess.CREATE_NO_WINDOW, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace')
             lines = queue.Queue()
             thread = threading.Thread(target=lambda: [lines.put(line.strip()) for line in process.stdout], daemon=True)
             thread.start()
