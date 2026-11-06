@@ -8,16 +8,16 @@ Generate images locally through ComfyUI. Build prompts with LoRA presets, run ba
 
 **Windows 10/11 x64 · ComfyUI · SDXL, Pony and Illustrious**
 
-[Get the current source ZIP](https://github.com/VoyagerVPN/Prism/archive/refs/heads/main.zip)
+[Download Prism v0.2.0](https://github.com/VoyagerVPN/Prism/releases/tag/v0.2.0)
 
 ## Quick start
 
 1. Install [Git for Windows](https://git-scm.com/download/win) and the [Microsoft Visual C++ Redistributable x64](https://aka.ms/vc14/vc_redist.x64.exe).
-2. Extract the current source ZIP into a permanent local folder and run `Setup.bat`. Choose a language and select **Install**, or connect an existing ComfyUI installation. For a new install without a model, choose SDXL Base and confirm the download.
+2. On the release page, download `Prism-Windows-v0.2.0.zip`, extract it into a permanent local folder and run `Setup.bat`. Choose a language and select **Install**, or connect an existing ComfyUI installation. For a new install without a model, choose SDXL Base and confirm the download.
 3. When Prism opens in your browser, load the included example and start generation. The first image appears in the workspace and gallery.
 4. For later sessions, run `Prism.bat`. The launcher window hosts the backend, so keep it open while jobs are running.
 
-Choose English or Russian in setup or in Prism settings. The older [v0.1.0 release ZIP](https://github.com/VoyagerVPN/Prism/releases/tag/v0.1.0) predates the language selector. Use the current source ZIP for this guide.
+Choose English or Russian in setup or in Prism settings.
 
 ![Prism workspace with prompt, model settings, and generated image](docs/images/prism-create.png)
 
