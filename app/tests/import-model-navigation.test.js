@@ -17,7 +17,7 @@ test('установленная полная модель выбирается 
     const api=await import('../api.js');await api.fetchComfyInfo();
     const ui=await import('../ui.js');ui.syncModelLists();ui.setupUIEventListeners();
     await import('../main.js');
-    document.body.dataset.appView='editor';
+    document.querySelector('[data-app-view=gallery]').click();
     window.dispatchEvent(new CustomEvent('prism-import-completed',{detail:{modelKind:'checkpoints',source:{name:'Import Test/full-model.safetensors'}}}));
     assert.equal(document.body.dataset.appView,'generation');
     assert.equal(document.querySelector('#checkpoint-select').value,name);

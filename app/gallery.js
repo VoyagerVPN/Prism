@@ -136,13 +136,18 @@ function selectedSettings(item = selectedHistoryItem, index = selectedBatchIndex
   return index > 0 && settings.batchLayout === 'square-v1' ? frameSettings(settings,index-1) : settings;
 }
 
+function isArchivedRecipe(item) {
+  return item?.operation === 'image-edit' || item?.settings?.operation === 'image-edit'
+    || (item?.settings ?? item)?.recipe === 'qwen-image-2.1';
+}
+
+const archivedRecipeMessage = 'Результат доступен в галерее. Этот рецепт перенесён в отдельную ветку Prism.';
+
 function syncRefineButton() {
   if (!refineBtn) return;
   const hasBatch = (selectedHistoryItem?.batchUrls?.length ?? selectedHistoryItem?.outputs?.length ?? 0) > 1;
   const gridSelected = hasBatch && selectedBatchIndex === 0;
   const source = selectedOutputImage(selectedHistoryItem, selectedBatchIndex);
-  const edit=document.getElementById('output-edit-btn');
-  if(edit)edit.disabled=!source || source.type!=='output' || gridSelected;
   const unavailableReason = !selectedHistoryItem || !source
     ? 'Сначала выберите готовый арт'
     : gridSelected
@@ -151,8 +156,8 @@ function syncRefineButton() {
         ? 'Refine доступен только для сохранённого результата'
         : !outputImage.naturalWidth || !outputImage.naturalHeight
           ? 'Дождитесь загрузки выбранного изображения'
-          : selectedSettings().operation==='image-edit' || selectedSettings().recipe==='qwen-image-2.1'
-            ? 'Используйте кнопку «Открыть в редакторе» для продолжения правки'
+          : isArchivedRecipe(selectedHistoryItem)
+            ? archivedRecipeMessage
             : '';
   refineBtn.disabled = Boolean(unavailableReason);
   refineBtn.title = unavailableReason || 'Дорисовать выбранный кадр в высоком разрешении';
@@ -308,8 +313,9 @@ export function selectHistoryItem(item, batchIndex = 0, {restorePrompt=false} = 
   document.getElementById('download-btn').title = showGrid ? 'Скачать сетку PNG' : 'Скачать выбранный кадр';
   const repeatLabel=showGrid || (hasBatch && item.settings?.batchLayout !== 'square-v1') ? 'Повторить серию' : 'Повторить кадр';
   const repeatButton = document.getElementById('repeat-btn');
-  repeatButton.disabled = !item.workflow;
-  repeatButton.title = item.workflow ? repeatLabel : 'У старой записи не сохранён точный граф';
+  const archived = isArchivedRecipe(item);
+  repeatButton.disabled = archived || !item.workflow;
+  repeatButton.title = archived ? archivedRecipeMessage : item.workflow ? repeatLabel : 'У старой записи не сохранён точный граф';
   repeatButton.setAttribute('aria-label', repeatLabel);
   canvasPlaceholder.style.display = "none";
   
@@ -383,11 +389,12 @@ export function selectHistoryItem(item, batchIndex = 0, {restorePrompt=false} = 
   };
   if(outputImage.complete)outputImage.onload();
   
-  applyPromptBtn.disabled = false;
+  applyPromptBtn.disabled = archived;
+  applyPromptBtn.title = archived ? archivedRecipeMessage : 'Перенести все настройки выбранной генерации в форму';
   applySeedBtn.disabled = showGrid || seriesSeed;
   applySeedBtn.title = showGrid ? 'Сначала выберите кадр в сетке' : seriesSeed ? 'У старой серии сохранён только общий seed' : 'Взять seed выбранного кадра';
   fullscreenBtn.style.display = showLegacyGrid ? "none" : "block";
-  if(restorePrompt)window.dispatchEvent(new CustomEvent('restore-history-prompt',{detail:structuredClone(settings)}));
+  if(restorePrompt && !archived)window.dispatchEvent(new CustomEvent('restore-history-prompt',{detail:structuredClone(settings)}));
 }
 
 export function initGalleryEvents() {
@@ -412,10 +419,6 @@ export function initGalleryEvents() {
     }
   });
   outputImage.addEventListener('load', syncRefineButton);
-  document.getElementById('output-edit-btn')?.addEventListener('click',()=>{
-    const source=selectedOutputImage(selectedHistoryItem,selectedBatchIndex);
-    if(source && !document.getElementById('output-edit-btn').disabled)window.dispatchEvent(new CustomEvent('edit-source-image',{detail:structuredClone(source)}));
-  });
   refineBtn.addEventListener('click', () => {
     const source = selectedOutputImage(selectedHistoryItem, selectedBatchIndex);
     if (!source || source.type !== 'output' || !outputImage.naturalWidth || !outputImage.naturalHeight) return;
@@ -430,7 +433,7 @@ export function initGalleryEvents() {
     }}));
   });
   applyPromptBtn.addEventListener('click', () => {
-    if (!selectedHistoryItem) return;
+    if (!selectedHistoryItem || isArchivedRecipe(selectedHistoryItem)) return;
     window.dispatchEvent(new CustomEvent('restore-history-settings', { detail: structuredClone(selectedSettings()) }));
   });
 
@@ -451,7 +454,7 @@ export function initGalleryEvents() {
   });
   
   document.getElementById('repeat-btn').addEventListener('click', () => {
-    if (!selectedHistoryItem?.workflow) return;
+    if (!selectedHistoryItem?.workflow || isArchivedRecipe(selectedHistoryItem)) return;
     const item = structuredClone(selectedHistoryItem);
     if (selectedBatchIndex > 0 && item.settings?.batchLayout === 'square-v1') {
       const prefix = `frame_${selectedBatchIndex-1}_`;

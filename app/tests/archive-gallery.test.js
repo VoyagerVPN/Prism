@@ -37,10 +37,8 @@ test('Отдельная галерея фильтрует арты по пер�
     assert.equal(document.body.dataset.appView, 'generation');
     assert.strictEqual(document.activeElement, generationTab);
     generationTab.dispatchEvent(new dom.window.KeyboardEvent('keydown', {key: 'End', bubbles: true, cancelable: true}));
-    const editorTab=document.querySelector('#app-nav [data-app-view="editor"]');
-    assert.equal(document.body.dataset.appView, 'editor');
-    assert.strictEqual(document.activeElement, editorTab);
-    editorTab.dispatchEvent(new dom.window.KeyboardEvent('keydown', {key: 'ArrowLeft', bubbles: true, cancelable: true}));
+    assert.equal(document.body.dataset.appView, 'gallery');
+    assert.strictEqual(document.activeElement, galleryTab);
     galleryTab.dispatchEvent(new dom.window.KeyboardEvent('keydown', {key: 'Home', bubbles: true, cancelable: true}));
     assert.strictEqual(document.activeElement, generationTab);
     generationTab.dispatchEvent(new dom.window.KeyboardEvent('keydown', {key: 'ArrowRight', bubbles: true, cancelable: true}));

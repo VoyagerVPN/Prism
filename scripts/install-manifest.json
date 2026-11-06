@@ -14,5 +14,23 @@
     "bytes": 6938078334,
     "sha256": "31e35c80fc4829d14f90153f4c74cd59c90b779f6afe05a74cd6120b893f7e5b",
     "license": "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/LICENSE.md"
+  },
+  "optional_models": {
+    "anime": {
+      "name": "RealESRGAN_x4plus_anime_6B.pth",
+      "directory": "RealESRGAN",
+      "url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth",
+      "bytes": 17938799,
+      "sha256": "f872d837d3c90ed2e05227bed711af5671a6fd1c9f7d7e91c911a61f155e99da",
+      "license": "https://github.com/xinntao/Real-ESRGAN/blob/master/LICENSE"
+    },
+    "upscale": {
+      "name": "RealESRGAN_x4plus.pth",
+      "directory": "RealESRGAN",
+      "url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth",
+      "bytes": 67040989,
+      "sha256": "4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1",
+      "license": "https://github.com/xinntao/Real-ESRGAN/blob/master/LICENSE"
+    }
   }
 }

@@ -1,4 +1,4 @@
-// Выполняется в открытой панели через agent-browser eval --stdin; нужен один готовый результат.
+// Выполняется в открытой панели в консоли браузера; нужен один готовый результат.
 (async () => {
   const gallery = await import('./gallery.js');
   const { randomUuid } = await import('./config.js');

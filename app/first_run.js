@@ -13,8 +13,8 @@ export function setupFirstRun({doc=document,storage=window.localStorage,readines
     <p>Prism работает внутри ComfyUI. Генерацию выполняют ComfyUI и выбранная вами модель.</p>
     <ol class="first-run-steps">
       <li><h3>Подключение</h3><p data-backend></p><p>Панель использует backend по адресу этой страницы. Для другой установки откройте её адрес с окончанием <code>/prism/</code>. Локальный запуск: <code>Prism.bat</code>.</p></li>
-      <li><h3>Модель</h3><p data-models role="status"></p><p>Для начала подойдёт <a href="${modelPage}" target="_blank" rel="noopener noreferrer">SDXL Base от Stability AI</a>: один checkpoint .safetensors, около 6,94 ГБ, с собственными условиями использования. Setup.ps1 может загрузить его с проверкой SHA256. Либо добавьте совместимый SDXL / SD1.5 checkpoint через импорт. Отдельные UNet и LoRA требуют своих компонентов.</p><button type="button" data-import>Добавить файл модели</button></li>
-      <li><h3>Первое изображение</h3><p>Подготовьте пример: один кадр 512 × 512, 20 шагов, без дополнительных обработок. Проверьте текст во вкладке «Создание» и нажмите «Запуск». Первый кадр включает загрузку весов в память. Результат появится в рабочей области и галерее.</p><button type="button" data-example disabled>Подготовить пример</button><p>Для редактора Qwen, FaceDetailer, Face Swap и увеличения нужны дополнительные модели и узлы. Для первого изображения они не требуются.</p></li>
+      <li><h3>Модель</h3><p data-models role="status"></p><p>Для начала подойдёт <a href="${modelPage}" target="_blank" rel="noopener noreferrer">SDXL Base от Stability AI</a>: один checkpoint .safetensors, около 6,94 ГБ, с собственными условиями использования. Setup.ps1 может загрузить его с проверкой SHA256. Либо добавьте совместимый SDXL checkpoint через импорт. Отдельные UNet и LoRA требуют своих компонентов.</p><button type="button" data-import>Добавить файл модели</button></li>
+      <li><h3>Первое изображение</h3><p>Подготовьте пример: один кадр 512 × 512, 20 шагов, без дополнительных обработок. Проверьте текст во вкладке «Создание» и нажмите «Запуск». Первый кадр включает загрузку весов в память. Результат появится в рабочей области и галерее.</p><button type="button" data-example disabled>Подготовить пример</button><p>Для FaceDetailer, Face Swap и увеличения нужны дополнительные модели и узлы. Для первого изображения они не требуются.</p></li>
     </ol><p data-error role="alert"></p><div class="dialog-actions"><button type="button" data-check>Проверить снова</button><button type="button" data-close class="dialog-primary">Закрыть</button></div>`;
   doc.body.append(dialog);
   makeDialogBackdropDismissible(dialog);
@@ -35,7 +35,7 @@ export function setupFirstRun({doc=document,storage=window.localStorage,readines
       selected=available.find(model=>model.name.replaceAll('\\','/').split('/').at(-1)==='sd_xl_base_1.0.safetensors')
         ??available.find(model=>model.recipe==='checkpoint');
       example.disabled=!selected;
-      if(available.length&&!selected)dialog.querySelector('[data-models]').append(' Пример ниже предназначен для SDXL / SD1.5 checkpoint. Выберите вашу модель в «Создании» и используйте её рецепт.');
+      if(available.length&&!selected)dialog.querySelector('[data-models]').append(' Пример ниже предназначен для SDXL checkpoint. Выберите вашу модель в «Создании» и используйте её рецепт.');
     } catch(error) {
       dialog.querySelector('[data-backend]').textContent=doc.location.origin;
       dialog.querySelector('[data-models]').textContent='Готовность моделей не проверена.';

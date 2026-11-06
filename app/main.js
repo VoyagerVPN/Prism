@@ -8,7 +8,6 @@ import { loadCustomProfiles, initPresetEvents, renderProfiles } from './presets.
 import { initGalleryEvents, displayOutputImage, renderGallery, selectHistoryItem, updateHistory } from './gallery.js';
 import {setupLivePreview} from './live_preview.js';
 import {initAppNavigation,initArchiveGallery,setAppView} from './archive_gallery.js';
-import {initImageEditor} from './image_editor.js';
 import { compileWorkflow } from './workflow.js';
 import { createRefineSubmission } from './refine.js';
 import { assertLoraCompatibility, validateCapabilities, comboValues } from './model_loader.js';
@@ -23,14 +22,12 @@ import {setupFirstRun} from './first_run.js';
 const client = new ComfyClient();
 let preparing = false;
 let ready = false;
-let editor = null;
 const message = document.getElementById('dashboard-message');
 const resetButton = document.getElementById('reset-job-btn');
 const labels = { submitting: 'Отправка', queued: 'В очереди', running: 'Выполняется', reconnecting: 'Восстановление связи', unknown: 'Состояние неизвестно', cancelling: 'Отмена', cancelled: 'Отменено', failed: 'Ошибка', succeeded: 'Готово', lost: 'Задание отсоединено' };
 function warn(text) {
   message.textContent = text;
   message.hidden = !text;
-  editor?.showStatus(text);
 }
 function jobProgressView(job) {
   const progress = describeProgress(job.progress, job.workflow, job.settings);
@@ -43,10 +40,7 @@ function jobProgressView(job) {
 }
 function render() {
   const busy = preparing || client.busy;
-  const editing=document.body.dataset.appView==='editor';
-  const editingReady=editor?.updateAvailability(objectInfo,busy) ?? false;
-  el.generateBtn.disabled = busy || (editing ? !editingReady || !editor?.canRun : !ready);
-  document.getElementById('generate-label').textContent=editing?'Изменить':'Запуск';
+  el.generateBtn.disabled = busy || !ready;
   el.interruptBtn.disabled = !client.busy || client.job?.status === 'submitting';
   document.querySelector('.header-art-actions').inert = busy;
   document.querySelector('.image-overlay-controls').inert = busy;
@@ -99,7 +93,6 @@ async function refine({settings, source}) {
   await submit(submission.settings, submission.workflow);
 }
 function availability() {
-  const qwen=modelCatalog.find(model=>model.name===el.checkpointSelect.value)?.recipe==='qwen-image-2.1';
   const detector = comboValues(objectInfo.UltralyticsDetectorProvider?.input.required.model_name);
   const swaps = comboValues(objectInfo.ReActorFaceSwap?.input.required.swap_model);
   for (const [toggle, available, reason] of [
@@ -108,12 +101,9 @@ function availability() {
     [el.hiresToggle, upscaleModelList.length && objectInfo.ImageUpscaleWithModel, 'Нужны узел и веса увеличения'],
     [el.upscaleToggle, upscaleModelList.length && objectInfo.ImageUpscaleWithModel, 'Нужны узел и веса увеличения'],
   ]) {
-    const compatible=available && !qwen;
-    const explanation=qwen?'Для Qwen используйте «Открыть в редакторе» после генерации':reason;
-    toggle.disabled = !compatible;
-    if(qwen)toggle.checked=false;
-    toggle.title = compatible ? '' : explanation;
-    toggle.closest('.improvement-card')?.setAttribute('title', compatible ? '' : explanation);
+    toggle.disabled = !available;
+    toggle.title = available ? '' : reason;
+    toggle.closest('.improvement-card')?.setAttribute('title', available ? '' : reason);
   }
   for (const [select, field] of [[el.reactorDetection, 'facedetection'], [el.reactorRestore, 'face_restore_model']]) {
     const value = select.value;
@@ -170,10 +160,8 @@ client.addEventListener('job', event => {
   const job = event.detail;
   render();
   if (job.error) warn(job.error);
-  if (job.status==='cancelled' && job.settings.operation==='image-edit')editor?.showStatus('Редактирование отменено.');
   if (job.status === 'succeeded') {
     displayOutputImage(job);
-    if(job.settings.operation==='image-edit')editor?.showResult(job);
   }
 });
 window.addEventListener('dashboard-warning', event => warn(event.detail));
@@ -188,17 +176,10 @@ window.addEventListener('prism-import-completed',event=>{
   }else warn(modelCatalog.find(model=>model.name===name)?.reason??'Файл модели добавлен. Для генерации нужны совместимые компоненты и поддерживаемый рецепт.');
 });
 window.addEventListener('restore-history-settings', event => {
-  if(event.detail.operation==='image-edit'){editor?.restore(event.detail);setAppView('editor');}
-  else {applySettings(event.detail);saveSettings();}
+  applySettings(event.detail);
+  saveSettings();
 });
-window.addEventListener('generate-image', () => run(async () => {
-  if(document.body.dataset.appView==='editor') {
-    const submission=await editor.prepareSubmission(objectInfo);
-    await submit(submission.settings,submission.workflow);
-  } else await generate();
-}));
-window.addEventListener('editor-change',render);
-window.addEventListener('edit-source-image',event=>{editor?.useSource(event.detail);setAppView('editor');});
+window.addEventListener('generate-image', () => run(generate));
 window.addEventListener('prism-view-change',render);
 window.addEventListener('model-recipe-changed',()=>{availability();render();});
 window.addEventListener('refine-image', event => run(() => refine(event.detail)));
@@ -221,7 +202,6 @@ document.getElementById('refresh-models-btn').addEventListener('click', async ev
 window.addEventListener('load', async () => {
   initAppNavigation();
   setupUIEventListeners();
-  editor=initImageEditor();
   initPresetEvents();
   setupModelImport(refresh);
   const guide=setupFirstRun({
@@ -260,7 +240,6 @@ window.addEventListener('load', async () => {
   client.connect();
   if (client.job?.status === 'succeeded') {
     displayOutputImage(client.job);
-    if(client.job.settings.operation==='image-edit'){editor.restore(client.job.settings);editor.showResult(client.job);}
   }
   render();
   void guide.openIfNeeded();

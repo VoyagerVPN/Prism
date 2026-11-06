@@ -1,6 +1,6 @@
 {
   "prism": {
-    "base_path": "../../Data/Models",
+    "base_path": "",
     "checkpoints": "StableDiffusion",
     "diffusers": "Diffusers",
     "loras": "Lora\nLyCORIS",

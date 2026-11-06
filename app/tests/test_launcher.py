@@ -20,6 +20,19 @@ def run_hidden(*args, **kwargs):
 
 
 class LauncherCheck(unittest.TestCase):
+    def test_missing_config_explains_how_to_set_up_prism(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / '.cache') as directory:
+            script = Path(directory) / 'Start.ps1'
+            shutil.copyfile(ROOT / 'Start.ps1', script)
+            result = run_hidden(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                                 '-File', str(script), '-NoBrowser'],
+                                capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30)
+            self.assertNotEqual(result.returncode, 0)
+            message = result.stdout + result.stderr
+            self.assertIn('PRISM_CONFIG_MISSING', message)
+            self.assertIn('Setup.bat', message)
+            self.assertIn('prism.example.json', message)
+
     def test_local_config_is_used_and_incomplete_install_cannot_start(self):
         with tempfile.TemporaryDirectory(dir=ROOT / '.cache') as directory:
             root = Path(directory)
@@ -27,7 +40,6 @@ class LauncherCheck(unittest.TestCase):
             server = ThreadingHTTPServer(('127.0.0.1', 0), BaseHTTPRequestHandler)
             port = server.server_port
             server.server_close()
-            (root / 'prism.json').write_text('{}')
             config = {'backend_root': str(root / 'backend'), 'python': sys.executable,
                       'models_root': str(root / 'models'), 'port': port,
                       'arguments': [], 'lan_interface': '', 'managed_install': True}
@@ -179,7 +191,7 @@ ThreadingHTTPServer(('127.0.0.1',int(sys.argv[1])),Handler).serve_forever()
 """,
                 encoding='utf-8',
             )
-            config = json.loads((ROOT / 'prism.json').read_text(encoding='utf-8-sig'))
+            config = json.loads((ROOT / 'prism.example.json').read_text(encoding='utf-8-sig'))
             config.update({'port': port, 'python': sys.executable})
             config_path = root / 'config.json'
             config_path.write_text(json.dumps(config), encoding='utf-8')
@@ -225,12 +237,12 @@ ThreadingHTTPServer(('127.0.0.1',int(sys.argv[1])),Handler).serve_forever()
                 pass
 
         with tempfile.TemporaryDirectory(dir=ROOT / '.cache') as directory:
-            for name in ('Start.ps1', 'Update.ps1', 'ProcessLifetime.cs', 'prism.json'):
+            for name in ('Start.ps1', 'Update.ps1', 'ProcessLifetime.cs'):
                 shutil.copyfile(ROOT / name, Path(directory) / name)
             server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
-            config = json.loads((ROOT / 'prism.json').read_text(encoding='utf-8-sig'))
+            config = json.loads((ROOT / 'prism.example.json').read_text(encoding='utf-8-sig'))
             config['port'] = server.server_port
             path = Path(directory) / 'config.json'
             path.write_text(json.dumps(config), encoding='utf-8')
@@ -255,7 +267,7 @@ ThreadingHTTPServer(('127.0.0.1',int(sys.argv[1])),Handler).serve_forever()
     def test_update_check_rejects_dirty_repo_and_finds_stable_release(self):
         with tempfile.TemporaryDirectory(dir=ROOT / '.cache') as directory:
             root = Path(directory)
-            for name in ('Start.ps1', 'Update.ps1', 'ProcessLifetime.cs', 'prism.json'):
+            for name in ('Start.ps1', 'Update.ps1', 'ProcessLifetime.cs'):
                 shutil.copyfile(ROOT / name, root / name)
             upstream = root / 'upstream'
             backend = root / 'backend'
@@ -274,7 +286,7 @@ ThreadingHTTPServer(('127.0.0.1',int(sys.argv[1])),Handler).serve_forever()
             git('-C', upstream, 'tag', 'v3.0.0-rc1')
             git('clone', upstream, backend)
             git('-C', backend, 'checkout', '--detach', 'v1.0.0')
-            config = json.loads((ROOT / 'prism.json').read_text(encoding='utf-8-sig'))
+            config = json.loads((ROOT / 'prism.example.json').read_text(encoding='utf-8-sig'))
             config['backend_root'] = str(backend)
             config['managed_install'] = True
             install_marker = root / 'prism-install.json'

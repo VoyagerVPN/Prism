@@ -37,7 +37,6 @@ function connectedWorkflow(graph, outputId) {
 const sharedPreparationTypes=new Set([
   'CheckpointLoaderSimple','UNETLoader','CLIPLoader','VAELoader','UpscaleModelLoader',
   'LoraLoader','LoraLoaderModelOnly','CLIPSetLastLayer','CLIPTextEncode',
-  'TextEncodeQwenImage21','QwenImage21Cache',
 ]);
 
 function appendFrame(result, graph, prefix, shared) {
@@ -146,7 +145,6 @@ export function compileWorkflow(settings) {
   const isUpscaleEnabled = settings.upscaleToggle === true;
   const upscaleModelVal = settings.upscaleSelect;
   const isReactorEnabled = settings.reactorToggle === true;
-  if(settings.recipe==='qwen-image-2.1' && (isHiresEnabled||isFaceEnabled||isUpscaleEnabled||isReactorEnabled))throw new Error('Qwen 2.1: улучшения SDXL здесь не поддерживаются. Откройте результат в редакторе.');
   const reactorDetectionVal = settings.reactorDetection ?? 'retinaface_resnet50';
   const reactorRestoreVal = settings.reactorRestore ?? 'none';
   const reactorVisibilityValNum = numeric(settings.reactorVisibility, 1, 'Face visibility', 0, 1);
@@ -247,7 +245,6 @@ export function compileWorkflow(settings) {
     positivePrompt += (positivePrompt.trim() ? ", " : "") + loraDescriptions.join(", ");
   }
 
-  const qwen=settings.recipe==='qwen-image-2.1';
   graph["5"] = {
     "class_type": "CLIPTextEncode",
     "inputs": {
@@ -264,13 +261,7 @@ export function compileWorkflow(settings) {
     }
   };
   const positiveLink=['5',0];
-  let negativeLink=['6',0];
-  if(qwen) {
-    graph['5']={class_type:'TextEncodeQwenImage21',inputs:{clip:lastClipLink,prompt:positivePrompt,negative_prompt:negativePromptBase,resolution:1024}};
-    delete graph['6'];
-    negativeLink=['5',1];
-  }
-  
+  const negativeLink=['6',0];
   graph["4"] = {
     "class_type": "EmptyLatentImage",
     "inputs": {
@@ -382,7 +373,6 @@ export function compileWorkflow(settings) {
       "vae": lastVaeLink
     }
   };
-  if(qwen)graph['8']={class_type:'VAEDecodeTiled',inputs:{samples:[lastLatentNode,0],vae:lastVaeLink,tile_size:512,overlap:64,temporal_size:64,temporal_overlap:8}};
   
   let lastImageNode = "8";
   

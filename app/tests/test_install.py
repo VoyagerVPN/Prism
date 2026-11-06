@@ -52,6 +52,76 @@ class InstallTests(unittest.TestCase):
             self.assertEqual(Path(plan['backend']), root / '.runtime' / 'ComfyUI')
             self.assertEqual(list(root.iterdir()), [])
 
+    def test_plan_adds_only_selected_model_sizes(self):
+        plan = installer.installation_plan(ROOT, 'nvidia', 'upscale,anime', 8197)
+        self.assertEqual(plan['model_bytes'], 67040989 + 17938799)
+        with self.assertRaises(ValueError):
+            installer.installation_plan(ROOT, 'nvidia', 'none,sdxl', 8197)
+
+    def test_setup_plan_lists_optional_models_without_selecting_them(self):
+        script = ROOT / 'Setup.ps1'
+        command = ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(script), '-Plan']
+        for options, summary in [([], 'Выбрано: без моделей'), (['-Upscaler'], 'Выбрано: Real-ESRGAN')]:
+            result = subprocess.run(command + options, creationflags=subprocess.CREATE_NO_WINDOW,
+                                    capture_output=True, encoding='utf-8', errors='replace', timeout=30)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('Модель', result.stdout)
+            self.assertIn('Загрузка', result.stdout)
+            self.assertIn(summary, result.stdout)
+
+    def test_disk_plan_separates_environment_from_models_and_counts_partial_download(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / '.cache') as directory:
+            root = Path(directory)
+            (root / 'scripts').mkdir()
+            shutil.copyfile(ROOT / 'Setup.ps1', root / 'Setup.ps1')
+            shutil.copyfile(ROOT / 'scripts' / 'install-manifest.json', root / 'scripts' / 'install-manifest.json')
+
+            def plan(device, *args):
+                result = subprocess.run(
+                    ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                     '-File', str(root / 'Setup.ps1'), '-Plan', '-Device', device, *args],
+                    creationflags=subprocess.CREATE_NO_WINDOW, capture_output=True,
+                    encoding='utf-8', errors='replace', timeout=30,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                lines = result.stdout.splitlines()
+                return {label: next(line[len(label):].strip() for line in lines if line.startswith(label))
+                        for label in ('Запас для окружения', 'Осталось скачать моделей')}
+
+            cpu = plan('CPU')
+            gpu = plan('Nvidia')
+            self.assertNotEqual(cpu['Запас для окружения'], gpu['Запас для окружения'])
+            self.assertRegex(cpu['Осталось скачать моделей'], r'^0(?:[.,]0)? МБ\Z')
+            self.assertRegex(plan('Nvidia', '-Model', 'SDXL')['Осталось скачать моделей'], r'^6[.,]94 ГБ\Z')
+            self.assertFalse((root / '.runtime').exists())
+            partial = root / '.runtime' / 'models' / 'RealESRGAN' / 'RealESRGAN_x4plus_anime_6B.pth.part'
+            partial.parent.mkdir(parents=True)
+            partial.write_bytes(b'0' * 8_000_000)
+            resumed = plan('CPU', '-AnimeUpscaler')
+            self.assertRegex(resumed['Осталось скачать моделей'], r'^9[.,]9 МБ\Z')
+
+    def test_interactive_model_numbers_select_models_before_setup(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / '.cache') as directory:
+            root = Path(directory)
+            (root / 'scripts').mkdir()
+            (root / '.runtime').mkdir()
+            (root / '.runtime' / 'foreign.txt').touch()
+            shutil.copyfile(ROOT / 'Setup.ps1', root / 'Setup.ps1')
+            shutil.copyfile(ROOT / 'scripts' / 'install-manifest.json', root / 'scripts' / 'install-manifest.json')
+            result = subprocess.run(
+                ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                 '-File', str(root / 'Setup.ps1'), '-Device', 'CPU', '-NoLaunch'],
+                input='9\n2, 3\n', capture_output=True, encoding='utf-8', errors='replace',
+                creationflags=subprocess.CREATE_NO_WINDOW, timeout=30,
+            )
+            self.assertIn('Введите номера из таблицы.', result.stdout)
+            self.assertIn('Выбрано: Real-ESRGAN ×4, Real-ESRGAN Anime', result.stdout)
+            self.assertIn('PRISM_FOREIGN_RUNTIME', result.stdout + result.stderr)
+            no_models = subprocess.run(result.args, input='\n', capture_output=True, encoding='utf-8',
+                                       errors='replace', creationflags=subprocess.CREATE_NO_WINDOW, timeout=30)
+            self.assertIn('Выбрано: без моделей', no_models.stdout)
+            self.assertIn('PRISM_FOREIGN_RUNTIME', no_models.stdout + no_models.stderr)
+
     def test_setup_refuses_foreign_runtime_and_preserves_its_files(self):
         with tempfile.TemporaryDirectory(dir=ROOT / '.cache') as directory:
             root = Path(directory)
@@ -80,7 +150,7 @@ class InstallTests(unittest.TestCase):
             (root / 'app').mkdir()
             backend = root / 'existing-backend'
             backend.mkdir()
-            config = root / 'app' / 'prism.json'
+            config = root / 'app' / 'prism.local.json'
             original = json.dumps({'backend_root': str(backend)})
             config.write_text(original)
             with self.assertRaisesRegex(RuntimeError, 'PRISM_EXISTING_CONFIG'):

@@ -59,38 +59,46 @@ def download_verified(url, target, size, sha256):
     partial.rename(target)
 
 
-def installation_plan(root, device, model, port):
+def selected_models(manifest, selection):
+    catalog = {'sdxl': {**manifest['model'], 'directory': 'StableDiffusion'}, **manifest['optional_models']}
+    keys = [] if selection == 'none' else selection.split(',')
+    if any(key not in catalog for key in keys) or len(set(keys)) != len(keys):
+        raise ValueError('Неизвестный или повторный выбор моделей')
+    return [catalog[key] for key in keys]
+
+
+def installation_plan(root, device, model, port, manifest=None):
     root = Path(root).resolve()
-    if device not in ('nvidia', 'cpu') or model not in ('sdxl', 'none'):
+    if device not in ('nvidia', 'cpu'):
         raise ValueError('Неизвестный профиль установки')
     if not 1024 <= port <= 65535:
         raise ValueError('Порт должен быть от 1024 до 65535')
+    if manifest is None:
+        manifest = json.loads(Path(__file__).with_name('install-manifest.json').read_text(encoding='utf-8'))
+    models = selected_models(manifest, model)
     return {
         'backend': str(root / '.runtime' / 'ComfyUI'),
         'python': str(root / '.runtime' / 'venv' / 'Scripts' / 'python.exe'),
         'models': str(root / '.runtime' / 'models'),
         'url': f'http://127.0.0.1:{port}/prism/',
-        'model_bytes': 6938078334 if model == 'sdxl' else 0,
+        'model_bytes': sum(entry['bytes'] for entry in models),
         'device': device,
     }
 
 
-def prepare_installation(root, device, model, port):
+def prepare_installation(root, device, model, port, manifest=None):
     root = Path(root).resolve()
-    plan = installation_plan(root, device, model, port)
+    plan = installation_plan(root, device, model, port, manifest)
     runtime = root / '.runtime'
     marker = runtime / 'prism-install.json'
-    for name in ('prism.local.json', 'prism.json'):
-        config = root / 'app' / name
-        if not config.is_file():
-            continue
+    config = root / 'app' / 'prism.local.json'
+    if config.is_file():
         settings = json.loads(config.read_text(encoding='utf-8-sig'))
         backend = (config.parent / settings['backend_root']).resolve()
-        if backend != Path(plan['backend']) and (name == 'prism.local.json' or backend.exists()):
+        if backend != Path(plan['backend']):
             raise RuntimeError('PRISM_EXISTING_CONFIG: уже настроен другой ComfyUI. Для чистой установки распакуйте Prism в новую папку.')
-        if name == 'prism.local.json' and settings.get('port') != port:
+        if settings.get('port') != port:
             raise RuntimeError('PRISM_PORT_CONFIG: другой порт уже сохранён в app/prism.local.json. Измените конфиг при остановленном backend.')
-        break
     if runtime.exists() and any(runtime.iterdir()) and not marker.is_file():
         raise RuntimeError('PRISM_FOREIGN_RUNTIME: .runtime не создан Prism; выберите пустую папку.')
     if marker.exists():
@@ -125,7 +133,7 @@ def install_environment(root, uv, device, model, port):
     config = root / 'app' / 'prism.local.json'
     if port is None:
         port = json.loads(config.read_text(encoding='utf-8-sig'))['port'] if config.exists() else 8188
-    plan = prepare_installation(root, device, model, port)
+    plan = prepare_installation(root, device, model, port, manifest)
     runtime = root / '.runtime'
     marker = runtime / 'prism-install.json'
     state = json.loads(marker.read_text(encoding='utf-8-sig'))
@@ -191,7 +199,8 @@ def install_environment(root, uv, device, model, port):
         raise RuntimeError('PRISM_BACKEND_DIRTY: исходники ComfyUI изменены; сохраните изменения перед установкой.')
 
     requirements_lock = root / 'scripts' / 'requirements-lock.txt'
-    fingerprint = hashlib.sha256((json.dumps(manifest, sort_keys=True) + device + requirements_lock.read_text(encoding='utf-8')).encode()).hexdigest()
+    package_manifest = {key: value for key, value in manifest.items() if key != 'optional_models'}
+    fingerprint = hashlib.sha256((json.dumps(package_manifest, sort_keys=True) + device + requirements_lock.read_text(encoding='utf-8')).encode()).hexdigest()
     if state.get('packages_fingerprint') != fingerprint:
         index = manifest['cuda_index'] if device == 'nvidia' else 'https://download.pytorch.org/whl/cpu'
         torch = [f'{name}=={manifest[key]}' for name, key in
@@ -211,9 +220,8 @@ def install_environment(root, uv, device, model, port):
     if device == 'nvidia':
         check += '; assert torch.cuda.is_available(), "CUDA недоступна: обновите драйвер NVIDIA"; print(torch.cuda.get_device_name(0)); assert torch.cuda.get_device_properties(0).total_memory >= 8_000_000_000, "Для начального SDXL-профиля нужно от 8 ГБ VRAM"'
     run([python, '-I', '-X', 'utf8', '-X', f'pycache_prefix={cache / "pycache"}', '-c', check])
-    if model == 'sdxl':
-        entry = manifest['model']
-        download_verified(entry['url'], Path(plan['models']) / 'StableDiffusion' / entry['name'],
+    for entry in selected_models(manifest, model):
+        download_verified(entry['url'], Path(plan['models']) / entry['directory'] / entry['name'],
                           entry['bytes'], entry['sha256'])
     Path(plan['models']).mkdir(parents=True, exist_ok=True)
     write_launch_config(root, device, port)
@@ -230,7 +238,7 @@ def main():
     parser.add_argument('--root', type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument('--uv', required=True)
     parser.add_argument('--device', choices=('nvidia', 'cpu'), default='nvidia')
-    parser.add_argument('--model', choices=('sdxl', 'none'), default='sdxl')
+    parser.add_argument('--model', default='none', help='Ключи моделей через запятую или none')
     parser.add_argument('--port', type=int)
     args = parser.parse_args()
     install_environment(args.root, args.uv, args.device, args.model, args.port)

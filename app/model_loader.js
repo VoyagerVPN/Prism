@@ -1,21 +1,18 @@
 export function loadModel(graph, params) {
-  if (['anima','qwen-image-2.1'].includes(params.recipe)) {
+  if (params.recipe === 'anima') {
     graph["1"] = {
       "class_type": "UNETLoader",
       "inputs": { "unet_name": params.checkpoint, "weight_dtype": "default" }
     };
     graph["2"] = {
       "class_type": "CLIPLoader",
-      "inputs": { "clip_name": params.clipName, "type": params.recipe==='qwen-image-2.1'?'qwen_image':'stable_diffusion' }
+      "inputs": { "clip_name": params.clipName, "type": "stable_diffusion" }
     };
     graph["3"] = {
       "class_type": "VAELoader",
       "inputs": { "vae_name": params.vaeName }
     };
-    if(params.recipe==='qwen-image-2.1') {
-      graph.qwen_cache={class_type:'QwenImage21Cache',inputs:{model:['1',0],device:'cpu',dtype:'int8'}};
-    }
-    return { modelLink: [params.recipe==='qwen-image-2.1'?'qwen_cache':'1', 0], clipLink: ["2", 0], vaeLink: ["3", 0] };
+    return { modelLink: ["1", 0], clipLink: ["2", 0], vaeLink: ["3", 0] };
   }
   if (params.recipe !== 'checkpoint') throw new Error('Неподдерживаемый рецепт модели.');
     graph["1"] = {
@@ -62,16 +59,7 @@ export function buildModelCatalog(info) {
       const missing = [!clips.includes(clipName) && clipName, !vaes.includes(vaeName) && vaeName].filter(Boolean);
       return { name, recipe: 'anima', clipName, vaeName, ...(missing.length ? { reason: `Нет компонентов Anima: ${missing.join(', ')}` } : {}) };
     }) : [];
-  const basename=name=>name.replaceAll('\\','/').split('/').at(-1);
-  const qwenClip=clips.find(name=>basename(name)==='qwen3vl_8b_int8_convrot.safetensors');
-  const qwenVae=vaes.find(name=>basename(name)==='qwen_image_2.1_vae_bf16.safetensors');
-  const qwen=comboValues(info.UNETLoader?.input.required.unet_name)
-    .filter(name=>basename(name)==='qwen_image_2.1_int8_convrot.safetensors')
-    .map(name=>{
-      const missing=[!qwenClip&&'qwen3vl_8b_int8_convrot.safetensors',!qwenVae&&'qwen_image_2.1_vae_bf16.safetensors',...['TextEncodeQwenImage21','QwenImage21Cache','EmptyLatentImage','VAEDecodeTiled'].filter(node=>!info[node])].filter(Boolean);
-      return {name,recipe:'qwen-image-2.1',clipName:qwenClip,vaeName:qwenVae,...(missing.length?{reason:`Нет компонентов Qwen 2.1: ${missing.join(', ')}`}:{})};
-    });
-  return [...checkpoints, ...anima,...qwen];
+  return [...checkpoints, ...anima];
 }
 
 export function resolveModelSelection(catalog, name) {
@@ -81,7 +69,6 @@ export function resolveModelSelection(catalog, name) {
   if (entry.clipName) selection.clipName = entry.clipName;
   if (entry.vaeName) selection.vaeName = entry.vaeName;
   if (entry.recipe === 'anima') selection.recommended = { steps: 30, cfg: 4, sampler: 'er_sde', scheduler: 'simple' };
-  if (entry.recipe === 'qwen-image-2.1') selection.recommended = {steps:25,cfg:1,sampler:'euler',scheduler:'simple'};
   return selection;
 }
 
@@ -97,8 +84,7 @@ export function assertLoraCompatibility(recipe, loras, details) {
     const key = lora.name.replaceAll('\\', '/');
     const metadata = details?.[key] ?? details?.[lora.name];
     const family = loraFamily(metadata?.base_model);
-    if(recipe==='qwen-image-2.1' && !['qwen-image-2.1','unknown'].includes(family))throw new Error(`LoRA «${lora.name}» несовместима с Qwen Image 2.1. Нужна LoRA именно для версии 2.1.`);
-    if(recipe!=='qwen-image-2.1' && family==='qwen-image-2.1')throw new Error(`LoRA «${lora.name}» предназначена только для Qwen Image 2.1.`);
+    if(family==='qwen-image-2.1')throw new Error(`LoRA «${lora.name}» предназначена для Qwen Image 2.1 и не подходит для SDXL или Anima.`);
     if (recipe === 'anima' && family === 'other') {
       throw new Error(`LoRA «${lora.name}» несовместима с Anima. Выберите LoRA для Anima или смените модель.`);
     }

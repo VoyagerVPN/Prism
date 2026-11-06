@@ -1,6 +1,6 @@
 ﻿param(
     [ValidateSet('Start','Status','Stop','CheckUpdate','Update')][string]$Action = 'Start',
-    [string]$Config = "$PSScriptRoot\prism.json",
+    [string]$Config = "$PSScriptRoot\prism.local.json",
     [switch]$NoBrowser
 )
 Set-StrictMode -Version Latest
@@ -30,8 +30,8 @@ function Get-ConfiguredProcessRoot($Process) {
 
 $lifetime = $null
 try {
-    if (-not $PSBoundParameters.ContainsKey('Config') -and (Test-Path -LiteralPath "$PSScriptRoot\prism.local.json")) {
-        $Config = "$PSScriptRoot\prism.local.json"
+    if (-not (Test-Path -LiteralPath $Config -PathType Leaf)) {
+        throw "PRISM_CONFIG_MISSING: не найден $Config. Откройте Setup.bat и выберите способ установки. Для ручного подключения заполните app/prism.local.json по примеру app/prism.example.json."
     }
     $settings = Get-Content -LiteralPath $Config -Raw | ConvertFrom-Json
     $comfyRoot = Resolve-AppPath $settings.backend_root

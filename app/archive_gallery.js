@@ -24,8 +24,6 @@ export function setAppView(view) {
   document.body.dataset.appView = view;
   document.getElementById('generation-view').hidden = view !== 'generation';
   document.getElementById('gallery-view').hidden = view !== 'gallery';
-  const editor=document.getElementById('editor-view');
-  if(editor)editor.hidden=view!=='editor';
   for (const button of document.querySelectorAll('#app-nav [data-app-view]')) {
     const active = button.dataset.appView === view;
     button.setAttribute('aria-selected', String(active));
