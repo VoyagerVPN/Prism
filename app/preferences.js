@@ -60,7 +60,7 @@ export function setupPreferences({doc=document,storage=window.localStorage,local
       const preferences=savePreferences(candidate,storage);apply();doc.defaultView.dispatchEvent(new doc.defaultView.CustomEvent('prism-preferences-changed',{detail:preferences}));dialog.close();
       if(languageChanged)publishLanguage();
     }
-    catch(error){if(languageChanged)publishLanguage();status.textContent=localization?.t?localization.t('settings.notSaved',{message:error.message,interpolation:{escapeValue:false}}):`Не сохранено: ${error.message}`;}
+    catch(error){if(languageChanged)publishLanguage();const message=error.message==='PRISM_LANGUAGE_WRITE'&&localization?.t?localization.t('settings.languageSaveFailed'):error.message;status.textContent=localization?.t?localization.t('settings.notSaved',{message,interpolation:{escapeValue:false}}):`Не сохранено: ${message}`;}
   };
   doc.defaultView.addEventListener('storage',event=>{if(event.key===storageKey)apply();});
 }

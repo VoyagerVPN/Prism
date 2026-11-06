@@ -1,7 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
-import {createLocalization,setActiveLocalization} from '../i18n.js';
+import {createLocalization,createServerLanguageStore,setActiveLocalization} from '../i18n.js';
+
+test('ошибка сервера при сохранении языка понятна и не сбрасывает черновик',async()=>{
+  const {setupPreferences}=await import('../preferences.js');
+  for(const [initial,next,expected,failure] of [['en','ru','Could not save the language','http'],['ru','en','Не удалось сохранить язык','http'],['en','ru','Could not save the language','network'],['ru','en','Не удалось сохранить язык','network']]){
+    const dom=new JSDOM('<button id="prism-settings-open"></button>',{url:'http://localhost/'}),doc=dom.window.document;
+    dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;};
+    const fetchImpl=async(_url,options={})=>{if(options.method==='POST'){if(failure==='network')throw new TypeError('Failed to fetch');return {ok:false};}return {ok:true,json:async()=>({language:initial})};};
+    const l10n=await createLocalization({storage:createServerLanguageStore(fetchImpl)});setActiveLocalization(l10n);
+    try{
+      setupPreferences({doc,storage:dom.window.localStorage,localization:l10n});doc.querySelector('button').click();
+      doc.querySelector('#preference-appearance-name').value='My draft';doc.querySelector('#preference-language').value=next;
+      doc.querySelector('form').dispatchEvent(new dom.window.Event('submit',{cancelable:true}));await new Promise(resolve=>setImmediate(resolve));
+      assert.match(doc.querySelector('#prism-settings-status').textContent,new RegExp(expected));
+      assert.equal(doc.querySelector('#prism-settings').open,true);assert.equal(doc.querySelector('#preference-appearance-name').value,'My draft');
+      assert.equal(l10n.language,initial);
+    }finally{setActiveLocalization(null);dom.window.close();}
+  }
+});
 
 test('начальные имена новых вариантов следуют языку, сохранённые имена не меняются',async()=>{
   const {readPreferences,savePreferences}=await import('../preferences.js');

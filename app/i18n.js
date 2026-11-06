@@ -9,7 +9,7 @@ const resources = {
     appearance: 'Initial appearance name', outfit: 'Initial outfit name', outfitEnabled: 'Enable outfit for new characters', prompt: 'Prompt',
     weight: 'Show the strength of connected content', always: 'Always', modified: 'Only when changed', weightHelp: 'Changes the display only. Strength and prompt content are preserved.',
     import: 'LoRA import', metadata: 'Automatically download Civitai metadata', metadataHelp: 'After saving a LoRA, Prism sends its file hash to Civitai and retrieves its name, author, triggers, preview and description.',
-    defaults: 'Defaults', cancel: 'Cancel', save: 'Save', notSaved: 'Not saved: {{message}}', defaultVariant: 'Default', invalidName:'Name must be at most 200 characters and cannot use reserved names.', invalid:'Invalid Prism preferences.'
+    defaults: 'Defaults', cancel: 'Cancel', save: 'Save', notSaved: 'Not saved: {{message}}', languageSaveFailed:'Could not save the language. Check the connection to Prism and try again.', defaultVariant: 'Default', invalidName:'Name must be at most 200 characters and cannot use reserved names.', invalid:'Invalid Prism preferences.'
   }}},
   ru: {translation: {common: {cancel: 'Отмена'}, gallery: {imageCount_one: '{{count}} изображение', imageCount_few: '{{count}} изображения', imageCount_many: '{{count}} изображений', imageCount_other: '{{count}} изображения'}, settings: {
     title: 'Настройки Prism', scope: 'Предпочтения для этого браузера, кроме языка.', language: 'Язык', variants: 'Первичные варианты персонажа',
@@ -17,7 +17,7 @@ const resources = {
     appearance: 'Начальное имя внешности', outfit: 'Начальное имя комплекта одежды', outfitEnabled: 'Включать одежду у нового персонажа', prompt: 'Промпт',
     weight: 'Показывать интенсивность подключённого контента', always: 'Всегда', modified: 'Только изменённую', weightHelp: 'Меняет только отображение. Интенсивность и содержимое промпта сохраняются.',
     import: 'Импорт LoRA', metadata: 'Автоматически загружать метаданные Civitai', metadataHelp: 'После сохранения LoRA Prism передаёт Civitai хеш файла и получает название, автора, триггеры, превью и описание.',
-    defaults: 'Значения по умолчанию', cancel: 'Отмена', save: 'Сохранить', notSaved: 'Не сохранено: {{message}}'
+    defaults: 'Значения по умолчанию', cancel: 'Отмена', save: 'Сохранить', notSaved: 'Не сохранено: {{message}}', languageSaveFailed:'Не удалось сохранить язык. Проверьте подключение к Prism и повторите попытку.'
   }}},
 };
 resources.en.translation.firstRun={
@@ -181,9 +181,14 @@ export function createServerLanguageStore(fetchImpl = globalThis.fetch) {
       return (await response.json()).language;
     },
     async setItem(_key, language) {
-      const response = await fetchImpl('/prism/language', {
-        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({language}),
-      });
+      let response;
+      try {
+        response = await fetchImpl('/prism/language', {
+          method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({language}),
+        });
+      } catch (error) {
+        throw new Error('PRISM_LANGUAGE_WRITE', {cause: error});
+      }
       if (!response.ok) throw new Error('PRISM_LANGUAGE_WRITE');
     },
   };
