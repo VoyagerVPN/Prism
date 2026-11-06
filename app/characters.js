@@ -1,6 +1,7 @@
 import { loraList } from './api.js';
 import { selectCharacterVariant, toggleCharacterVariantLink, renderVariantLink, variantOptionLabel } from './character_variants.js';
 import {insertPromptCharacter,syncPromptCharacter} from './prompt_editor.js';
+import {translate as tr} from './i18n.js';
 
 let characters = {};
 let activeCharacterSnapshot=null;
@@ -14,8 +15,8 @@ let characterSaveQueue = Promise.resolve(true);
 async function requestCharacters(options = {}) {
   const response = await fetch('/prism/characters', { cache: 'no-store', signal: AbortSignal.timeout(15000), ...options });
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || `Ошибка сохранения: HTTP ${response.status}`);
-  if (!data.characters || typeof data.characters !== 'object' || Array.isArray(data.characters) || !('revision' in data)) throw new Error('Некорректный ответ хранилища персонажей');
+  if (!response.ok) throw new Error(data.error || tr('characters.saveHttp',`Ошибка сохранения: HTTP ${response.status}`,{status:response.status}));
+  if (!data.characters || typeof data.characters !== 'object' || Array.isArray(data.characters) || !('revision' in data)) throw new Error(tr('characters.invalidResponse','Некорректный ответ хранилища персонажей'));
   return data;
 }
 
@@ -41,7 +42,16 @@ export async function initCharacters() {
   $('add-character-btn').onclick=()=>window.dispatchEvent(new CustomEvent('edit-library-character',{detail:{name:'',lora:'None'}}));
   const choose=document.createElement('button');choose.id='choose-character-btn';choose.className='add-lora-btn';choose.textContent='Открыть библиотеку персонажей';
   choose.onclick=()=>window.dispatchEvent(new Event('browse-characters'));card.append(choose);
-  card.inert=true;status.textContent='Загрузка персонажей…';
+  const translateLabels=()=>{
+    editButton.textContent=tr('characters.edit','Изменить персонажа');
+    appearanceLabel.querySelector('label').textContent=tr('characters.appearance','Внешность');
+    appearanceSelect.setAttribute('aria-label',tr('characters.appearanceLabel','Внешность персонажа'));
+    technicalTitle.textContent=tr('characters.technical','Техническая реализация');
+    choose.textContent=tr('characters.browse','Открыть библиотеку персонажей');
+  };
+  translateLabels();
+  window.addEventListener('prism-language-changed',()=>{translateLabels();renderCharacterSelect($('character-select').value);});
+  card.inert=true;status.textContent=tr('characters.loading','Загрузка персонажей…');
   try {
     const data=await requestCharacters();characters=data.characters;characterRevision=data.revision;
     if(characterRevision===null) {
@@ -49,7 +59,7 @@ export async function initCharacters() {
       if(!await saveCharactersDatabase(legacy?JSON.parse(legacy):{}))throw new Error(status.textContent);
     }
     status.textContent='';card.inert=false;
-  }catch(error){status.textContent=`Персонажи недоступны: ${error.message}. Обновите страницу для повтора.`;window.dispatchEvent(new CustomEvent('dashboard-warning',{detail:status.textContent}));return;}
+  }catch(error){status.textContent=tr('characters.unavailable',`Персонажи недоступны: ${error.message}. Обновите страницу для повтора.`,{message:error.message});window.dispatchEvent(new CustomEvent('dashboard-warning',{detail:status.textContent}));return;}
   updateCharLoraList();renderCharacterSelect();
   $('character-select').onchange=()=>activateCharacter($('character-select').value);
   $('char-lora-strength').oninput=()=>{$('char-lora-strength-val').textContent=Number($('char-lora-strength').value).toFixed(2);};
@@ -106,27 +116,28 @@ export function getCharacterUniverses(current='') {
 
 export async function persistImportedCharacter(intent) {
   const sourceName=intent?.source?.name;
-  if(typeof sourceName!=='string'||!sourceName.trim())throw new Error('Импортированный источник не содержит backend-имя.');
+  if(typeof sourceName!=='string'||!sourceName.trim())throw new Error(tr('characters.sourceMissing','Импортированный источник не содержит backend-имя.'));
   const db=getSavedCharacters();
   let name,previous=null;
   if(intent.action==='attach'){
     name=intent.target?.characterName;
-    if(typeof name!=='string'||!db[name])throw new Error('Выбранный персонаж больше не существует.');
+    if(typeof name!=='string'||!db[name])throw new Error(tr('characters.missing','Выбранный персонаж больше не существует.'));
     previous=structuredClone(db[name]);
     db[name].lora=sourceName;db[name].strength=Number(db[name].strength??1);
   }else if(intent.action==='create'){
     name=typeof intent.name==='string'?intent.name.trim():'';
-    if(!name||name.length>200)throw new Error('Укажите имя нового персонажа.');
-    if(Object.hasOwn(db,name))throw new Error(`Персонаж «${name}» уже существует. Измените имя или выберите его для подключения модели.`);
+    if(!name||name.length>200)throw new Error(tr('characters.nameRequired','Укажите имя нового персонажа.'));
+    if(Object.hasOwn(db,name))throw new Error(tr('characters.duplicate',`Персонаж «${name}» уже существует. Измените имя или выберите его для подключения модели.`,{name}));
     const appearance=String(intent.appearance??''),outfit=String(intent.outfit??'');
+    const initial=tr('settings.defaultVariant','По умолчанию');
     db[name]={
       name,universe:String(intent.universe??''),lora:sourceName,strength:1,trigger:String(intent.trigger??''),
-      appearance,appearances:{'По умолчанию':appearance},activeAppearanceName:'По умолчанию',
-      outfits:{'По умолчанию':outfit},activeOutfitName:'По умолчанию',outfitEnabled:true,
+      appearance,appearances:{[initial]:appearance},activeAppearanceName:initial,
+      outfits:{[initial]:outfit},activeOutfitName:initial,outfitEnabled:true,
     };
-  }else throw new Error('Неизвестное действие с импортированным персонажем.');
+  }else throw new Error(tr('characters.unknownAction','Неизвестное действие с импортированным персонажем.'));
   const selected=document.getElementById('character-select')?.value??'none';
-  if(!await saveCharactersDatabase(db,{optimistic:false}))throw new Error(document.getElementById('character-storage-status')?.textContent||'Не удалось сохранить персонажа.');
+  if(!await saveCharactersDatabase(db,{optimistic:false}))throw new Error(document.getElementById('character-storage-status')?.textContent||tr('characters.saveFailed','Не удалось сохранить персонажа.'));
   if(previous)syncPromptCharacter(name,db[name],previous);
   renderCharacterSelect(selected);window.dispatchEvent(new Event('characters-updated'));
   return structuredClone(db[name]);
@@ -136,12 +147,12 @@ export async function assignCharacterPortrait(name, source) {
   const status=document.getElementById('character-storage-status');
   const response=await fetch('/prism/media/assign',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source,target:{kind:'character',name},revision:characterRevision}),signal:AbortSignal.timeout(90000)});
   const data=await response.json();
-  if(!response.ok)throw new Error(data.error||`Не удалось назначить портрет: HTTP ${response.status}`);
-  if(!data.characters||typeof data.characters!=='object'||Array.isArray(data.characters)||!('revision' in data))throw new Error('Некорректный ответ хранилища персонажей');
+  if(!response.ok)throw new Error(data.error||tr('characters.portraitHttp',`Не удалось назначить портрет: HTTP ${response.status}`,{status:response.status}));
+  if(!data.characters||typeof data.characters!=='object'||Array.isArray(data.characters)||!('revision' in data))throw new Error(tr('characters.invalidResponse','Некорректный ответ хранилища персонажей'));
   characters=structuredClone(data.characters);characterRevision=data.revision;
   const selected=document.getElementById('character-select')?.value||'none';renderCharacterSelect(selected);
   if(selected!=='none'&&characters[selected])loadCharacterData(selected,characters[selected]);
-  if(status)status.textContent='Портрет персонажа сохранён';
+  if(status)status.textContent=tr('characters.portraitSaved','Портрет персонажа сохранён');
   window.dispatchEvent(new Event('characters-updated'));
   return data.media;
 }
@@ -151,7 +162,7 @@ export async function saveCharactersDatabase(db,{optimistic=true}={}) {
   const status = document.getElementById('character-storage-status');
   // Последовательная запись позволяет продолжать ввод, пока сохраняется предыдущее поле.
   if(optimistic)characters = structuredClone(db);
-  status.textContent = 'Сохранение…';
+  status.textContent = tr('characters.saving','Сохранение…');
   characterSaveQueue = characterSaveQueue.then(async previousSaved => {
   if (!previousSaved) return false;
   try {
@@ -161,11 +172,11 @@ export async function saveCharactersDatabase(db,{optimistic=true}={}) {
     });
     characterRevision = data.revision;
     if(!optimistic)characters = structuredClone(db);
-    status.textContent = 'Изменения сохранены';
+    status.textContent = tr('characters.saved','Изменения сохранены');
     return true;
   } catch (error) {
     card.inert = true;
-    status.textContent = `Не сохранено: ${error.message}`;
+    status.textContent = tr('characters.notSaved',`Не сохранено: ${error.message}`,{message:error.message});
     return false;
   }
   });
@@ -178,7 +189,7 @@ export function renderCharacterSelect(selectValue = "none") {
   
   const activeVal = selectValue || characterSelect.value;
   
-  characterSelect.innerHTML = '<option value="none">Без персонажа</option>';
+  characterSelect.replaceChildren(new Option(tr('characters.none','Без персонажа'),'none'));
   
   const db = getSavedCharacters();
   Object.keys(db).forEach(name => {
@@ -230,7 +241,7 @@ export function loadCharacterData(name, snapshot) {
   const loraSelect = document.getElementById('char-lora-select');
   const lora = char.lora || 'None';
   if (![...loraSelect.options].some(option => option.value === lora)) {
-    const missing = new Option(`Недоступно: ${lora}`, lora); missing.disabled = true; loraSelect.add(missing);
+    const missing = new Option(tr('characters.unavailableLora',`Недоступно: ${lora}`,{name:lora}), lora); missing.disabled = true; loraSelect.add(missing);
   }
   loraSelect.value = lora;
   document.getElementById("char-lora-strength").value = char.strength !== undefined ? char.strength : 1.0;
@@ -259,7 +270,7 @@ export function syncCharacterSummary() {
   summary.hidden = document.getElementById('character-select').value === 'none';
   const linked=!summary.hidden && document.getElementById('char-lora-select').value!=='None';
   document.getElementById('character-card').classList.toggle('linked-character',linked);
-  document.getElementById('edit-character-btn').textContent='Изменить персонажа';
+  document.getElementById('edit-character-btn').textContent=tr('characters.edit','Изменить персонажа');
 }
 
 export function activateCharacter(name, snapshot) {

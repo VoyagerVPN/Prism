@@ -1,3 +1,5 @@
+import {translate as tr} from './i18n.js';
+
 const controls = new Map();
 let observer;
 
@@ -32,25 +34,30 @@ export function syncSelectControls() {
     for (const select of document.querySelectorAll('select:not([data-native="true"])')) {
       let entry = controls.get(select);
       if (!entry) {
-        const label = select.getAttribute('aria-label') || select.labels?.[0]?.textContent.trim() || select.title || 'Выбор значения';
+        const label = select.getAttribute('aria-label') || select.labels?.[0]?.textContent.trim() || select.title || tr('controls.select','Выбор значения');
         const control = new TomSelect(select, {
-          plugins: ['dropdown_input'], create:false, placeholder:'Выбрать…',
+          plugins: ['dropdown_input'], create:false, placeholder:tr('controls.choose','Выбрать…'),
           maxOptions: null, searchField: ['text', 'value'], refreshThrottle: 0,
           dropdownParent: select.closest('dialog') || document.body,
           onDelete: () => false,
           render: {
             option: (data, escape) => `<div><span>${escape(data.text)}</span>${data.value.includes('/') || data.value.includes('\\') ? `<small>${escape(data.value)}</small>` : ''}</div>`,
-            no_results: () => '<div class="no-results">Ничего не найдено</div>',
+            no_results: () => `<div class="no-results">${tr('controls.noResults','Ничего не найдено')}</div>`,
           },
         });
         control.focus_node.setAttribute('aria-label', label);
-        control.control_input.setAttribute('aria-label', `Поиск: ${label}`);
-        control.control_input.placeholder = 'Найти…';
+        control.control_input.setAttribute('aria-label', tr('controls.searchLabel',`Поиск: ${label}`,{label}));
+        control.control_input.placeholder = tr('controls.search','Найти…');
         control.positionDropdown = () => positionMenu(control);
         entry = {control, signature:''};
         controls.set(select, entry);
       }
       const {control} = entry;
+      const label = select.getAttribute('aria-label') || select.labels?.[0]?.textContent.trim() || select.title || tr('controls.select','Выбор значения');
+      control.focus_node.setAttribute('aria-label',label);
+      control.control_input.setAttribute('aria-label',tr('controls.searchLabel',`Поиск: ${label}`,{label}));
+      control.control_input.placeholder=tr('controls.search','Найти…');
+      control.settings.placeholder=tr('controls.choose','Выбрать…');
       const signature = JSON.stringify([...select.options].map(option => [option.value, option.text, option.disabled]));
       if (entry.signature !== signature) {
         control.clearOptions(() => false);
@@ -83,6 +90,7 @@ export function setupSelectControls() {
   document.addEventListener('change', event => { if (event.target instanceof HTMLSelectElement) syncSelectControls(); });
   const reposition = () => { for (const {control} of controls.values()) if (control.isOpen) positionMenu(control); };
   window.addEventListener('resize', reposition);
+  window.addEventListener('prism-language-changed',syncSelectControls);
   document.addEventListener('scroll', reposition, true);
   window.visualViewport?.addEventListener('resize', reposition);
 }

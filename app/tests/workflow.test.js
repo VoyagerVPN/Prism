@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { compileRefineWorkflow, compileWorkflow } from '../workflow.js';
+import {createLocalization,setActiveLocalization} from '../i18n.js';
 
 const base = {
   recipe: 'checkpoint', checkpoint: 'novaKemonoXL_v80.safetensors',
@@ -8,6 +9,15 @@ const base = {
   seed: 12345, steps: 20, cfg: 6, sampler: 'euler', scheduler: 'normal',
   positive: 'portrait', negative: 'blurry', loras: [], character: null,
 };
+
+test('Ошибки подготовки генерации используют выбранный язык',async()=>{
+  const l10n=await createLocalization({storage:{getItem:()=>null,setItem:()=>{}},systemLanguage:'en'});setActiveLocalization(l10n);
+  try{
+    assert.throws(()=>compileWorkflow({...base,checkpoint:''}),/Choose an available model/);
+    assert.throws(()=>compileWorkflow({...base,width:-1}),/Invalid value “Width”/);
+    assert.throws(()=>compileWorkflow({...base,reactorToggle:true}),/Face Swap requires a source face file/);
+  }finally{setActiveLocalization(null);}
+});
 
 test('Refine улучшает выбранный output без повторного txt2img-прохода', () => {
   const graph = compileRefineWorkflow({

@@ -1,3 +1,5 @@
+import {translate as tr} from './i18n.js';
+
 // Связи взаимно однозначны и хранятся отдельно от режима совместного выбора.
 export function variantName(character,kind,key) {
   return character.variantNames?.[kind]?.[key]??key;
@@ -5,7 +7,8 @@ export function variantName(character,kind,key) {
 
 export function variantOptionLabel(character,kind,key) {
   const values=kind==='appearance'?character.appearances:character.outfits;
-  return variantName(character,kind,key)||`Без названия · ${Object.keys(values).indexOf(key)+1}`;
+  const index=Object.keys(values).indexOf(key)+1;
+  return variantName(character,kind,key)||tr('variant.untitled',`Без названия · ${index}`,{index});
 }
 
 export function selectCharacterVariant(character, kind, name) {
@@ -41,7 +44,7 @@ export function renderVariantLink(button,character) {
   const linked=character.variantsLinked===true;
   button.setAttribute('aria-pressed',String(linked));
   const paired=character.variantLinks?.[character.activeAppearanceName]===character.activeOutfitName;
-  const label=linked?'Отключить связанное переключение':'Связать выбранную внешность и одежду';
-  button.setAttribute('aria-label',label);button.title=label+(linked&&!paired?' — у текущего сочетания нет пары':'');
+  const label=linked?tr('variant.unlink','Отключить связанное переключение'):tr('variant.link','Связать выбранную внешность и одежду');
+  button.setAttribute('aria-label',label);button.title=label+(linked&&!paired?tr('variant.unpaired',' — у текущего сочетания нет пары'):'');
   button.innerHTML=`<svg class="ui-icon" aria-hidden="true"><use href="#icon-${linked?'link':'unlink'}"/></svg>`;
 }

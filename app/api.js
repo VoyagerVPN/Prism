@@ -1,6 +1,7 @@
 import { COMFY_URL, randomUuid } from './config.js';
 import { buildModelCatalog, comboValues as extractList } from './model_loader.js';
 import { advanceProgress, createProgress } from './progress.js';
+import {translate as tr} from './i18n.js';
 
 export { COMFY_URL } from './config.js';
 export let objectInfo = {};
@@ -92,14 +93,14 @@ export class ComfyClient extends EventTarget {
 
   publish() {
     try { this.storage?.setItem('matrix-active-job', JSON.stringify(this.job)); }
-    catch (error) { this.emit('warning', `Не удалось сохранить задание в браузере: ${error.message}`); }
+    catch (error) { this.emit('warning', tr('api.saveJob',`Не удалось сохранить задание в браузере: ${error.message}`,{message:error.message})); }
     this.emit('job', structuredClone(this.job));
   }
 
   request(path, options) { return requestJson(this.baseUrl, path, options, this.fetchImpl); }
 
   async submit(workflow, settings) {
-    if (this.busy) throw new Error('Дождитесь завершения текущего задания или отмените его.');
+    if (this.busy) throw new Error(tr('api.busy','Дождитесь завершения текущего задания или отмените его.'));
     this.job = { promptId: randomUuid(), workflow: structuredClone(workflow), settings: structuredClone(settings), status: 'submitting', submittedAt: Date.now(), outputs: [], progress: createProgress(workflow) };
     this.submitting = true;
     this.publish();
@@ -108,7 +109,7 @@ export class ComfyClient extends EventTarget {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: this.job.workflow, prompt_id: this.job.promptId, client_id: this.clientId, extra_data: { extra_pnginfo: { matrix: { version: 1, settings: this.job.settings } } } })
       });
-      if (result.prompt_id !== this.job.promptId) throw new Error('Сервер вернул другой идентификатор задания.');
+      if (result.prompt_id !== this.job.promptId) throw new Error(tr('api.wrongId','Сервер вернул другой идентификатор задания.'));
       if (this.job.status === 'submitting') this.job.status = 'queued';
       this.publish();
     } catch (error) {
@@ -140,9 +141,9 @@ export class ComfyClient extends EventTarget {
         return;
       }
       try { this.handleMessage(JSON.parse(event.data)); }
-      catch (error) { this.emit('warning', `Ошибка сообщения ComfyUI: ${error.message}`); }
+      catch (error) { this.emit('warning', tr('api.socketMessage',`Ошибка сообщения ComfyUI: ${error.message}`,{message:error.message})); }
     });
-    this.socket.addEventListener('error', () => this.emit('warning', 'Соединение с ComfyUI прервано.'));
+    this.socket.addEventListener('error', () => this.emit('warning', tr('api.interrupted','Соединение с ComfyUI прервано.')));
     this.socket.addEventListener('close', () => {
       this.connected = false;
       this.emit('connection', false);
@@ -193,12 +194,13 @@ export class ComfyClient extends EventTarget {
         const expected = job.settings.batchCount + (hasGrid ? 1 : 0);
         if (job.settings.batchLayout === 'square-v1' && (job.outputs.length !== expected || (hasGrid && !job.gridOutput))) {
           job.status = 'failed';
-          job.error = `Серия вернула ${job.outputs.length} файлов вместо ${expected}${hasGrid && !job.gridOutput ? ': отсутствует сетка' : ''}.`;
+          const detail=hasGrid&&!job.gridOutput?tr('api.missingGrid',': отсутствует сетка'):'';
+          job.error = tr('api.batchCount',`Серия вернула ${job.outputs.length} файлов вместо ${expected}${detail}.`,{actual:job.outputs.length,expected,detail});
         }
       } else if (entry?.status?.status_str === 'error') {
         const messages = entry.status.messages ?? [];
         job.status = messages.some(([type]) => type === 'execution_interrupted') ? 'cancelled' : 'failed';
-        job.error = messages.find(([type]) => type === 'execution_error')?.[1]?.exception_message ?? 'ComfyUI не завершил задание.';
+        job.error = messages.find(([type]) => type === 'execution_error')?.[1]?.exception_message ?? tr('api.notCompleted','ComfyUI не завершил задание.');
       } else {
         const queue = await this.request('/queue');
         const running = (queue.queue_running ?? []).some(item => item[1] === job.promptId);
@@ -208,7 +210,7 @@ export class ComfyClient extends EventTarget {
           job.error = null;
         } else if (!this.submitting && this.busy) {
           job.status = job.cancelRequested ? 'cancelled' : 'unknown';
-          job.error = job.cancelRequested ? null : 'Задание отсутствует в очереди и истории сервера. Автоматический повтор отключён.';
+          job.error = job.cancelRequested ? null : tr('api.lost','Задание отсутствует в очереди и истории сервера. Автоматический повтор отключён.');
         }
       }
       this.publish();

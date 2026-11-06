@@ -1,5 +1,6 @@
 import {outputImage,canvasPlaceholder} from './elements.js';
 import {selectedHistoryItem,selectedBatchIndex,selectHistoryItem} from './gallery.js';
+import {translate as tr} from './i18n.js';
 
 export function setupLivePreview(client,{storage=localStorage}={}) {
   const button=document.getElementById('preview-toggle');
@@ -7,7 +8,7 @@ export function setupLivePreview(client,{storage=localStorage}={}) {
   try{enabled=storage.getItem('prism-live-preview')!=='off';}catch{}
   const sync=()=>{
     button.setAttribute('aria-pressed',String(enabled));
-    button.title=enabled?'Скрыть превью генерации':'Показать превью генерации';
+    button.title=enabled?tr('preview.hide','Скрыть превью генерации'):tr('preview.show','Показать превью генерации');
     button.setAttribute('aria-label',button.title);
     button.querySelector('use').setAttribute('href',enabled?'#icon-eye':'#icon-eye-off');
   };
@@ -26,6 +27,7 @@ export function setupLivePreview(client,{storage=localStorage}={}) {
     if(!enabled)clear();
   };
   client.addEventListener('job',()=>{if(!client.busy)clear();});
+  window.addEventListener('prism-language-changed',sync);
   client.addEventListener('preview',async event=>{
     if(!enabled||!client.busy)return;
     const current=++version,blob=event.detail;

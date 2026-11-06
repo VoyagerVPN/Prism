@@ -9,6 +9,7 @@ import {askText} from './dialogs.js';
 import {readPreferences} from './preferences.js';
 import { syncSelectControls } from './controls.js';
 import {categoryOf} from './lora_categories.js';
+import {translate as tr} from './i18n.js';
 
 const normalize = name => (name || '').replaceAll('\\','/');
 const make = (tag,text,className) => {const el=document.createElement(tag);el.textContent=text;if(className)el.className=className;return el;};
@@ -18,9 +19,9 @@ export const isCharacterLora = item => categoryOf(item).toLowerCase()==='charact
 async function storeCharacter(previousName, character) {
   serializePrism(character);
   const db=getSavedCharacters(),name=character.name.trim();
-  if(!name||name==='none')throw new Error('Введите имя персонажа.');
-  if(previousName!==name&&Object.hasOwn(db,name))throw new Error('Это имя уже занято.');
-  if(previousName&&!Object.hasOwn(db,previousName))throw new Error('Персонаж был удалён. Обновите библиотеку.');
+  if(!name||name==='none')throw new Error(tr('characterEditor.nameRequired','Введите имя персонажа.'));
+  if(previousName!==name&&Object.hasOwn(db,name))throw new Error(tr('characterEditor.nameTaken','Это имя уже занято.'));
+  if(previousName&&!Object.hasOwn(db,previousName))throw new Error(tr('characterEditor.deleted','Персонаж был удалён. Обновите библиотеку.'));
   const previousTemplate=previousName&&Object.hasOwn(db,previousName)?structuredClone(db[previousName]):null;
   if(previousName!==name)delete db[previousName];
   db[name]={...character,name};
@@ -35,7 +36,7 @@ async function storeCharacter(previousName, character) {
 
 export async function useLibraryCharacter(name, outfit) {
   const db=getSavedCharacters(),character=db[name];
-  if(!character)throw new Error('Сначала настройте персонажа.');
+  if(!character)throw new Error(tr('characterEditor.setupFirst','Сначала настройте персонажа.'));
   if(outfit && Object.hasOwn(character.outfits,outfit) && outfit!==character.activeOutfitName) {
     character.activeOutfitName=outfit;
   }
@@ -45,15 +46,15 @@ export async function useLibraryCharacter(name, outfit) {
 setPromptCharacterActions({
   edit:character=>window.dispatchEvent(new CustomEvent('edit-library-character',{detail:{name:character.name,lora:character.lora}})),
   saveVariant:async(character,kind)=>{
-    const name=await askText('Название нового варианта','',{title:kind==='appearance'?'Сохранить внешность':'Сохранить одежду'});if(name===null)return '';
-    if(name.length>200||['__proto__','constructor','prototype','none'].includes(name))throw new Error('Недопустимое название варианта.');
-    const db=getSavedCharacters(),saved=db[character.name];if(!saved)throw new Error('Персонаж отсутствует в библиотеке. Сначала сохраните его шаблон.');
+    const name=await askText(tr('characterEditor.newVariant','Название нового варианта'),'',{title:kind==='appearance'?tr('characterEditor.saveAppearance','Сохранить внешность'):tr('characterEditor.saveOutfit','Сохранить одежду')});if(name===null)return '';
+    if(name.length>200||['__proto__','constructor','prototype','none'].includes(name))throw new Error(tr('characterEditor.invalidVariant','Недопустимое название варианта.'));
+    const db=getSavedCharacters(),saved=db[character.name];if(!saved)throw new Error(tr('characterEditor.missingCharacter','Персонаж отсутствует в библиотеке. Сначала сохраните его шаблон.'));
     const field=kind==='appearance'?'appearances':'outfits',active=kind==='appearance'?'activeAppearanceName':'activeOutfitName';
-    if(Object.hasOwn(saved[field],name)||Object.keys(saved[field]).some(key=>variantName(saved,kind,key)===name))throw new Error('Вариант с таким именем уже существует.');
+    if(Object.hasOwn(saved[field],name)||Object.keys(saved[field]).some(key=>variantName(saved,kind,key)===name))throw new Error(tr('characterEditor.duplicateVariant','Вариант с таким именем уже существует.'));
     saved[field][name]=character[field][character[active]];
     saved.variantNames??={};saved.variantNames[kind]??={};saved.variantNames[kind][name]=name;
     if(!await saveCharactersDatabase(db))throw new Error(document.getElementById('character-storage-status').textContent);
-    return `Вариант «${name}» сохранён в библиотеке.`;
+    return tr('characterEditor.variantSaved',`Вариант «${name}» сохранён в библиотеке.`,{name});
   }
 });
 
@@ -85,32 +86,48 @@ export function openCharacterSetup(item, previousName='', onSaved=()=>{}, librar
   }
   dialog.innerHTML='<form><h3 id="profile-editor-title" class="profile-section-title"><svg class="ui-icon" aria-hidden="true"><use href="#icon-person"/></svg><span>Настройка персонажа</span></h3><section class="profile-editor-section"><label>Имя персонажа<input id="profile-character-name" type="text" required maxlength="200"></label></section><div class="profile-editor-fields"><section class="profile-editor-section" aria-labelledby="profile-base-title"><h3 id="profile-base-title" class="profile-section-title"><svg class="ui-icon" aria-hidden="true"><use href="#icon-palette"/></svg><span>Внешность</span></h3><label class="visually-hidden" for="profile-character-base">Внешность</label><textarea id="profile-character-base" placeholder="Лицо, волосы, глаза этого варианта…"></textarea></section><section class="profile-editor-section" aria-labelledby="profile-outfit-title"><h3 id="profile-outfit-title" class="profile-section-title"><svg class="ui-icon" aria-hidden="true"><use href="#icon-shirt"/></svg><span>Комплект одежды</span></h3><label class="visually-hidden" for="profile-outfit-select">Редактируемый комплект</label><select id="profile-outfit-select" aria-label="Редактируемый комплект"></select><label class="visually-hidden" for="profile-outfit-text">Одежда и аксессуары</label><textarea id="profile-outfit-text" placeholder="Одежда и аксессуары этого комплекта…"></textarea></section></div><section class="profile-source profile-editor-section" aria-labelledby="profile-source-title"><h3 id="profile-source-title" class="profile-section-title"><svg class="ui-icon" aria-hidden="true"><use href="#icon-keywords"/></svg><span>Кейворды автора</span></h3><p>Выберите поле и нажимайте на теги автора. Свои теги можно вводить или вставлять списком; двойной клик редактирует плашку.</p><div id="profile-source-tags"></div></section><p id="profile-editor-status" role="status" aria-live="polite"></p><div class="dialog-actions"><button type="button" id="profile-export-character"><svg class="ui-icon" aria-hidden="true"><use href="#icon-export"/></svg><span>Экспорт .prism</span></button><button type="button" id="profile-delete-character">Удалить персонажа</button><button type="button" class="close-profile-editor"><svg class="ui-icon" aria-hidden="true"><use href="#icon-close"/></svg><span>Отмена</span></button><button type="submit" id="profile-save-character" class="dialog-primary"><svg class="ui-icon" aria-hidden="true"><use href="#icon-save"/></svg><span>Сохранить</span></button></div></form>';
   const $=id=>dialog.querySelector('#'+id),name=$('profile-character-name'),base=$('profile-character-base'),outfit=$('profile-outfit-text'),select=$('profile-outfit-select'),status=$('profile-editor-status');
+  $('profile-editor-title').querySelector('span').textContent=tr('characterEditor.title','Настройка персонажа');
+  name.closest('label').firstChild.data=tr('characterEditor.name','Имя персонажа');
+  $('profile-base-title').querySelector('span').textContent=tr('characterEditor.appearance','Внешность');
+  dialog.querySelector('label[for="profile-character-base"]').textContent=tr('characterEditor.appearance','Внешность');
+  base.placeholder=tr('characterEditor.appearancePlaceholder','Лицо, волосы, глаза этого варианта…');
+  $('profile-outfit-title').querySelector('span').textContent=tr('characterEditor.outfit','Комплект одежды');
+  dialog.querySelector('label[for="profile-outfit-select"]').textContent=tr('characterEditor.editableOutfit','Редактируемый комплект');
+  select.setAttribute('aria-label',tr('characterEditor.editableOutfit','Редактируемый комплект'));
+  dialog.querySelector('label[for="profile-outfit-text"]').textContent=tr('characterEditor.outfitDescription','Одежда и аксессуары');
+  outfit.placeholder=tr('characterEditor.outfitPlaceholder','Одежда и аксессуары этого комплекта…');
+  $('profile-source-title').querySelector('span').textContent=tr('characterEditor.authorKeywords','Кейворды автора');
+  dialog.querySelector('.profile-source > p').textContent=tr('characterEditor.keywordsHelp','Выберите поле и нажимайте на теги автора. Свои теги можно вводить или вставлять списком; двойной клик редактирует плашку.');
+  $('profile-export-character').querySelector('span').textContent=tr('characterEditor.export','Экспорт .prism');
+  $('profile-delete-character').textContent=tr('characterEditor.deleteCharacter','Удалить персонажа');
+  dialog.querySelector('.close-profile-editor span').textContent=tr('dialog.cancel','Отмена');
+  $('profile-save-character').querySelector('span').textContent=tr('dialog.save','Сохранить');
   const saveOnEnter=()=>{const button=$('profile-save-character');if(!button.disabled)dialog.querySelector('form').requestSubmit(button);};
   const identity=name.closest('section');
   identity.classList.add('profile-identity');
-  const universeLabel=make('label','Вселенная');
+  const universeLabel=make('label',tr('characterEditor.universe','Вселенная'));
   const universes=getCharacterUniverses(draft.universe);
-  const universeChoice=createEditableChoice({id:'profile-character-universe',label:'Вселенная',placeholder:'Укажите вселенную',maxLength:500,filter:true,onEnter:saveOnEnter,
+  const universeChoice=createEditableChoice({id:'profile-character-universe',label:tr('characterEditor.universe','Вселенная'),placeholder:tr('characterEditor.universePlaceholder','Укажите вселенную'),maxLength:500,filter:true,onEnter:saveOnEnter,
     readName:()=>draft.universe||'',commitName:value=>{if(value.length>500)return false;draft.universe=value;return true;},
     options:()=>universes.map(value=>({value,label:value,selected:value===draft.universe})),choose:value=>{draft.universe=value;}});
   choices.push(universeChoice);const universe=universeChoice.input;universeLabel.append(universeChoice.root);
-  const descriptionLabel=make('label','Описание персонажа'),description=document.createElement('textarea');description.id='profile-character-description';description.placeholder='Заметки о персонаже (не добавляются в промпт)';description.value=draft.description||'';descriptionLabel.append(description);
+  const descriptionLabel=make('label',tr('characterEditor.description','Описание персонажа')),description=document.createElement('textarea');description.id='profile-character-description';description.placeholder=tr('characterEditor.descriptionPlaceholder','Заметки о персонаже (не добавляются в промпт)');description.value=draft.description||'';descriptionLabel.append(description);
   identity.append(universeLabel,descriptionLabel);
   const profiles=charactersForLora(item.name);
   if(profiles.length>1&&previousName) {
-    const label=make('label','Сохранённый персонаж'),picker=document.createElement('select');picker.setAttribute('aria-label','Сохранённый персонаж');
+    const label=make('label',tr('characterEditor.savedCharacter','Сохранённый персонаж')),picker=document.createElement('select');picker.setAttribute('aria-label',tr('characterEditor.savedCharacter','Сохранённый персонаж'));
     for(const [key] of profiles)picker.add(new Option(key,key));picker.value=previousName;
     picker.onchange=()=>onSaved(picker.value);label.classList.add('profile-identity-wide');label.append(picker);identity.prepend(label);
   }
-  const implementation=make('details','','character-technical profile-technical profile-identity-wide'),implementationTitle=make('summary','Техническая реализация');
-  const loraLabel=make('label','Модель образа (LoRA, необязательно)'),lora=document.createElement('select');lora.id='profile-character-lora';lora.setAttribute('aria-label','Модель образа персонажа');
-  lora.add(new Option('Без дополнительной модели','None'));
+  const implementation=make('details','','character-technical profile-technical profile-identity-wide'),implementationTitle=make('summary',tr('characterEditor.technical','Техническая реализация'));
+  const loraLabel=make('label',tr('characterEditor.lora','Модель образа (LoRA, необязательно)')),lora=document.createElement('select');lora.id='profile-character-lora';lora.setAttribute('aria-label',tr('characterEditor.loraLabel','Модель образа персонажа'));
+  lora.add(new Option(tr('characterEditor.noLora','Без дополнительной модели'),'None'));
   for(const entry of libraryItems)lora.add(new Option(entry.title,entry.name));
-  if(item.name!=='None'&&![...lora.options].some(option=>option.value===item.name))lora.add(new Option(`Не установлена: ${item.name}`,item.name));
+  if(item.name!=='None'&&![...lora.options].some(option=>option.value===item.name))lora.add(new Option(tr('characterEditor.missingLora',`Не установлена: ${item.name}`,{name:item.name}),item.name));
   lora.value=draft.lora;loraLabel.append(lora);implementation.append(implementationTitle,loraLabel);identity.append(implementation);
-  const triggerLabel=make('label','Триггерворд — общий для всех вариантов'),trigger=document.createElement('input');
+  const triggerLabel=make('label',tr('characterEditor.trigger','Триггерворд — общий для всех вариантов')),trigger=document.createElement('input');
   trigger.type='text';trigger.id='profile-character-trigger';trigger.value=draft.trigger;
-  trigger.placeholder='Постоянный триггер персонажа';triggerLabel.append(trigger);identity.append(triggerLabel);
+  trigger.placeholder=tr('characterEditor.triggerPlaceholder','Постоянный триггер персонажа');triggerLabel.append(trigger);identity.append(triggerLabel);
   descriptionLabel.classList.add('profile-identity-wide');identity.append(descriptionLabel);
   const labelIcon=(label,icon)=>{const text=label.firstChild;if(text?.nodeType!==3)return;const heading=make('span','','profile-label-heading');heading.innerHTML=`<svg class="ui-icon" aria-hidden="true"><use href="#icon-${icon}"/></svg>`;heading.append(text);label.prepend(heading);};
   for(const [label,icon] of [[name.closest('label'),'person'],[universeLabel,'globe'],[loraLabel,'layers'],[triggerLabel,'keywords'],[descriptionLabel,'edit']])labelIcon(label,icon);
@@ -128,8 +145,8 @@ export function openCharacterSetup(item, previousName='', onSaved=()=>{}, librar
     const update=()=>{picker.replaceChildren();for(const key of Object.keys(values))picker.add(new Option(variantOptionLabel(draft,kind,key),key));picker.value=current;draft[kind==='appearance'?'activeAppearanceName':'activeOutfitName']=current;field.value=values[current];tagInputs.get(field)?.sync(field.value);choice?.sync();if(variantsReady)syncSelectControls();dialog.dispatchEvent(new Event('tags-updated'));};
     const rename=value=>{
       if(value===variantName(draft,kind,current))return true;
-      if(value.length>200||['none','__proto__','constructor','prototype'].includes(value)){status.textContent='Недопустимое название варианта.';return false;}
-      if(value&&Object.keys(values).some(key=>key!==current&&variantName(draft,kind,key)===value)){status.textContent='Вариант с таким именем уже есть.';return false;}
+      if(value.length>200||['none','__proto__','constructor','prototype'].includes(value)){status.textContent=tr('characterEditor.invalidVariant','Недопустимое название варианта.');return false;}
+      if(value&&Object.keys(values).some(key=>key!==current&&variantName(draft,kind,key)===value)){status.textContent=tr('characterEditor.duplicateVariantShort','Вариант с таким именем уже есть.');return false;}
       read();draft.variantNames??={};draft.variantNames[kind]??={};
       if(!value)draft.variantNames[kind][current]='';
       else {
@@ -140,15 +157,15 @@ export function openCharacterSetup(item, previousName='', onSaved=()=>{}, librar
       }
       update();status.textContent='';return true;
     };
-    choice=createEditableChoice({id:`profile-${kind}-name`,label:kind==='appearance'?'Название внешности':'Название комплекта',placeholder:'Название варианта',maxLength:200,onEnter:saveOnEnter,
+    choice=createEditableChoice({id:`profile-${kind}-name`,label:kind==='appearance'?tr('characterEditor.appearanceName','Название внешности'):tr('characterEditor.outfitName','Название комплекта'),placeholder:tr('characterEditor.variantName','Название варианта'),maxLength:200,onEnter:saveOnEnter,
       readName:()=>variantName(draft,kind,current),commitName:rename,
       options:()=>Object.keys(values).map(value=>({value,label:variantOptionLabel(draft,kind,value),selected:value===current})),
       choose:value=>{picker.value=value;picker.dispatchEvent(new Event('change'));}});
     choices.push(choice);row.append(choice.root);
-    const actions=[['add','plus','Добавить'],['duplicate','copy','Дублировать']];
+    const actions=[['add','plus',tr('characterEditor.add','Добавить')],['duplicate','copy',tr('characterEditor.duplicate','Дублировать')]];
     for(const [action,icon,label] of actions){
       const button=make('button');button.type='button';button.id=`profile-${action}-${kind}`;button.className='icon-btn-sm';
-      const accessible=label+(kind==='appearance'?' вариант внешности':' комплект одежды');button.title=accessible;button.setAttribute('aria-label',accessible);
+      const accessible=label+(kind==='appearance'?tr('characterEditor.appearanceVariant',' вариант внешности'):tr('characterEditor.outfitVariant',' комплект одежды'));button.title=accessible;button.setAttribute('aria-label',accessible);
       button.innerHTML=`<svg class="ui-icon" aria-hidden="true"><use href="#icon-${icon}"/></svg>`;row.append(button);
       button.onclick=()=>{
         if(!choice.commit())return;
@@ -169,7 +186,7 @@ export function openCharacterSetup(item, previousName='', onSaved=()=>{}, librar
       renderVariantLink(linkButton,draft);status.textContent='';
     };update();return read;
   };
-  const appearanceSelect=document.createElement('select');appearanceSelect.id='profile-appearance-select';appearanceSelect.setAttribute('aria-label','Вариант внешности');base.before(appearanceSelect);
+  const appearanceSelect=document.createElement('select');appearanceSelect.id='profile-appearance-select';appearanceSelect.setAttribute('aria-label',tr('characterEditor.appearanceSelect','Вариант внешности'));base.before(appearanceSelect);
   const readAppearance=variantEditor('appearance',draft.appearances,draft.activeAppearanceName,base,appearanceSelect);
   const readOutfit=variantEditor('outfit',draft.outfits,draft.activeOutfitName,outfit,select);
   // Сначала размещаем оба select, затем создаём их динамические оболочки.
@@ -178,19 +195,19 @@ export function openCharacterSetup(item, previousName='', onSaved=()=>{}, librar
   const variantFields=dialog.querySelector('.profile-editor-fields');variantFields.insertBefore(linkButton,variantFields.children[1]);
   linkButton.onclick=()=>{readAppearance();readOutfit();toggleCharacterVariantLink(draft);renderVariantLink(linkButton,draft);};renderVariantLink(linkButton,draft);
   const tagList=$('profile-source-tags');
-  const destinations=[{field:trigger,kind:'trigger',label:'Триггер',icon:'keywords'},{field:base,kind:'appearance',label:'Внешность',icon:'palette'},{field:outfit,kind:'outfit',label:'Одежда',icon:'shirt'}];
+  const destinations=[{field:trigger,kind:'trigger',label:tr('characterEditor.triggerTarget','Триггер'),icon:'keywords'},{field:base,kind:'appearance',label:tr('characterEditor.appearance','Внешность'),icon:'palette'},{field:outfit,kind:'outfit',label:tr('characterEditor.clothingTarget','Одежда'),icon:'shirt'}];
   let target=destinations[1];
   const routing=make('div','','tag-routing'),targetStatus=make('p');targetStatus.id='profile-tag-target';targetStatus.setAttribute('role','status');
-  const targetButtons=make('div','','tag-targets');targetButtons.setAttribute('role','group');targetButtons.setAttribute('aria-label','Куда добавлять теги');routing.append(targetStatus,targetButtons);tagList.before(routing);
+  const targetButtons=make('div','','tag-targets');targetButtons.setAttribute('role','group');targetButtons.setAttribute('aria-label',tr('characterEditor.tagTargets','Куда добавлять теги'));routing.append(targetStatus,targetButtons);tagList.before(routing);
   const syncTags=()=>{
     const key=target.kind==='appearance'?draft.activeAppearanceName:target.kind==='outfit'?draft.activeOutfitName:'';
     const variant=key?variantOptionLabel(draft,target.kind,key):'';
-    targetStatus.textContent=`Добавляем: ${target.label}${variant?' · '+variant:''}`;
+    targetStatus.textContent=tr('characterEditor.adding',`Добавляем: ${target.label}${variant?' · '+variant:''}`,{label:target.label,variant:variant?' · '+variant:''});
     for(const destination of destinations){tagInputs.get(destination.field)?.setActive(destination===target);destination.button.setAttribute('aria-pressed',String(destination===target));}
     for(const button of tagList.querySelectorAll('button[data-word]')){
       const assigned=destinations.filter(destination=>tagInputs.get(destination.field)?.values().includes(button.dataset.word));
       button.dataset.assigned=assigned.map(destination=>destination.kind).join(' ');
-      button.title=assigned.length?'Уже добавлен: '+assigned.map(destination=>destination.label).join(', '):'Добавить: '+target.label;
+      button.title=assigned.length?tr('characterEditor.alreadyAdded','Уже добавлен: '+assigned.map(destination=>destination.label).join(', '),{labels:assigned.map(destination=>destination.label).join(', ')}):tr('characterEditor.addTo','Добавить: '+target.label,{label:target.label});
       button.setAttribute('aria-label',button.dataset.word+'. '+button.title);
       const marks=button.querySelector('.tag-assignments');marks.replaceChildren();
       for(const destination of assigned){const mark=make('span','','tag-assignment');mark.dataset.tagKind=destination.kind;mark.title=destination.label;mark.innerHTML=`<svg class="ui-icon" aria-hidden="true"><use href="#icon-${destination.icon}"/></svg>`;marks.append(mark);}
@@ -207,12 +224,12 @@ export function openCharacterSetup(item, previousName='', onSaved=()=>{}, librar
       const button=make('button','','profile-source-tag');button.type='button';button.dataset.word=word;button.append(make('span',word),make('span','','tag-assignments'));
       button.onclick=()=>{tagInputs.get(target.field).add(word);syncTags();};tagList.append(button);
     }
-    if(!tagList.children.length)tagList.append(make('p','Нет кейвордов автора. Введите свои теги в поля выше.'));
+    if(!tagList.children.length)tagList.append(make('p',tr('characterEditor.noKeywords','Нет кейвордов автора. Введите свои теги в поля выше.')));
     syncTags();
   };
   const missingLora=()=>lora.value!=='None'&&!libraryItems.some(entry=>entry.name===lora.value);
   const availability=make('p','','profile-lora-status');availability.setAttribute('role','status');loraLabel.append(availability);
-  const syncLora=()=>{const missing=missingLora();availability.textContent=missing?`Модель образа не установлена: ${lora.value}. Можно сохранить персонажа, затем установить модель или выбрать другую.`:'';if(missing)implementation.open=true;};
+  const syncLora=()=>{const missing=missingLora();availability.textContent=missing?tr('characterEditor.loraUnavailable',`Модель образа не установлена: ${lora.value}. Можно сохранить персонажа, затем установить модель или выбрать другую.`,{name:lora.value}):'';if(missing)implementation.open=true;};
   lora.onchange=()=>{draft.lora=lora.value;draft.source=sourceMetadata(libraryItems.find(entry=>entry.name===lora.value));renderTags();syncLora();};
   syncLora();renderTags();
   dialog.querySelector('.profile-editor-fields').addEventListener('change',syncTags);
@@ -220,17 +237,17 @@ export function openCharacterSetup(item, previousName='', onSaved=()=>{}, librar
   for(const button of dialog.querySelectorAll('.close-profile-editor'))button.onclick=()=>close();
   $('profile-delete-character').hidden=!existing;
   $('profile-delete-character').onclick=async()=>{
-    if(!await askConfirm(`Удалить персонажа «${previousName}» и его комплекты? Дополнительная модель останется в библиотеке.`))return;
+    if(!await askConfirm(tr('characterEditor.deleteConfirm',`Удалить персонажа «${previousName}» и его комплекты? Дополнительная модель останется в библиотеке.`,{name:previousName})))return;
     const db=getSavedCharacters();delete db[previousName];
     if(!await saveCharactersDatabase(db)){status.textContent=document.getElementById('character-storage-status').textContent;return;}
     if(document.getElementById('character-select').value===previousName)activateCharacter('none');else renderCharacterSelect(document.getElementById('character-select').value);
     window.dispatchEvent(new Event('save-settings'));close();
   };
-  const readDraft=()=>{for(const choice of choices)if(!choice.commit())throw new Error(status.textContent||'Проверьте название.');draft.name=name.value.trim();draft.universe=universe.value.trim();draft.description=description.value;draft.activeAppearanceName=readAppearance();draft.appearance=base.value;draft.trigger=tagInputs.get(trigger).read();draft.lora=lora.value;draft.activeOutfitName=readOutfit();return draft;};
+  const readDraft=()=>{for(const choice of choices)if(!choice.commit())throw new Error(status.textContent||tr('characterEditor.checkName','Проверьте название.'));draft.name=name.value.trim();draft.universe=universe.value.trim();draft.description=description.value;draft.activeAppearanceName=readAppearance();draft.appearance=base.value;draft.trigger=tagInputs.get(trigger).read();draft.lora=lora.value;draft.activeOutfitName=readOutfit();return draft;};
   $('profile-export-character').onclick=()=>{
     try{
       const text=serializePrism(readDraft()),url=URL.createObjectURL(new Blob([text],{type:'application/json'})),link=document.createElement('a');
-      link.href=url;link.download=(draft.name.replace(/[<>:"/\\|?*\x00-\x1f]/g,'_').replace(/[. ]+$/,'')||'character')+'.prism';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);status.textContent='Карточка экспортирована';
+      link.href=url;link.download=(draft.name.replace(/[<>:"/\\|?*\x00-\x1f]/g,'_').replace(/[. ]+$/,'')||'character')+'.prism';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);status.textContent=tr('characterEditor.exported','Карточка экспортирована');
     }catch(error){status.textContent=error.message;}
   };
   const initialDraft=JSON.stringify(readDraft());
@@ -239,7 +256,7 @@ export function openCharacterSetup(item, previousName='', onSaved=()=>{}, librar
     try{readDraft();}catch(error){status.textContent=error.message;return;}
     if(!explicit&&!importedCharacter&&JSON.stringify(draft)===initialDraft){close();return;}
     const button=$('profile-save-character'),form=dialog.querySelector('form');
-    saving=true;button.disabled=true;form.inert=true;status.textContent='Сохранение…';
+    saving=true;button.disabled=true;form.inert=true;status.textContent=tr('characterEditor.saving','Сохранение…');
     try{await storeCharacter(previousName,draft);parent.close();}
     catch(error){status.textContent=error.message;}
     finally{saving=false;button.disabled=false;form.inert=false;}

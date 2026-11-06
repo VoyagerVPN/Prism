@@ -18,24 +18,32 @@ import { setupSelectControls } from './controls.js';
 import { describeProgress } from './progress.js';
 import { presentResourceMetrics } from './resource_metrics.js';
 import {setupFirstRun} from './first_run.js';
+import {createLocalization, createServerLanguageStore, setActiveLocalization, translate as translateMessage} from './i18n.js';
+import {captureStaticTranslations} from './static_i18n.js';
+import {syncBatchControls} from './batch.js';
 
+const translateStatic = captureStaticTranslations(document);
+let localization = null;
 const client = new ComfyClient();
 let preparing = false;
 let ready = false;
+let queueCount = null;
 const message = document.getElementById('dashboard-message');
 const resetButton = document.getElementById('reset-job-btn');
 const labels = { submitting: 'Отправка', queued: 'В очереди', running: 'Выполняется', reconnecting: 'Восстановление связи', unknown: 'Состояние неизвестно', cancelling: 'Отмена', cancelled: 'Отменено', failed: 'Ошибка', succeeded: 'Готово', lost: 'Задание отсоединено' };
+const tr=(key,fallback,values={})=>localization?.language==='en'?localization.t(`main.${key}`,{...values,defaultValue:fallback,interpolation:{escapeValue:false}}):fallback;
 function warn(text) {
   message.textContent = text;
   message.hidden = !text;
 }
 function jobProgressView(job) {
-  const progress = describeProgress(job.progress, job.workflow, job.settings);
-  if (job.status === 'submitting') return { label: 'Отправка', detail: 'Передача зафиксированного workflow в ComfyUI', percent: progress.percent };
-  if (job.status === 'queued') return { label: 'В очереди', detail: `Ожидание запуска · Общий прогресс ${Math.round(progress.percent)}%`, percent: progress.percent };
-  if (job.status === 'reconnecting') return { label: `Восстановление связи · ${Math.round(progress.percent)}%`, detail: `Последний этап: ${progress.label}`, percent: progress.percent };
-  if (job.status === 'cancelling') return { label: 'Отмена задания', detail: `Зафиксированный прогресс ${Math.round(progress.percent)}%`, percent: progress.percent };
-  if (job.status === 'unknown') return { label: 'Проверка состояния задания', detail: `Последний прогресс ${Math.round(progress.percent)}%`, percent: progress.percent };
+  const progress = describeProgress(job.progress, job.workflow, job.settings, localization);
+  const percent=Math.round(progress.percent);
+  if (job.status === 'submitting') return { label: tr('job.submitting','Отправка'), detail: tr('submittingDetail','Передача зафиксированного workflow в ComfyUI'), percent: progress.percent };
+  if (job.status === 'queued') return { label: tr('job.queued','В очереди'), detail: tr('queuedDetail',`Ожидание запуска · Общий прогресс ${percent}%`,{percent}), percent: progress.percent };
+  if (job.status === 'reconnecting') return { label: tr('reconnectingLabel',`Восстановление связи · ${percent}%`,{percent}), detail: tr('lastStage',`Последний этап: ${progress.label}`,{stage:progress.label}), percent: progress.percent };
+  if (job.status === 'cancelling') return { label: tr('cancellingLabel','Отмена задания'), detail: tr('recordedProgress',`Зафиксированный прогресс ${percent}%`,{percent}), percent: progress.percent };
+  if (job.status === 'unknown') return { label: tr('checkingJob','Проверка состояния задания'), detail: tr('lastProgress',`Последний прогресс ${percent}%`,{percent}), percent: progress.percent };
   return progress;
 }
 function render() {
@@ -48,13 +56,13 @@ function render() {
   resetButton.hidden = client.job?.status !== 'unknown';
   el.imageLoader.style.display = busy ? 'flex' : 'none';
   if (busy) {
-    updateStatus('working', preparing ? 'Подготовка файла' : labels[client.job.status]);
-    if (preparing) showProgress('Подготовка файла', 'Проверка настроек и исходных файлов', 0);
+    updateStatus('working', preparing ? tr('preparingFile','Подготовка файла') : tr(`job.${client.job.status}`,labels[client.job.status]));
+    if (preparing) showProgress(tr('preparingFile','Подготовка файла'), tr('checkingInputs','Проверка настроек и исходных файлов'), 0);
     else {
       const progress = jobProgressView(client.job);
       showProgress(progress.label, progress.detail, progress.percent);
     }
-  } else updateStatus(client.connected ? 'connected' : 'disconnected', client.connected ? 'Подключено' : 'Нет соединения');
+  } else updateStatus(client.connected ? 'connected' : 'disconnected', client.connected ? tr('connected','Подключено') : tr('disconnected','Нет соединения'));
 }
 async function run(action) {
   if (preparing || client.busy) return;
@@ -96,10 +104,10 @@ function availability() {
   const detector = comboValues(objectInfo.UltralyticsDetectorProvider?.input.required.model_name);
   const swaps = comboValues(objectInfo.ReActorFaceSwap?.input.required.swap_model);
   for (const [toggle, available, reason] of [
-    [el.faceToggle, objectInfo.FaceDetailer && detector.includes('bbox/face_yolov8m.pt'), 'Нужны FaceDetailer и bbox/face_yolov8m.pt'],
-    [el.reactorToggle, objectInfo.ReActorFaceSwap && swaps.includes('inswapper_128.onnx'), 'Нужны ReActorFaceSwap и inswapper_128.onnx'],
-    [el.hiresToggle, upscaleModelList.length && objectInfo.ImageUpscaleWithModel, 'Нужны узел и веса увеличения'],
-    [el.upscaleToggle, upscaleModelList.length && objectInfo.ImageUpscaleWithModel, 'Нужны узел и веса увеличения'],
+    [el.faceToggle, objectInfo.FaceDetailer && detector.includes('bbox/face_yolov8m.pt'), tr('needFace','Нужны FaceDetailer и bbox/face_yolov8m.pt')],
+    [el.reactorToggle, objectInfo.ReActorFaceSwap && swaps.includes('inswapper_128.onnx'), tr('needSwap','Нужны ReActorFaceSwap и inswapper_128.onnx')],
+    [el.hiresToggle, upscaleModelList.length && objectInfo.ImageUpscaleWithModel, tr('needUpscale','Нужны узел и веса увеличения')],
+    [el.upscaleToggle, upscaleModelList.length && objectInfo.ImageUpscaleWithModel, tr('needUpscale','Нужны узел и веса увеличения')],
   ]) {
     toggle.disabled = !available;
     toggle.title = available ? '' : reason;
@@ -109,12 +117,12 @@ function availability() {
     const value = select.value;
     select.replaceChildren(...comboValues(objectInfo.ReActorFaceSwap?.input.required[field]).map(name => new Option(name, name)));
     if (value && ![...select.options].some(option => option.value === value)) {
-      const missing = new Option(`Недоступно: ${value}`, value); missing.disabled = true; select.add(missing);
+      const missing = new Option(tr('unavailable',`Недоступно: ${value}`,{value}), value); missing.disabled = true; select.add(missing);
     }
     if (value) select.value = value;
   }
   ready = modelList.length > 0;
-  if (!ready) warn('ComfyUI не обнаружил checkpoint-моделей. Проверьте пути и обновите список.');
+  if (!ready) warn(tr('noModels','ComfyUI не обнаружил checkpoint-моделей. Проверьте пути и обновите список.'));
 }
 async function refresh() {
   await refreshComfyModels();
@@ -128,7 +136,7 @@ async function refresh() {
 }
 async function stats() {
   try {
-    const view = presentResourceMetrics(await getPrismMetrics());
+    const view = presentResourceMetrics(await getPrismMetrics(), localization);
     el.ramVal.textContent = view.ram.value;
     el.ramDetail.textContent = view.ram.detail;
     el.ramFill.style.width = `${view.ram.percent}%`;
@@ -140,7 +148,7 @@ async function stats() {
     el.vramCacheFill.style.width = `${view.vram.cachePercent}%`;
     el.vramVal.closest('.resource-indicator').title = view.vram.title;
   } catch {
-    const view = presentResourceMetrics(null);
+    const view = presentResourceMetrics(null, localization);
     el.ramVal.textContent = el.vramVal.textContent = '—';
     el.ramDetail.textContent = view.ram.detail;
     el.vramDetail.textContent = view.vram.detail;
@@ -148,12 +156,13 @@ async function stats() {
   }
 }
 client.addEventListener('connection', event => {
-  if (event.detail && message.textContent === 'Соединение с ComfyUI прервано.') warn('');
+  if (event.detail && message.textContent === translateMessage('api.interrupted','Соединение с ComfyUI прервано.')) warn('');
   render();
 });
 client.addEventListener('warning', event => warn(event.detail));
 client.addEventListener('queue', event => {
-  el.queueLengthText.textContent = `Заданий: ${event.detail}`;
+  queueCount = event.detail;
+  el.queueLengthText.textContent = tr('queuedJobs',`Заданий: ${event.detail}`,{count:event.detail});
   el.clearQueueBtn.disabled = event.detail < 1;
 });
 client.addEventListener('job', event => {
@@ -172,8 +181,8 @@ window.addEventListener('prism-import-completed',event=>{
   const name=modelCatalog.find(model=>model.name.replaceAll('\\','/')===imported)?.name??imported;
   if(modelList.includes(name)){
     el.checkpointSelect.value=name;el.checkpointSelect.dispatchEvent(new Event('change'));
-    warn('Модель добавлена и выбрана для генерации.');
-  }else warn(modelCatalog.find(model=>model.name===name)?.reason??'Файл модели добавлен. Для генерации нужны совместимые компоненты и поддерживаемый рецепт.');
+    warn(tr('modelAdded','Модель добавлена и выбрана для генерации.'));
+  }else warn(modelCatalog.find(model=>model.name===name)?.reason??tr('modelAddedNeedsComponents','Файл модели добавлен. Для генерации нужны совместимые компоненты и поддерживаемый рецепт.'));
 });
 window.addEventListener('restore-history-settings', event => {
   applySettings(event.detail);
@@ -186,29 +195,47 @@ window.addEventListener('refine-image', event => run(() => refine(event.detail))
 window.addEventListener('repeat-job', event => run(() => submit(event.detail.settings, event.detail.workflow)));
 window.addEventListener('cancel-job', () => client.cancel().catch(error => warn(error.message)));
 window.addEventListener('clear-queue', () => client.clearQueue().catch(error => warn(error.message)));
-resetButton.addEventListener('click', () => { client.abandon(); warn('Связь с неизвестным заданием снята. Оно не отправлялось повторно.'); });
+resetButton.addEventListener('click', () => { client.abandon(); warn(tr('abandoned','Связь с неизвестным заданием снята. Оно не отправлялось повторно.')); });
 document.getElementById('refresh-models-btn').addEventListener('click', async event => {
   const button = event.currentTarget, status = document.getElementById('model-scan-status');
   button.disabled = true;
   const before = new Set(modelList);
-  status.textContent = 'Поиск файлов моделей на диске…';
+  status.textContent = tr('scanning','Поиск файлов моделей на диске…');
   try {
     await refresh();
     const added = modelList.filter(name => !before.has(name)).length;
-    status.textContent = `Список обновлён: моделей ${modelList.length}, новых ${added}.`;
-  } catch (error) { status.textContent = `Не удалось обновить список: ${error.message}`; }
+    status.textContent = tr('scanComplete',`Список обновлён: моделей ${modelList.length}, новых ${added}.`,{total:modelList.length,added});
+  } catch (error) { status.textContent = tr('scanFailed',`Не удалось обновить список: ${error.message}`,{message:error.message}); }
   finally { button.disabled = false; }
 });
 window.addEventListener('load', async () => {
+  try {
+    localization = await createLocalization({storage:createServerLanguageStore()});
+  } catch (error) {
+    const storage={getItem:()=>null,setItem:()=>{throw new Error('PRISM_LANGUAGE_WRITE');}};
+    localization = await createLocalization({storage});
+    warn(localization.language==='ru'?'Не удалось загрузить настройку языка.':'Could not load the language setting.');
+  }
+  setActiveLocalization(localization);
+  document.documentElement.lang = localization.language;
+  translateStatic(localization);
+  window.addEventListener('prism-language-changed',event=>{
+    document.documentElement.lang=event.detail.language;
+    translateStatic(localization);
+    syncBatchControls();
+    if(queueCount!==null)el.queueLengthText.textContent=tr('queuedJobs',`Заданий: ${queueCount}`,{count:queueCount});
+    availability();render();void stats();
+  });
   initAppNavigation();
-  setupUIEventListeners();
+  setupUIEventListeners({localization});
   initPresetEvents();
   setupModelImport(refresh);
   const guide=setupFirstRun({
+    localization,
     readiness:async()=>{
       await refresh();
       const stats=await client.request('/system_stats');
-      if(!stats.system?.comfyui_version)throw new Error('Сервер не представился как ComfyUI');
+      if(!stats.system?.comfyui_version)throw new Error(tr('notComfy','Сервер не представился как ComfyUI'));
       return {backend:window.location.origin,version:stats.system.comfyui_version,models:modelCatalog};
     },
     importModel:()=>{setAppView('generation');document.getElementById('model-import-open').click();},

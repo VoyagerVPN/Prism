@@ -2,6 +2,7 @@ import {widthSlider, heightSlider, widthVal, heightVal} from './elements.js';
 import {activeWidth, activeHeight, setActiveWidth, setActiveHeight} from './state.js';
 import {askConfirm, showNotice} from './dialogs.js';
 import {makeDialogBackdropDismissible} from './popup_behavior.js';
+import {translate as tr} from './i18n.js';
 
 const key = 'prism_image_formats';
 const grid = document.querySelector('.resolution-grid');
@@ -27,8 +28,8 @@ export function syncImageFormats() {
     button.classList.toggle('active',active);
     button.setAttribute('aria-pressed',String(active));
   }
-  const pixelCount = new Intl.NumberFormat('ru-RU').format(activeWidth * activeHeight);
-  document.getElementById('current-format-ratio').textContent = `${ratio(activeWidth,activeHeight)} · ${activeWidth} × ${activeHeight} px · ${pixelCount} пикс.`;
+  const pixelCount = new Intl.NumberFormat(tr('formats.locale','ru-RU')).format(activeWidth * activeHeight);
+  document.getElementById('current-format-ratio').textContent = `${ratio(activeWidth,activeHeight)} · ${activeWidth} × ${activeHeight} px · ${tr('formats.pixels',`${pixelCount} пикс.`,{count:pixelCount})}`;
 }
 
 function renderFormats() {
@@ -61,12 +62,12 @@ function renderFormats() {
       const control = document.createElement('button');
       control.type = 'button';
       control.className = `format-action format-${action}`;
-      control.title = `${title} формат «${format.name}»`;
+      control.title = tr(`formats.${action}`,`${title} формат «${format.name}»`,{name:format.name});
       control.setAttribute('aria-label',control.title);
       control.innerHTML = `<svg class="ui-icon" aria-hidden="true"><use href="#icon-${icon}"/></svg>`;
       control.onclick = async () => {
         if (action === 'edit') editFormat(format);
-        else if (await askConfirm(`Удалить формат «${format.name}» (${format.width} × ${format.height} px)?`)) {
+        else if (await askConfirm(tr('formats.deleteConfirm',`Удалить формат «${format.name}» (${format.width} × ${format.height} px)?`,{name:format.name,width:format.width,height:format.height}))) {
           if (await persistFormats(formats.filter(item => item !== format))) document.getElementById('add-format-btn').focus();
         }
       };
@@ -79,8 +80,8 @@ function renderFormats() {
   add.id = 'add-format-btn';
   add.className = 'format-add';
   add.innerHTML = '<svg class="ui-icon" aria-hidden="true"><use href="#icon-plus"/></svg>';
-  add.title = 'Добавить формат';
-  add.setAttribute('aria-label','Добавить формат');
+  add.title = tr('formats.add','Добавить формат');
+  add.setAttribute('aria-label',add.title);
   add.onclick = () => editFormat();
   grid.append(add);
   syncImageFormats();
@@ -88,7 +89,7 @@ function renderFormats() {
 
 async function persistFormats(next) {
   try { localStorage.setItem(key,JSON.stringify(next)); }
-  catch { await showNotice('Не удалось сохранить форматы в браузере. Освободите место и повторите.'); return false; }
+  catch { await showNotice(tr('formats.saveError','Не удалось сохранить форматы в браузере. Освободите место и повторите.')); return false; }
   formats = next;
   renderFormats();
   return true;
@@ -101,20 +102,26 @@ function editFormat(existing) {
     dialog.id = 'format-editor';
     dialog.className = 'app-dialog';
     dialog.setAttribute('aria-labelledby','format-editor-title');
-    dialog.innerHTML = '<form><h2 id="format-editor-title"></h2><label>Название<input name="name" type="text" maxlength="80" required></label><div class="grid-2-col"><label>Ширина, px<input name="width" type="number" min="256" max="2048" step="8" required></label><label>Высота, px<input name="height" type="number" min="256" max="2048" step="8" required></label></div><p role="status"></p><div class="dialog-actions"><button type="button" data-cancel>Отмена</button><button type="submit" class="dialog-primary">Сохранить</button></div></form>';
+    dialog.innerHTML = '<form><h2 id="format-editor-title"></h2><label><span data-i18n="name">Название</span><input name="name" type="text" maxlength="80" required></label><div class="grid-2-col"><label><span data-i18n="width">Ширина, px</span><input name="width" type="number" min="256" max="2048" step="8" required></label><label><span data-i18n="height">Высота, px</span><input name="height" type="number" min="256" max="2048" step="8" required></label></div><p role="status"></p><div class="dialog-actions"><button type="button" data-cancel>Отмена</button><button type="submit" class="dialog-primary">Сохранить</button></div></form>';
     document.body.append(dialog);
     makeDialogBackdropDismissible(dialog);
   }
   const form = dialog.querySelector('form');
   const fields = form.elements;
-  dialog.querySelector('h2').textContent = existing ? 'Редактировать формат' : 'Новый формат';
+  dialog.querySelector('h2').textContent = existing ? tr('formats.editTitle','Редактировать формат') : tr('formats.newTitle','Новый формат');
+  for(const label of dialog.querySelectorAll('[data-i18n]')){
+    const fallbacks={name:'Название',width:'Ширина, px',height:'Высота, px'};
+    label.textContent=tr(`formats.${label.dataset.i18n}`,fallbacks[label.dataset.i18n]);
+  }
+  dialog.querySelector('[data-cancel]').textContent=tr('dialog.cancel','Отмена');
+  dialog.querySelector('[type=submit]').textContent=tr('dialog.save','Сохранить');
   fields.name.value = existing?.name ?? `${activeWidth} × ${activeHeight}`;
   fields.width.value = existing?.width ?? activeWidth;
   fields.height.value = existing?.height ?? activeHeight;
   const status = dialog.querySelector('[role=status]');
   const preview = () => {
     const width = Number(fields.width.value), height = Number(fields.height.value);
-    status.textContent = validSize(width) && validSize(height) ? `${ratio(width,height)} · ${width} × ${height} px` : '256–2048 px, кратно 8';
+    status.textContent = validSize(width) && validSize(height) ? `${ratio(width,height)} · ${width} × ${height} px` : tr('formats.multiple','256–2048 px, кратно 8');
   };
   form.oninput = preview;
   preview();
@@ -122,8 +129,8 @@ function editFormat(existing) {
   form.onsubmit = async event => {
     event.preventDefault();
     const name = fields.name.value.trim(), width = Number(fields.width.value), height = Number(fields.height.value);
-    if (!name || name.length > 80 || !validSize(width) || !validSize(height)) { status.textContent = 'Укажите название и размеры 256–2048 px, кратно 8.'; return; }
-    if (formats.some(item => item !== existing && item.width === width && item.height === height)) { status.textContent = 'Формат с такими размерами уже есть.'; return; }
+    if (!name || name.length > 80 || !validSize(width) || !validSize(height)) { status.textContent = tr('formats.invalid','Укажите название и размеры 256–2048 px, кратно 8.'); return; }
+    if (formats.some(item => item !== existing && item.width === width && item.height === height)) { status.textContent = tr('formats.duplicate','Формат с такими размерами уже есть.'); return; }
     const next = {name,width,height};
     const wasActive = existing && existing.width === activeWidth && existing.height === activeHeight;
     if (!await persistFormats(existing ? formats.map(item => item === existing ? next : item) : [...formats,next])) return;
@@ -152,7 +159,7 @@ export function initImageFormats() {
     }
   } catch {
     // Повреждённую запись не перезаписываем без действия пользователя.
-    void showNotice('Список форматов не удалось прочитать. Показаны исходные форматы; сохранение или удаление заменит список в браузере.');
+    void showNotice(tr('formats.readError','Список форматов не удалось прочитать. Показаны исходные форматы; сохранение или удаление заменит список в браузере.'));
   }
   grid.addEventListener('click',event => {
     const button = event.target.closest('.res-btn');
@@ -171,7 +178,7 @@ export function initImageFormats() {
     input.addEventListener('change',() => {
       const value = Number(input.value);
       if (!validSize(value)) {
-        input.setCustomValidity('Введите от 256 до 2048 пикселей, кратно 8.');
+        input.setCustomValidity(tr('formats.sizeError','Введите от 256 до 2048 пикселей, кратно 8.'));
         input.reportValidity();
         return;
       }
@@ -182,5 +189,6 @@ export function initImageFormats() {
       window.dispatchEvent(new CustomEvent('save-settings'));
     });
   }
+  window.addEventListener('prism-language-changed',renderFormats);
   renderFormats();
 }

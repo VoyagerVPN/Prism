@@ -1,17 +1,20 @@
 import { normalizePromptParts, resolvePromptParts, loraKey, characterPromptPart, contentPromptPart } from './prompt_parts.js';
-import {createCharacterToken,readCharacterToken,characterOptions} from './prompt_character.js';
+import {createCharacterToken,readCharacterToken,characterOptions,localizeCharacterToken} from './prompt_character.js';
 import {categoryOf,promptCategoryIcon} from './lora_categories.js';
 import {selectCharacterVariant} from './character_variants.js';
 import {createCharacterTagPanel} from './prompt_character_tags.js';
+import {translate as tr} from './i18n.js';
 let mentionCatalog=()=>[];
 let characterActions={};
 const contentTypeLabels={Character:'Персонаж',Concept:'Концепт',Style:'Стиль',Pose:'Поза',Clothing:'Одежда',Object:'Объект',Background:'Окружение',Effect:'Эффект',Processing:'Обработка'};
 const contentRemoveLabels={Character:'персонажа',Concept:'концепт',Style:'стиль',Pose:'позу',Clothing:'одежду',Object:'объект',Background:'окружение',Effect:'эффект',Processing:'обработку'};
+const typeLabel=type=>tr(`contentType.${type}`,contentTypeLabels[type]||type);
+const removeLabel=type=>tr(`contentRemove.${type}`,contentRemoveLabels[type]||'контент');
 
 export function createPromptEditor(textarea,{onChange=()=>{},getLoras=()=>[],onSaveVariant,onEditLibrary}={}) {
   const doc=textarea.ownerDocument,win=doc.defaultView;
   const root=doc.createElement('div');root.id='positive-prompt-editor';root.className='inline-prompt';
-  root.setAttribute('contenteditable','true');root.setAttribute('role','textbox');root.setAttribute('aria-label','Описание изображения');root.setAttribute('aria-multiline','true');root.dataset.placeholder='Опишите изображение…';root.spellcheck=false;
+  root.setAttribute('contenteditable','true');root.setAttribute('role','textbox');root.setAttribute('aria-label',tr('promptEditor.description','Описание изображения'));root.setAttribute('aria-multiline','true');root.dataset.placeholder=tr('promptEditor.placeholder','Опишите изображение…');root.spellcheck=false;
   textarea.hidden=true;textarea.before(root);doc.querySelector('label[for="positive-prompt"]')?.setAttribute('for',root.id);
   let lastRange=null,lastText=textarea.value,undo=[],undoIndex=-1;
   let options=null,selectedControl=null;
@@ -60,7 +63,7 @@ export function createPromptEditor(textarea,{onChange=()=>{},getLoras=()=>[],onS
     const again=selectedControl?.id===el.dataset.instanceId&&selectedControl.kind===kind;
     closeOptions();selectControl(el,kind);if(again)openCharacterOptions(el,kind==='character'?undefined:kind);
   }});
-  const mentions=doc.createElement('div');mentions.className='prompt-mentions';mentions.id='prompt-lora-mentions';mentions.setAttribute('role','listbox');mentions.setAttribute('aria-label','Контент');mentions.hidden=true;doc.body.append(mentions);
+  const mentions=doc.createElement('div');mentions.className='prompt-mentions';mentions.id='prompt-lora-mentions';mentions.setAttribute('role','listbox');mentions.setAttribute('aria-label',tr('promptEditor.content','Контент'));mentions.hidden=true;doc.body.append(mentions);
   let mentionRange=null,choices=[],choiceIndex=0;
   const closeMentions=()=>{mentions.hidden=true;mentionRange=null;root.setAttribute('aria-expanded','false');root.removeAttribute('aria-activedescendant');};
   root.setAttribute('aria-controls',mentions.id);root.setAttribute('aria-autocomplete','list');root.setAttribute('aria-expanded','false');
@@ -85,7 +88,7 @@ export function createPromptEditor(textarea,{onChange=()=>{},getLoras=()=>[],onS
       const option=doc.createElement('div');option.id=`prompt-lora-option-${index}`;option.setAttribute('role','option');option.textContent=item.title;option.title=item.title;
       option.addEventListener('mousedown',event=>event.preventDefault());option.addEventListener('click',()=>chooseMention(index));mentions.append(option);
     }
-    if(!choices.length){const empty=doc.createElement('div');empty.textContent='Контент не найден';empty.setAttribute('role','status');mentions.append(empty);}
+    if(!choices.length){const empty=doc.createElement('div');empty.textContent=tr('promptEditor.noContent','Контент не найден');empty.setAttribute('role','status');mentions.append(empty);}
     const rect=root.getBoundingClientRect(),below=win.innerHeight-rect.bottom-8,above=rect.top-8,height=Math.min(260,Math.max(below,above));
     mentions.style.left=`${rect.left}px`;mentions.style.width=`${rect.width}px`;mentions.style.maxHeight=`${Math.max(80,height)}px`;
     mentions.style.top=below>=Math.min(180,above)?`${rect.bottom+4}px`:'auto';mentions.style.bottom=mentions.style.top==='auto'?`${win.innerHeight-rect.top+4}px`:'auto';
@@ -131,37 +134,49 @@ export function createPromptEditor(textarea,{onChange=()=>{},getLoras=()=>[],onS
   const titleFor=name=>getLoras().find(item=>loraKey(item.name)===loraKey(name))?.title||loraKey(name).split('/').at(-1).replace(/\.safetensors$/i,'');
   const categoryFor=name=>categoryOf(getLoras().find(item=>loraKey(item.name)===loraKey(name))||{name});
   const refreshLabels=()=>{
+    root.setAttribute('aria-label',tr('promptEditor.description','Описание изображения'));root.dataset.placeholder=tr('promptEditor.placeholder','Опишите изображение…');
+    mentions.setAttribute('aria-label',tr('promptEditor.content','Контент'));
+    for(const el of root.querySelectorAll('.prompt-character'))localizeCharacterToken(el);
     for(const el of root.querySelectorAll('.prompt-lora')){
       const title=titleFor(el.dataset.name);el.querySelector('.prompt-lora-name').textContent=title;
-      el.setAttribute('aria-label',`Контент: ${title}, интенсивность ${el.dataset.strength}`);
+      el.title=tr('promptEditor.weightTitle',`${title} · Ctrl +/− или Ctrl+колёсико: интенсивность · Backspace: убрать`,{name:title});
+      el.setAttribute('aria-label',tr('promptEditor.contentStrength',`Контент: ${title}, интенсивность ${el.dataset.strength}`,{name:title,strength:el.dataset.strength}));
+      const remove=el.querySelector('.prompt-lora-remove');remove.title=tr('promptEditor.removeContent','Убрать контент');remove.setAttribute('aria-label',tr('promptEditor.removeNamed',`Убрать контент: ${title}`,{name:title}));
       el.querySelector('.prompt-category-icon').replaceWith(promptCategoryIcon(doc,categoryFor(el.dataset.name)));
     }
     for(const el of root.querySelectorAll('.prompt-content')){
-      const part=contentPromptPart(JSON.parse(el.dataset.content)),entry=getLoras().find(item=>item.content?.contentId===part.contentId),label=entry?.title||part.name,type=contentTypeLabels[part.contentType]||part.contentType;
-      el.querySelector('.prompt-content-name').textContent=label;el.setAttribute('aria-label',`${type}: ${label}${el.dataset.strength?' · интенсивность '+el.dataset.strength:''}`);
+      const part=contentPromptPart(JSON.parse(el.dataset.content)),entry=getLoras().find(item=>item.content?.contentId===part.contentId),label=entry?.title||part.name,type=typeLabel(part.contentType);
+      const strength=el.dataset.strength?tr('promptEditor.strengthSuffix',` · интенсивность ${el.dataset.strength}`,{strength:el.dataset.strength}):'';
+      el.querySelector('.prompt-content-name').textContent=label;el.setAttribute('aria-label',tr('promptEditor.typedContent',`${type}: ${label}${strength}`,{type,name:label,strength}));
+      el.title=tr('promptEditor.contentTitle',`${type} · ${el.dataset.strength?'Ctrl +/− или Ctrl+колёсико: интенсивность · ':''}Backspace: убрать`,{type,strengthHelp:el.dataset.strength?tr('promptEditor.strengthHelp','Ctrl +/− или Ctrl+колёсико: интенсивность · '):''});
+      const remove=el.querySelector('.prompt-content-remove');remove.title=tr('promptEditor.removeType',`Убрать ${contentRemoveLabels[part.contentType]||'контент'}`,{type:removeLabel(part.contentType)});remove.setAttribute('aria-label',`${remove.title}: ${label}`);
+      const target=el.querySelector('.prompt-content-target');if(target){target.textContent=`→ ${part.snapshot.parameters.subjectName||tr('promptEditor.character','персонаж')}`;target.title=tr('promptEditor.assigned','Назначено персонажу');}
+      el.querySelector('.prompt-category-icon').replaceWith(promptCategoryIcon(doc,part.contentType));
     }
   };
   const token=part=>{
     const el=doc.createElement('span');el.className='prompt-lora';el.setAttribute('contenteditable','false');el.tabIndex=0;el.dataset.name=part.name;el.dataset.strength=String(part.strength);
     const label=titleFor(part.name);
-    el.title=`${label} · Ctrl +/− или Ctrl+колёсико: интенсивность · Backspace: убрать`;el.setAttribute('aria-label',`Контент: ${label}, интенсивность ${part.strength}`);
+    el.title=tr('promptEditor.weightTitle',`${label} · Ctrl +/− или Ctrl+колёсико: интенсивность · Backspace: убрать`,{name:label});el.setAttribute('aria-label',tr('promptEditor.contentStrength',`Контент: ${label}, интенсивность ${part.strength}`,{name:label,strength:part.strength}));
     const name=doc.createElement('span');name.className='prompt-lora-name';name.textContent=label;
     const weight=doc.createElement('span');weight.className='prompt-lora-weight';weight.textContent=String(part.strength);
-    const remove=doc.createElement('button');remove.type='button';remove.className='prompt-lora-remove';remove.title='Убрать контент';remove.setAttribute('aria-label',`Убрать контент: ${label}`);remove.textContent='×';
+    const remove=doc.createElement('button');remove.type='button';remove.className='prompt-lora-remove';remove.title=tr('promptEditor.removeContent','Убрать контент');remove.setAttribute('aria-label',tr('promptEditor.removeNamed',`Убрать контент: ${label}`,{name:label}));remove.textContent='×';
     remove.onclick=event=>{event.preventDefault();event.stopPropagation();el.remove();changed();root.focus();};
     el.onclick=()=>{el.focus();const range=doc.createRange();range.selectNode(el);const selection=win.getSelection();selection.removeAllRanges();selection.addRange(range);remember();};
     el.append(promptCategoryIcon(doc,categoryFor(part.name)),name,weight,remove);return el;
   };
   const contentToken=value=>{
-    const part=contentPromptPart(value),el=doc.createElement('span'),type=contentTypeLabels[part.contentType]||part.contentType,backend=part.snapshot.bindings.find(binding=>binding.kind==='lora'),strength=backend?.strength??part.snapshot.parameters.intensity;
+    const part=contentPromptPart(value),el=doc.createElement('span'),type=typeLabel(part.contentType),backend=part.snapshot.bindings.find(binding=>binding.kind==='lora'),strength=backend?.strength??part.snapshot.parameters.intensity;
     el.className='prompt-content';el.setAttribute('contenteditable','false');el.tabIndex=0;el.dataset.contentId=part.contentId;el.dataset.contentType=part.contentType;el.dataset.content=JSON.stringify(part);if(Number.isFinite(strength))el.dataset.strength=String(strength);
-    el.title=`${type} · ${Number.isFinite(strength)?'Ctrl +/− или Ctrl+колёсико: интенсивность · ':''}Backspace: убрать`;el.setAttribute('aria-label',`${type}: ${part.name}${Number.isFinite(strength)?' · интенсивность '+strength:''}`);
+    const strengthHelp=Number.isFinite(strength)?tr('promptEditor.strengthHelp','Ctrl +/− или Ctrl+колёсико: интенсивность · '):'';
+    const strengthText=Number.isFinite(strength)?tr('promptEditor.strengthSuffix',` · интенсивность ${strength}`,{strength}):'';
+    el.title=tr('promptEditor.contentTitle',`${type} · ${strengthHelp}Backspace: убрать`,{type,strengthHelp});el.setAttribute('aria-label',tr('promptEditor.typedContent',`${type}: ${part.name}${strengthText}`,{type,name:part.name,strength:strengthText}));
     const name=doc.createElement('span');name.className='prompt-content-name';name.textContent=part.name;el.append(promptCategoryIcon(doc,part.contentType),name);
     if(part.scope==='subject'){
-      const target=doc.createElement('span');target.className='prompt-content-target';target.textContent=`→ ${part.snapshot.parameters.subjectName||'персонаж'}`;target.title='Назначено персонажу';el.append(target);
+      const target=doc.createElement('span');target.className='prompt-content-target';target.textContent=`→ ${part.snapshot.parameters.subjectName||tr('promptEditor.character','персонаж')}`;target.title=tr('promptEditor.assigned','Назначено персонажу');el.append(target);
     }
     if(Number.isFinite(strength)){const weight=doc.createElement('span');weight.className='prompt-lora-weight';weight.textContent=String(strength);el.append(weight);}
-    const remove=doc.createElement('button');remove.type='button';remove.className='prompt-content-remove prompt-lora-remove';remove.title=`Убрать ${contentRemoveLabels[part.contentType]||'контент'}`;remove.setAttribute('aria-label',`${remove.title}: ${part.name}`);remove.textContent='×';
+    const remove=doc.createElement('button');remove.type='button';remove.className='prompt-content-remove prompt-lora-remove';remove.title=tr('promptEditor.removeType',`Убрать ${contentRemoveLabels[part.contentType]||'контент'}`,{type:removeLabel(part.contentType)});remove.setAttribute('aria-label',`${remove.title}: ${part.name}`);remove.textContent='×';
     remove.onclick=event=>{event.preventDefault();event.stopPropagation();el.remove();changed();root.focus();};
     el.onclick=()=>{el.focus();const range=doc.createRange();range.selectNode(el);const selection=win.getSelection();selection.removeAllRanges();selection.addRange(range);remember();};
     el.append(remove);return el;
@@ -323,10 +338,11 @@ export function createPromptEditor(textarea,{onChange=()=>{},getLoras=()=>[],onS
   };
   root.addEventListener('copy',copy);root.addEventListener('cut',copy);doc.addEventListener('selectionchange',remember);
   const fromTextarea=()=>read();textarea.addEventListener('input',fromTextarea);
+  win.addEventListener('prism-language-changed',refreshLabels);
   write([{type:'text',text:textarea.value}]);
   const subjects=()=>partsOf(root).filter(part=>part.type==='character').map(part=>({id:part.instanceId,name:part.character.name}));
   const contentSelections=()=>partsOf(root).filter(part=>part.type==='content').map(part=>({contentId:part.contentId,scope:part.scope,subjectId:part.subjectId}));
-  return {root,read,write,insert,syncLoras,syncCharacter,subjects,contentSelections,transformTextAtCaret,refreshLabels,destroy:()=>{closeOptions();closeTags();doc.removeEventListener('pointerdown',outsideOptions);doc.removeEventListener('selectionchange',remember);textarea.removeEventListener('input',fromTextarea);mentions.remove();root.remove();textarea.hidden=false;}};
+  return {root,read,write,insert,syncLoras,syncCharacter,subjects,contentSelections,transformTextAtCaret,refreshLabels,destroy:()=>{closeOptions();closeTags();win.removeEventListener('prism-language-changed',refreshLabels);doc.removeEventListener('pointerdown',outsideOptions);doc.removeEventListener('selectionchange',remember);textarea.removeEventListener('input',fromTextarea);mentions.remove();root.remove();textarea.hidden=false;}};
 }
 
 let editor;

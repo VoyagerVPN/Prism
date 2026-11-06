@@ -9,6 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location('prism_install', ROOT / 'scripts' / 'install.py')
@@ -17,6 +18,23 @@ spec.loader.exec_module(installer)
 
 
 class InstallTests(unittest.TestCase):
+    def test_install_validation_uses_requested_language(self):
+        for language, expected in [('en', 'Unknown installation profile'), ('ru', 'Неизвестный профиль установки')]:
+            with patch.dict(os.environ, {'PRISM_LANGUAGE': language}):
+                with self.assertRaisesRegex(ValueError, expected):
+                    installer.installation_plan(ROOT, 'invalid', 'none', 8197)
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows bootstrap')
+    def test_setup_plan_follows_explicit_language(self):
+        command = ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(ROOT / 'Setup.ps1'), '-Plan']
+        for language, heading, selection in [('en', 'Prism setup', 'Selected: no models'),
+                                             ('ru', 'Установка Prism', 'Выбрано: без моделей')]:
+            result = subprocess.run(command + ['-Language', language], creationflags=subprocess.CREATE_NO_WINDOW,
+                                    capture_output=True, encoding='utf-8', errors='replace', timeout=30)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn(heading, result.stdout)
+            self.assertIn(selection, result.stdout)
+
     @unittest.skipUnless(os.name == 'nt', 'Windows bootstrap')
     def test_setup_cannot_change_environment_while_launcher_is_starting(self):
         with tempfile.TemporaryDirectory(dir=ROOT / '.cache') as directory:
@@ -24,6 +42,7 @@ class InstallTests(unittest.TestCase):
             (root / 'scripts').mkdir()
             (root / 'app' / '.cache' / 'runtime').mkdir(parents=True)
             shutil.copyfile(ROOT / 'Setup.ps1', root / 'Setup.ps1')
+            shutil.copyfile(ROOT / 'app' / 'Language.ps1', root / 'app' / 'Language.ps1')
             shutil.copyfile(ROOT / 'scripts' / 'install-manifest.json', root / 'scripts' / 'install-manifest.json')
             lock = str(root / 'app' / '.cache' / 'runtime' / 'launcher.lock').replace("'", "''")
             holder = subprocess.Popen(['powershell.exe', '-NoProfile', '-Command',
@@ -60,7 +79,7 @@ class InstallTests(unittest.TestCase):
 
     def test_setup_plan_lists_optional_models_without_selecting_them(self):
         script = ROOT / 'Setup.ps1'
-        command = ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(script), '-Plan']
+        command = ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(script), '-Plan', '-Language', 'ru']
         for options, summary in [([], 'Выбрано: без моделей'), (['-Upscaler'], 'Выбрано: Real-ESRGAN')]:
             result = subprocess.run(command + options, creationflags=subprocess.CREATE_NO_WINDOW,
                                     capture_output=True, encoding='utf-8', errors='replace', timeout=30)
@@ -73,13 +92,15 @@ class InstallTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / '.cache') as directory:
             root = Path(directory)
             (root / 'scripts').mkdir()
+            (root / 'app').mkdir()
             shutil.copyfile(ROOT / 'Setup.ps1', root / 'Setup.ps1')
+            shutil.copyfile(ROOT / 'app' / 'Language.ps1', root / 'app' / 'Language.ps1')
             shutil.copyfile(ROOT / 'scripts' / 'install-manifest.json', root / 'scripts' / 'install-manifest.json')
 
             def plan(device, *args):
                 result = subprocess.run(
                     ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
-                     '-File', str(root / 'Setup.ps1'), '-Plan', '-Device', device, *args],
+                     '-File', str(root / 'Setup.ps1'), '-Plan', '-Language', 'ru', '-Device', device, *args],
                     creationflags=subprocess.CREATE_NO_WINDOW, capture_output=True,
                     encoding='utf-8', errors='replace', timeout=30,
                 )
@@ -104,13 +125,15 @@ class InstallTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / '.cache') as directory:
             root = Path(directory)
             (root / 'scripts').mkdir()
+            (root / 'app').mkdir()
             (root / '.runtime').mkdir()
             (root / '.runtime' / 'foreign.txt').touch()
             shutil.copyfile(ROOT / 'Setup.ps1', root / 'Setup.ps1')
+            shutil.copyfile(ROOT / 'app' / 'Language.ps1', root / 'app' / 'Language.ps1')
             shutil.copyfile(ROOT / 'scripts' / 'install-manifest.json', root / 'scripts' / 'install-manifest.json')
             result = subprocess.run(
                 ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
-                 '-File', str(root / 'Setup.ps1'), '-Device', 'CPU', '-NoLaunch'],
+                 '-File', str(root / 'Setup.ps1'), '-Language', 'ru', '-Device', 'CPU', '-NoLaunch'],
                 input='9\n2, 3\n', capture_output=True, encoding='utf-8', errors='replace',
                 creationflags=subprocess.CREATE_NO_WINDOW, timeout=30,
             )

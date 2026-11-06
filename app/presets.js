@@ -3,6 +3,7 @@ import { profileSelect } from './elements.js';
 import { modelList } from './api.js';
 import { readSettings, applySettings } from './storage.js';
 import { syncSelectControls } from './controls.js';
+import {translate as tr} from './i18n.js';
 
 const keys = ['checkpoint','steps','cfg','sampler','scheduler','advancedToggle','clipSkip','vae'];
 const modelSettings = settings => Object.fromEntries(keys.filter(key => settings[key] !== undefined).map(key => [key,settings[key]]));
@@ -14,7 +15,7 @@ async function requestProfiles(options = {}) {
   const response = await fetch('/prism/presets', {cache:'no-store',signal:AbortSignal.timeout(15000),...options});
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
-  if (!data.presets || typeof data.presets !== 'object' || Array.isArray(data.presets) || !('revision' in data)) throw new Error('Некорректный ответ хранилища пресетов');
+  if (!data.presets || typeof data.presets !== 'object' || Array.isArray(data.presets) || !('revision' in data)) throw new Error(tr('presets.invalid','Некорректный ответ хранилища пресетов'));
   return data;
 }
 
@@ -27,16 +28,16 @@ export function syncPresetStatus() {
   document.getElementById('delete-profile-btn').disabled = !available || saving || !saved;
   document.getElementById('save-profile-btn').disabled = !available || saving;
   profileSelect.disabled = !available || saving;
-  if (available && !saving) status().textContent = saved ? (dirty ? 'Изменено — сохраните изменения или верните сохранённые' : 'Сохранено в JSON') : 'Текущие настройки — без пресета';
+  if (available && !saving) status().textContent = saved ? (dirty ? tr('presets.dirty','Изменено — сохраните изменения или верните сохранённые') : tr('presets.saved','Сохранено в JSON')) : tr('presets.current','Текущие настройки — без пресета');
 }
 
 export function renderProfiles() {
   if (!available) { syncPresetStatus(); syncSelectControls(); return; }
   if (!Object.hasOwn(profiles,selected)) selected = '';
-  profileSelect.replaceChildren(new Option('Без пресета', 'default'));
+  profileSelect.replaceChildren(new Option(tr('presets.none','Без пресета'), 'default'));
   for (const [name, settings] of Object.entries(profiles)) {
     const missing = !modelList.includes(settings.checkpoint);
-    const option = new Option(name + (missing ? ' — нет модели' : ''),name);
+    const option = new Option(name + (missing ? tr('presets.missing',' — нет модели') : ''),name);
     option.disabled = missing;
     profileSelect.add(option);
   }
@@ -62,13 +63,13 @@ export async function loadCustomProfiles() {
     renderProfiles();
   } catch (error) {
     available = false; syncPresetStatus(); syncSelectControls();
-    status().textContent = `Пресеты недоступны: ${error.message}. Обновите страницу для повтора.`;
+    status().textContent = tr('presets.unavailable',`Пресеты недоступны: ${error.message}. Обновите страницу для повтора.`,{message:error.message});
   }
 }
 
 export function applyPresetData(profile) {
   if (profile.checkpoint && !modelList.includes(profile.checkpoint)) {
-    window.dispatchEvent(new CustomEvent('dashboard-warning', {detail:`Пресет не применён: модель ${profile.checkpoint} отсутствует.`}));
+    window.dispatchEvent(new CustomEvent('dashboard-warning', {detail:tr('presets.notApplied',`Пресет не применён: модель ${profile.checkpoint} отсутствует.`,{name:profile.checkpoint})}));
     return false;
   }
   applySettings(modelSettings(profile),{partial:true});
@@ -85,22 +86,22 @@ export function applyProfile(name) {
 
 async function saveProfiles(next, nextSelected) {
   if (saving || !available) return;
-  saving = true; syncPresetStatus(); status().textContent = 'Сохранение…';
+  saving = true; syncPresetStatus(); status().textContent = tr('presets.saving','Сохранение…');
   try {
     const data = await requestProfiles({method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({presets:next,revision})});
     profiles = data.presets; revision = data.revision; selected = nextSelected;
     localStorage.setItem('prism_selected_model_preset',selected);
   } catch (error) {
-    available = false; status().textContent = `Не сохранено: ${error.message}. Обновите страницу для повтора.`;
+    available = false; status().textContent = tr('presets.notSaved',`Не сохранено: ${error.message}. Обновите страницу для повтора.`,{message:error.message});
   } finally { saving = false; renderProfiles(); }
 }
 
 export async function saveCustomProfile() {
   if (!available || saving) return;
   const snapshot = modelSettings(readSettings());
-  const name = await askText('Название для текущих настроек модели:', '', {title:'Новый пресет модели'});
+  const name = await askText(tr('presets.namePrompt','Название для текущих настроек модели:'), '', {title:tr('presets.newTitle','Новый пресет модели')});
   if (!name) return;
-  if (name === 'default' || Object.hasOwn(profiles,name)) { status().textContent = 'Название уже занято. Выберите другое или сохраните изменения выбранного пресета.'; return; }
+  if (name === 'default' || Object.hasOwn(profiles,name)) { status().textContent = tr('presets.duplicate','Название уже занято. Выберите другое или сохраните изменения выбранного пресета.'); return; }
   await saveProfiles({...profiles,[name]:snapshot},name);
 }
 
@@ -109,7 +110,7 @@ export function initPresetEvents() {
   document.getElementById('update-profile-btn').onclick = () => saveProfiles({...profiles,[selected]:modelSettings(readSettings())},selected);
   document.getElementById('delete-profile-btn').onclick = async () => {
     const name = selected;
-    if (!name || !await askConfirm(`Удалить пресет «${name}»? Текущие настройки модели сохранятся в форме.`)) return;
+    if (!name || !await askConfirm(tr('presets.delete',`Удалить пресет «${name}»? Текущие настройки модели сохранятся в форме.`,{name}))) return;
     const next = {...profiles}; delete next[name];
     await saveProfiles(next,'');
   };
@@ -117,5 +118,6 @@ export function initPresetEvents() {
   document.getElementById('generation-model-card').addEventListener('change',syncPresetStatus);
   window.addEventListener('save-settings',syncPresetStatus);
   window.addEventListener('settings-applied',syncPresetStatus);
+  window.addEventListener('prism-language-changed',renderProfiles);
   syncPresetStatus();
 }

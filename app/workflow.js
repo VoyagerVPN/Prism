@@ -1,22 +1,23 @@
 import { loadModel } from './model_loader.js';
 import {batchSizes,frameSettings} from './batch.js';
 import { normalizePromptParts, resolvePromptParts, loraKey } from './prompt_parts.js';
+import {translate as tr} from './i18n.js';
 
 function numeric(value, fallback, label, min, max, integer = false) {
   const n = Number(value ?? fallback);
   if (!Number.isFinite(n) || n < min || n > max || (integer && !Number.isSafeInteger(n))) {
-    throw new Error(`Некорректное значение «${label}»: ${value}`);
+    throw new Error(tr('workflow.invalid',`Некорректное значение «${label}»: ${value}`,{label,value}));
   }
   return n;
 }
 
 function outputImagePath(source) {
   if (!source || (source.type ?? 'output') !== 'output' || typeof source.filename !== 'string' || !source.filename) {
-    throw new Error('Refine доступен только для сохранённого output-изображения.');
+    throw new Error(tr('workflow.refineOutput','Refine доступен только для сохранённого output-изображения.'));
   }
   const path = [source.subfolder, source.filename].filter(Boolean).join('/').replaceAll('\\', '/');
   if (path.startsWith('/') || path.includes('\0') || path.split('/').some(part => part === '..' || part === '')) {
-    throw new Error('Некорректный путь исходного изображения.');
+    throw new Error(tr('workflow.sourcePath','Некорректный путь исходного изображения.'));
   }
   return `${path} [output]`;
 }
@@ -59,8 +60,8 @@ function appendFrame(result, graph, prefix, shared) {
 
 // Refine повторяет только второй Hires-проход над уже сохранённым кадром.
 export function compileRefineWorkflow(settings, source) {
-  const width = numeric(source?.width, 0, 'Ширина исходника', 16, 16384, true);
-  const height = numeric(source?.height, 0, 'Высота исходника', 16, 16384, true);
+  const width = numeric(source?.width, 0, tr('workflow.sourceWidth','Ширина исходника'), 16, 16384, true);
+  const height = numeric(source?.height, 0, tr('workflow.sourceHeight','Высота исходника'), 16, 16384, true);
   const graph = compileWorkflow({
     ...settings,
     width,
@@ -74,9 +75,9 @@ export function compileRefineWorkflow(settings, source) {
   });
   const upscale = Object.entries(graph).find(([, node]) => node.class_type === 'ImageUpscaleWithModel');
   const output = Object.entries(graph).find(([, node]) => node.class_type === 'SaveImage');
-  if (!upscale || !output) throw new Error('Не удалось собрать Refine workflow.');
+  if (!upscale || !output) throw new Error(tr('workflow.refineBuild','Не удалось собрать Refine workflow.'));
   const sourceNodeId = upscale[1].inputs.image?.[0];
-  if (typeof sourceNodeId !== 'string' || !Object.hasOwn(graph, sourceNodeId)) throw new Error('В Hires workflow отсутствует исходное изображение.');
+  if (typeof sourceNodeId !== 'string' || !Object.hasOwn(graph, sourceNodeId)) throw new Error(tr('workflow.sourceMissing','В Hires workflow отсутствует исходное изображение.'));
   graph[sourceNodeId] = { class_type: 'LoadImageOutput', inputs: { image: outputImagePath(source) } };
   return connectedWorkflow(graph, output[0]);
 }
@@ -84,7 +85,7 @@ export function compileRefineWorkflow(settings, source) {
 // Граф зависит только от снимка задания, а не от изменяемых полей интерфейса.
 export function compileWorkflow(settings) {
   const count = settings.batchCount ?? 1;
-  if (!batchSizes.includes(count)) throw new Error('Количество изображений: 1, 4 или 9');
+  if (!batchSizes.includes(count)) throw new Error(tr('workflow.batchCount','Количество изображений: 1, 4 или 9'));
   if (count > 1) {
     const result = {},shared=new Map();
     for (let index = 0; index < count; index++) {
@@ -106,10 +107,10 @@ export function compileWorkflow(settings) {
     return result;
   }
   const seed = numeric(settings.seed, 0, 'Seed', 0, Number.MAX_SAFE_INTEGER, true);
-  const variationStrength = numeric(settings.variationStrength, 0, 'Вариация', 0, 1);
-  const variationSeed = variationStrength > 0 ? numeric(settings.variationSeed, 0, 'Seed вариации', 0, Number.MAX_SAFE_INTEGER, true) : 0;
+  const variationStrength = numeric(settings.variationStrength, 0, tr('workflow.variation','Вариация'), 0, 1);
+  const variationSeed = variationStrength > 0 ? numeric(settings.variationSeed, 0, tr('workflow.variationSeed','Seed вариации'), 0, Number.MAX_SAFE_INTEGER, true) : 0;
   const checkpointVal = settings.checkpoint;
-  if (typeof checkpointVal !== 'string' || !checkpointVal) throw new Error('Выберите доступную модель.');
+  if (typeof checkpointVal !== 'string' || !checkpointVal) throw new Error(tr('workflow.chooseModel','Выберите доступную модель.'));
   const stepsValNum = numeric(settings.steps, 30, 'Steps', 1, 10000, true);
   const cfgValNum = numeric(settings.cfg, 6, 'CFG', 0, 100);
   const samplerVal = settings.sampler ?? 'euler';
@@ -118,22 +119,23 @@ export function compileWorkflow(settings) {
   const incompatibleContent=inline?.content.find(part=>part.snapshot.recipe&&part.snapshot.recipe!==settings.recipe);
   if(incompatibleContent){
     const labels={anima:'Anima',checkpoint:'checkpoint'};
-    throw new Error(`«${incompatibleContent.name}» подготовлен для ${labels[incompatibleContent.snapshot.recipe]??incompatibleContent.snapshot.recipe} и несовместим с текущей моделью. Уберите и добавьте этот контент заново.`);
+    const recipe=labels[incompatibleContent.snapshot.recipe]??incompatibleContent.snapshot.recipe;
+    throw new Error(tr('workflow.incompatible',`«${incompatibleContent.name}» подготовлен для ${recipe} и несовместим с текущей моделью. Уберите и добавьте этот контент заново.`,{name:incompatibleContent.name,recipe}));
   }
   if(inline?.workflowAugmentations.length){
     const backend=inline.workflowAugmentations[0];
-    throw new Error(`Техническая реализация ${backend.kind} для «${backend.contentId}» ещё не подключена к компилятору.`);
+    throw new Error(tr('workflow.unsupportedBackend',`Техническая реализация ${backend.kind} для «${backend.contentId}» ещё не подключена к компилятору.`,{kind:backend.kind,id:backend.contentId}));
   }
   let positivePromptBase = inline?.text ?? settings.positive ?? '';
   let negativePromptBase = [settings.negative ?? '',inline?.negative ?? ''].filter(value=>value.trim()).join(', ');
-  if (typeof positivePromptBase !== 'string' || typeof negativePromptBase !== 'string') throw new Error('Промпты должны быть текстом.');
+  if (typeof positivePromptBase !== 'string' || typeof negativePromptBase !== 'string') throw new Error(tr('workflow.promptText','Промпты должны быть текстом.'));
   if (settings.recipe === 'anima' && /anima-aesthetic/i.test(checkpointVal)) {
     const missingQuality = ['masterpiece', 'best quality'].filter(tag => !new RegExp(`(?:^|,\\s*)${tag}(?:,|$)`, 'i').test(positivePromptBase));
     if (missingQuality.length) positivePromptBase = [...missingQuality, positivePromptBase.trim()].filter(Boolean).join(', ');
     if (!negativePromptBase.trim()) negativePromptBase = 'worst quality, low quality, blurry, jpeg artifacts, chromatic aberration';
   }
-  const widthValNum = numeric(settings.width, 1024, 'Ширина', 16, 16384, true);
-  const heightValNum = numeric(settings.height, 1024, 'Высота', 16, 16384, true);
+  const widthValNum = numeric(settings.width, 1024, tr('workflow.width','Ширина'), 16, 16384, true);
+  const heightValNum = numeric(settings.height, 1024, tr('workflow.height','Высота'), 16, 16384, true);
   const clipSkipValNum = numeric(settings.clipSkip, 1, 'Clip skip', 1, 24, true);
   const vaeVal = settings.vae ?? 'None';
   const isHiresEnabled = settings.hiresToggle === true;
@@ -152,8 +154,8 @@ export function compileWorkflow(settings) {
   const reactorIndexSourceVal = settings.reactorIndexSource ?? '0';
   const reactorIndexInputVal = settings.reactorIndexInput ?? '0';
   const activeReactorImageName = settings.reactorImageName;
-  if (isReactorEnabled && !activeReactorImageName) throw new Error('Для Face Swap нужен исходный файл лица.');
-  if ((isHiresEnabled || isUpscaleEnabled) && !upscaleModelVal) throw new Error('Выберите доступную модель увеличения.');
+  if (isReactorEnabled && !activeReactorImageName) throw new Error(tr('workflow.faceSource','Для Face Swap нужен исходный файл лица.'));
+  if ((isHiresEnabled || isUpscaleEnabled) && !upscaleModelVal) throw new Error(tr('workflow.chooseUpscaler','Выберите доступную модель увеличения.'));
 
   const graph = {};
   

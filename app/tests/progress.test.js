@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { advanceProgress, createProgress, describeProgress } from '../progress.js';
+import {createLocalization} from '../i18n.js';
 
 const workflow = {
   model: { class_type: 'CheckpointLoaderSimple', inputs: {} },
@@ -9,6 +10,18 @@ const workflow = {
   second: { class_type: 'KSampler', inputs: { latent_image: ['scale', 0], steps: 20, denoise: 0.5 } },
   save: { class_type: 'SaveImage', inputs: { images: ['second', 0] } },
 };
+
+test('Прогресс генерации отображается на выбранном языке', async () => {
+  const l10n=await createLocalization({storage:{getItem:()=>null,setItem:()=>{}},systemLanguage:'en'});
+  let progress=createProgress(workflow);
+  progress=advanceProgress(progress,workflow,'executing',{node:'first'});
+  progress=advanceProgress(progress,workflow,'progress',{node:'first',value:1,max:20});
+  const view=describeProgress(progress,workflow,{},l10n);
+  assert.equal(view.label,'Diffusion');
+  assert.match(view.detail,/Overall progress \d+%/);
+  assert.match(view.detail,/Pass 1\/2/);
+  assert.match(view.detail,/Step 1\/20/);
+});
 
 test('Общий прогресс не откатывается при переходе к следующему sampler-проходу', () => {
   let progress = createProgress(workflow);

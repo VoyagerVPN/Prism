@@ -5,7 +5,18 @@
             if (Test-Path -LiteralPath (Join-Path $candidate 'main.py') -PathType Leaf) { return $candidate }
         }
     }
-    throw 'Выберите папку ComfyUI с файлом main.py или корень ComfyUI Portable.'
+    throw (Get-PrismConnectionText 'root')
+}
+
+. (Join-Path $PSScriptRoot 'Language.ps1')
+
+function Get-PrismConnectionText([string]$Key) {
+    $language = if ($env:PRISM_LANGUAGE -in @('en', 'ru')) { $env:PRISM_LANGUAGE } else { Get-PrismLanguage $PSScriptRoot }
+    $text = @{
+        en = @{ root='Choose a ComfyUI folder containing main.py or a ComfyUI Portable root.'; python='Choose an existing python.exe file.'; timeout='Checking Python timed out. Choose the ComfyUI environment and retry.'; dependencies='This Python could not load ComfyUI dependencies. Choose its venv or bundled Python.'; models='Choose a models folder.'; busy='Wait for Prism to finish installing or starting and retry.'; managed='This Prism folder already has a separate environment. Extract Prism to a new folder to connect another ComfyUI.'; port='The current Prism port is in use. Stop ComfyUI before changing the connection.' }
+        ru = @{ root='Выберите папку ComfyUI с файлом main.py или корень ComfyUI Portable.'; python='Выберите существующий файл python.exe.'; timeout='Проверка Python не завершилась вовремя. Выберите окружение ComfyUI и повторите.'; dependencies='Этот Python не смог загрузить зависимости ComfyUI. Выберите его venv или встроенный Python.'; models='Выберите папку моделей.'; busy='Дождитесь завершения установки или запуска Prism и повторите.'; managed='В этой папке Prism уже есть отдельное окружение. Для подключения другого ComfyUI распакуйте Prism в новую папку.'; port='Текущий порт Prism занят. Остановите ComfyUI перед изменением подключения.' }
+    }
+    return $text[$language][$Key]
 }
 
 function Find-PrismPython([string]$ComfyRoot) {
@@ -100,7 +111,7 @@ function Find-PrismConnection {
 
 function Test-PrismPython([string]$Python, [string]$ComfyRoot, [string]$Cache, [int]$TimeoutMs = 30000) {
     if (-not $Python -or -not (Test-Path -LiteralPath $Python -PathType Leaf) -or
-        [IO.Path]::GetFileName($Python) -ine 'python.exe') { throw 'Выберите существующий файл python.exe.' }
+        [IO.Path]::GetFileName($Python) -ine 'python.exe') { throw (Get-PrismConnectionText 'python') }
     [void][IO.Directory]::CreateDirectory($Cache)
     $info = New-Object Diagnostics.ProcessStartInfo
     $info.FileName = (Get-Item -LiteralPath $Python).FullName
@@ -121,11 +132,11 @@ function Test-PrismPython([string]$Python, [string]$ComfyRoot, [string]$Cache, [
         if (-not $process.WaitForExit($TimeoutMs)) {
             $process.Kill()
             $process.WaitForExit()
-            throw 'Проверка Python не завершилась вовремя. Выберите окружение ComfyUI и повторите.'
+            throw (Get-PrismConnectionText 'timeout')
         }
         if ($process.ExitCode -ne 0) {
             $detail = ($errors.Result.Trim() -split '\r?\n')[-1]
-            throw "Этот Python не смог загрузить зависимости ComfyUI. Выберите его venv или встроенный Python. $detail"
+            throw "$(Get-PrismConnectionText 'dependencies') $detail"
         }
     } finally { $process.Dispose() }
 }
@@ -133,19 +144,19 @@ function Test-PrismPython([string]$Python, [string]$ComfyRoot, [string]$Cache, [
 function Save-PrismConnection([string]$AppRoot, [string]$Comfy, [string]$Python, [string]$Models) {
     $comfyRoot = Resolve-PrismComfyRoot $Comfy
     if ([string]::IsNullOrWhiteSpace($Models)) { $Models = Join-Path $comfyRoot 'models' }
-    if (-not (Test-Path -LiteralPath $Models -PathType Container)) { throw 'Выберите папку моделей.' }
+    if (-not (Test-Path -LiteralPath $Models -PathType Container)) { throw (Get-PrismConnectionText 'models') }
     $config = Join-Path $AppRoot 'prism.local.json'
     $cache = Join-Path $AppRoot '.cache\runtime'
     [void][IO.Directory]::CreateDirectory($cache)
     try { $lock = [IO.File]::Open((Join-Path $cache 'launcher.lock'), 'OpenOrCreate', 'ReadWrite', 'None') }
-    catch { throw 'Дождитесь завершения установки или запуска Prism и повторите.' }
+    catch { throw (Get-PrismConnectionText 'busy') }
     try {
         $exists = Test-Path -LiteralPath $config -PathType Leaf
         if ($exists) {
             $settings = Get-Content -LiteralPath $config -Raw | ConvertFrom-Json
-            if ($settings.managed_install) { throw 'В этой папке Prism уже есть отдельное окружение. Для подключения другого ComfyUI распакуйте Prism в новую папку.' }
+            if ($settings.managed_install) { throw (Get-PrismConnectionText 'managed') }
             if ($settings.port -and (Get-NetTCPConnection -LocalPort $settings.port -State Listen -ErrorAction SilentlyContinue)) {
-                throw 'Текущий порт Prism занят. Остановите ComfyUI перед изменением подключения.'
+                throw (Get-PrismConnectionText 'port')
             }
         } else {
             $settings = Get-Content -LiteralPath (Join-Path $AppRoot 'prism.example.json') -Raw | ConvertFrom-Json
@@ -196,6 +207,10 @@ public static class PrismDarkTitleBar {
 }
 
 function New-PrismConnectionForm([string]$AppRoot) {
+    $messages = @{
+        en = @{ title='Prism setup'; install='Install'; existing='Connect an existing ComfyUI'; models='Models'; browse='Browse…'; save='Save'; language='Language'; saved='Settings saved. Open Prism.bat.'; chooseComfy='Choose a ComfyUI or ComfyUI Portable folder'; chooseModels='Choose a models folder'; needPython='Specify the Python path.'; needComfy='Specify the ComfyUI folder.'; checking='Checking Python…'; searching='Looking for ComfyUI…'; connect='Connect ComfyUI' }
+        ru = @{ title='Настройка Prism'; install='Установить'; existing='Подключить существующий ComfyUI'; models='Модели'; browse='Обзор…'; save='Сохранить'; language='Язык'; saved='Настройки сохранены. Откройте Prism.bat.'; chooseComfy='Выберите папку ComfyUI или ComfyUI Portable'; chooseModels='Выберите папку моделей'; needPython='Укажите путь к Python.'; needComfy='Укажите папку ComfyUI.'; checking='Проверяем Python…'; searching='Ищем ComfyUI…'; connect='Подключение ComfyUI' }
+    }
     $background = [Drawing.ColorTranslator]::FromHtml('#202124')
     $surface = [Drawing.ColorTranslator]::FromHtml('#2D3035')
     $border = [Drawing.ColorTranslator]::FromHtml('#50545C')
@@ -236,13 +251,24 @@ function New-PrismConnectionForm([string]$AppRoot) {
     $form.Controls.Add($table)
 
     $install = New-Object Windows.Forms.Button
+    $install.Name = 'prism-install'
     $install.Text = 'Установить'
     & $styleButton $install
-    $install.DialogResult = [Windows.Forms.DialogResult]::Retry
     $install.Anchor = 'Left'
     $install.Size = New-Object Drawing.Size(112, 30)
     $table.Controls.Add($install, 0, 0)
-    $table.SetColumnSpan($install, 3)
+    $languageLabel = New-Object Windows.Forms.Label
+    $languageLabel.TextAlign = 'MiddleRight'
+    $languageLabel.Dock = 'Fill'
+    $table.Controls.Add($languageLabel, 1, 0)
+    $language = New-Object Windows.Forms.ComboBox
+    $language.Name = 'prism-language'
+    $language.DropDownStyle = 'DropDownList'
+    $language.Anchor = 'Left, Right'
+    [void]$language.Items.Add('English')
+    [void]$language.Items.Add('Русский')
+    $language.SelectedIndex = if ((Get-PrismLanguage $AppRoot) -eq 'ru') { 1 } else { 0 }
+    $table.Controls.Add($language, 2, 0)
 
     $existing = New-Object Windows.Forms.Label
     $existing.Text = 'Подключить существующий ComfyUI'
@@ -273,7 +299,8 @@ function New-PrismConnectionForm([string]$AppRoot) {
             return
         }
         $picker = New-Object Windows.Forms.FolderBrowserDialog
-        $picker.Description = if ($key -eq 'comfy') { 'Выберите папку ComfyUI или ComfyUI Portable' } else { 'Выберите папку моделей' }
+        $code = if ($language.SelectedIndex -eq 1) { 'ru' } else { 'en' }
+        $picker.Description = if ($key -eq 'comfy') { $messages[$code].chooseComfy } else { $messages[$code].chooseModels }
         if ($field.Text -and (Test-Path -LiteralPath $field.Text -PathType Container)) { $picker.SelectedPath = $field.Text }
         try {
             if ($picker.ShowDialog($form) -eq 'OK') {
@@ -306,12 +333,15 @@ function New-PrismConnectionForm([string]$AppRoot) {
         }
     }.GetNewClosure()
 
+    $rowLabels = @{}
+    $browseButtons = @()
     for ($row = 0; $row -lt $rows.Count; $row++) {
         $item = $rows[$row]
         $label = New-Object Windows.Forms.Label
         $label.Text = $item.label
         $label.TextAlign = 'MiddleLeft'
         $label.Dock = 'Fill'
+        $rowLabels[$item.key] = $label
         $field = $fields[$item.key]
         $field.Anchor = 'Left, Right'
         $field.AutoSize = $false
@@ -325,6 +355,7 @@ function New-PrismConnectionForm([string]$AppRoot) {
         $browse.Anchor = 'Left, Right'
         $browse.Height = $field.Height
         & $styleButton $browse
+        $browseButtons += $browse
         $browse.Add_Click($choose.GetNewClosure())
         $table.Controls.Add($label, 0, ($row + 2))
         $table.Controls.Add($field, 1, ($row + 2))
@@ -339,10 +370,36 @@ function New-PrismConnectionForm([string]$AppRoot) {
     $save.Anchor = 'Right'
     $table.Controls.Add($save, 2, 5)
     $status = New-Object Windows.Forms.Label
+    $status.Name = 'prism-connection-status'
     $status.Dock = 'Fill'
     $status.TextAlign = 'MiddleLeft'
     $table.Controls.Add($status, 0, 5)
     $table.SetColumnSpan($status, 2)
+    $applyLanguage = {
+        $code = if ($language.SelectedIndex -eq 1) { 'ru' } else { 'en' }
+        $env:PRISM_LANGUAGE = $code
+        $text = $messages[$code]
+        $form.Text = $text.title
+        $install.Text = $text.install
+        $existing.Text = $text.existing
+        $rowLabels.models.Text = $text.models
+        $save.Text = $text.save
+        $languageLabel.Text = $text.language
+        foreach ($browse in $browseButtons) { $browse.Text = $text.browse }
+        if ($status.Tag) { $status.Text = $text[[string]$status.Tag] }
+    }.GetNewClosure()
+    $language.Add_SelectedIndexChanged($applyLanguage)
+    & $applyLanguage
+    $install.Add_Click({
+        try {
+            $code = if ($language.SelectedIndex -eq 1) { 'ru' } else { 'en' }
+            Set-PrismLanguage $AppRoot $code
+            $form.DialogResult = [Windows.Forms.DialogResult]::Retry
+            $form.Close()
+        } catch {
+            [void][Windows.Forms.MessageBox]::Show($form, $_.Exception.Message, 'Prism')
+        }
+    }.GetNewClosure())
     $scriptFile = $MyInvocation.MyCommand.ScriptBlock.File
     $search.timer.Add_Tick({
         if ($search.worker) {
@@ -362,7 +419,9 @@ function New-PrismConnectionForm([string]$AppRoot) {
                     $suggested.python = $result.python
                     $fields.python.Text = $result.python
                 }
-                $status.Text = if ($result) { '' } elseif ($search.request.folder) { 'Укажите путь к Python.' } else { 'Укажите папку ComfyUI.' }
+                $code = if ($language.SelectedIndex -eq 1) { 'ru' } else { 'en' }
+                $status.Tag = if ($result) { $null } elseif ($search.request.folder) { 'needPython' } else { 'needComfy' }
+                $status.Text = if ($status.Tag) { $messages[$code][[string]$status.Tag] } else { '' }
             }
         }
         if (-not $search.pending) {
@@ -372,7 +431,9 @@ function New-PrismConnectionForm([string]$AppRoot) {
         }
         $search.request = $search.pending
         $search.pending = $null
-        $status.Text = if ($search.request.folder) { 'Проверяем Python…' } else { 'Ищем ComfyUI…' }
+        $code = if ($language.SelectedIndex -eq 1) { 'ru' } else { 'en' }
+        $status.Tag = if ($search.request.folder) { 'checking' } else { 'searching' }
+        $status.Text = $messages[$code][[string]$status.Tag]
         $save.Enabled = $false
         $search.worker = [PowerShell]::Create()
         [void]$search.worker.AddScript({
@@ -398,10 +459,13 @@ function New-PrismConnectionForm([string]$AppRoot) {
             $refresh.Invoke($false)
             if (-not $fields.python.Text -and ($search.worker -or $search.pending)) { return }
             Save-PrismConnection $AppRoot $fields.comfy.Text $fields.python.Text $fields.models.Text
-            [void][Windows.Forms.MessageBox]::Show($form, 'Настройки сохранены. Откройте Prism.bat.', 'Prism')
+            $code = if ($language.SelectedIndex -eq 1) { 'ru' } else { 'en' }
+            Set-PrismLanguage $AppRoot $code
+            [void][Windows.Forms.MessageBox]::Show($form, $messages[$code].saved, 'Prism')
             $form.Close()
         } catch {
-            [void][Windows.Forms.MessageBox]::Show($form, $_.Exception.Message, 'Подключение ComfyUI')
+            $code = if ($language.SelectedIndex -eq 1) { 'ru' } else { 'en' }
+            [void][Windows.Forms.MessageBox]::Show($form, $_.Exception.Message, $messages[$code].connect)
         } finally { $form.UseWaitCursor = $false }
     }.GetNewClosure())
 
@@ -434,7 +498,8 @@ if ($MyInvocation.InvocationName -ne '.') {
         # Setup.bat по этому коду запускает установщик в своей консоли.
         if ($result -eq [Windows.Forms.DialogResult]::Retry) { exit 10 }
     } catch {
-        [void][Windows.Forms.MessageBox]::Show($_.Exception.Message, 'Подключение ComfyUI')
+        $caption = if ($env:PRISM_LANGUAGE -eq 'ru' -or ($env:PRISM_LANGUAGE -ne 'en' -and [Globalization.CultureInfo]::CurrentUICulture.Name -match '^ru(?:-|$)')) { 'Подключение ComfyUI' } else { 'Connect ComfyUI' }
+        [void][Windows.Forms.MessageBox]::Show($_.Exception.Message, $caption)
         exit 1
     }
 }

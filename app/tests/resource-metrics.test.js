@@ -1,6 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { presentResourceMetrics } from '../resource_metrics.js';
+import {createLocalization} from '../i18n.js';
+
+test('Память и её состав отображаются на выбранном языке', async () => {
+  const l10n=await createLocalization({storage:{getItem:()=>null,setItem:()=>{}},systemLanguage:'en'});
+  const gib=1024**3;
+  const view=presentResourceMetrics({process:{pid:321,ram:{used:3*gib,capacity:32*gib}},devices:[{name:'GPU',vram:{used:6*gib,capacity:10*gib,models:4*gib,working:gib,cache:gib}}]},l10n);
+  assert.equal(view.ram.value,'3.0 GB');
+  assert.equal(view.vram.detail,'models 4.0 · working 1.0 · cache 1.0 GB');
+  assert.match(view.vram.title,/Comfy model manager and PyTorch/);
+});
 
 test('Счётчики показывают память процесса и раскрывают состав VRAM', () => {
   const gib = 1024 ** 3;

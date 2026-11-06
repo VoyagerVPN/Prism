@@ -12,6 +12,18 @@ import time
 import urllib.request
 
 
+def translate(ru, en):
+    language = os.environ.get('PRISM_LANGUAGE', '').lower()
+    if language not in ('ru', 'en'):
+        if os.name == 'nt':
+            import ctypes
+            language = 'ru' if ctypes.windll.kernel32.GetUserDefaultUILanguage() & 0x3ff == 0x19 else 'en'
+        else:
+            import locale
+            language = 'ru' if (locale.getlocale()[0] or '').lower().startswith('ru') else 'en'
+    return ru if language == 'ru' else en
+
+
 def file_digest(path):
     with Path(path).open('rb') as stream:
         return hashlib.file_digest(stream, 'sha256').hexdigest()
@@ -21,21 +33,21 @@ def download_verified(url, target, size, sha256):
     target = Path(target)
     if target.exists():
         if target.stat().st_size == size and file_digest(target) == sha256:
-            print(f'Проверен существующий файл: {target}', flush=True)
+            print(translate('Проверен существующий файл: {target}', 'Verified existing file: {target}').format(target=target), flush=True)
             return
-        raise RuntimeError(f'PRISM_MODEL_CONFLICT: {target} уже существует с другим содержимым; файл сохранён.')
+        raise RuntimeError(translate('PRISM_MODEL_CONFLICT: {target} уже существует с другим содержимым; файл сохранён.', 'PRISM_MODEL_CONFLICT: {target} already exists with different content; the file was preserved.').format(target=target))
     target.parent.mkdir(parents=True, exist_ok=True)
     partial = target.with_suffix(target.suffix + '.part')
     offset = partial.stat().st_size if partial.exists() else 0
     if offset > size:
-        raise RuntimeError(f'PRISM_DOWNLOAD_SIZE: проверьте и удалите лишний частичный файл {partial}')
+        raise RuntimeError(translate('PRISM_DOWNLOAD_SIZE: проверьте и удалите лишний частичный файл {partial}', 'PRISM_DOWNLOAD_SIZE: check and remove the oversized partial file {partial}').format(partial=partial))
     if offset < size:
         request = urllib.request.Request(url, headers={'Range': f'bytes={offset}-'} if offset else {})
         with urllib.request.urlopen(request, timeout=60) as response:
             if response.status == 206:
                 content_range = re.fullmatch(r'bytes (\d+)-(\d+)/(\d+)', response.headers.get('Content-Range', ''))
                 if not content_range or int(content_range[1]) != offset or int(content_range[3]) != size:
-                    raise RuntimeError('PRISM_DOWNLOAD_RANGE: сервер вернул неверный диапазон; частичный файл сохранён.')
+                    raise RuntimeError(translate('PRISM_DOWNLOAD_RANGE: сервер вернул неверный диапазон; частичный файл сохранён.', 'PRISM_DOWNLOAD_RANGE: the server returned an invalid range; the partial file was preserved.'))
             elif response.status == 200:
                 offset = 0
             else:
@@ -44,17 +56,17 @@ def download_verified(url, target, size, sha256):
             with partial.open('ab' if offset else 'wb') as stream:
                 while chunk := response.read(1024 * 1024):
                     if offset + len(chunk) > size:
-                        raise RuntimeError('PRISM_DOWNLOAD_SIZE: ответ больше ожидаемого файла.')
+                        raise RuntimeError(translate('PRISM_DOWNLOAD_SIZE: ответ больше ожидаемого файла.', 'PRISM_DOWNLOAD_SIZE: the response exceeds the expected file size.'))
                     stream.write(chunk)
                     offset += len(chunk)
                     if time.monotonic() - last_report > 10:
-                        print(f'Загрузка: {offset / 1e9:.2f} / {size / 1e9:.2f} ГБ', flush=True)
+                        print(translate('Загрузка: {current:.2f} / {total:.2f} ГБ', 'Downloading: {current:.2f} / {total:.2f} GB').format(current=offset / 1e9, total=size / 1e9), flush=True)
                         last_report = time.monotonic()
     if partial.stat().st_size != size:
-        raise RuntimeError(f'PRISM_DOWNLOAD_INCOMPLETE: повторите установку; загрузка продолжится из {partial}')
+        raise RuntimeError(translate('PRISM_DOWNLOAD_INCOMPLETE: повторите установку; загрузка продолжится из {partial}', 'PRISM_DOWNLOAD_INCOMPLETE: retry setup; the download will resume from {partial}').format(partial=partial))
     if file_digest(partial) != sha256:
         partial.unlink()
-        raise RuntimeError('PRISM_DOWNLOAD_HASH: SHA256 не совпал. Повреждённый частичный файл удалён; повторите загрузку.')
+        raise RuntimeError(translate('PRISM_DOWNLOAD_HASH: SHA256 не совпал. Повреждённый частичный файл удалён; повторите загрузку.', 'PRISM_DOWNLOAD_HASH: SHA256 did not match. The corrupt partial file was removed; retry the download.'))
     # rename в Windows не заменяет неожиданно появившийся пользовательский файл.
     partial.rename(target)
 
@@ -63,16 +75,16 @@ def selected_models(manifest, selection):
     catalog = {'sdxl': {**manifest['model'], 'directory': 'StableDiffusion'}, **manifest['optional_models']}
     keys = [] if selection == 'none' else selection.split(',')
     if any(key not in catalog for key in keys) or len(set(keys)) != len(keys):
-        raise ValueError('Неизвестный или повторный выбор моделей')
+        raise ValueError(translate('Неизвестный или повторный выбор моделей', 'Unknown or duplicate model selection'))
     return [catalog[key] for key in keys]
 
 
 def installation_plan(root, device, model, port, manifest=None):
     root = Path(root).resolve()
     if device not in ('nvidia', 'cpu'):
-        raise ValueError('Неизвестный профиль установки')
+        raise ValueError(translate('Неизвестный профиль установки', 'Unknown installation profile'))
     if not 1024 <= port <= 65535:
-        raise ValueError('Порт должен быть от 1024 до 65535')
+        raise ValueError(translate('Порт должен быть от 1024 до 65535', 'Port must be between 1024 and 65535'))
     if manifest is None:
         manifest = json.loads(Path(__file__).with_name('install-manifest.json').read_text(encoding='utf-8'))
     models = selected_models(manifest, model)
@@ -96,15 +108,15 @@ def prepare_installation(root, device, model, port, manifest=None):
         settings = json.loads(config.read_text(encoding='utf-8-sig'))
         backend = (config.parent / settings['backend_root']).resolve()
         if backend != Path(plan['backend']):
-            raise RuntimeError('PRISM_EXISTING_CONFIG: уже настроен другой ComfyUI. Для чистой установки распакуйте Prism в новую папку.')
+            raise RuntimeError(translate('PRISM_EXISTING_CONFIG: уже настроен другой ComfyUI. Для чистой установки распакуйте Prism в новую папку.', 'PRISM_EXISTING_CONFIG: another ComfyUI is configured. Extract Prism to a new folder for a clean installation.'))
         if settings.get('port') != port:
-            raise RuntimeError('PRISM_PORT_CONFIG: другой порт уже сохранён в app/prism.local.json. Измените конфиг при остановленном backend.')
+            raise RuntimeError(translate('PRISM_PORT_CONFIG: другой порт уже сохранён в app/prism.local.json. Измените конфиг при остановленном backend.', 'PRISM_PORT_CONFIG: a different port is saved in app/prism.local.json. Stop the backend before editing the config.'))
     if runtime.exists() and any(runtime.iterdir()) and not marker.is_file():
-        raise RuntimeError('PRISM_FOREIGN_RUNTIME: .runtime не создан Prism; выберите пустую папку.')
+        raise RuntimeError(translate('PRISM_FOREIGN_RUNTIME: .runtime не создан Prism; выберите пустую папку.', 'PRISM_FOREIGN_RUNTIME: .runtime was not created by Prism; choose an empty folder.'))
     if marker.exists():
         saved = json.loads(marker.read_text(encoding='utf-8-sig'))
         if saved.get('root') != str(root) or saved.get('device') != device:
-            raise RuntimeError('PRISM_PROFILE_CHANGED: путь или устройство изменились. Используйте отдельную папку.')
+            raise RuntimeError(translate('PRISM_PROFILE_CHANGED: путь или устройство изменились. Используйте отдельную папку.', 'PRISM_PROFILE_CHANGED: the path or device changed. Use a separate folder.'))
     runtime.mkdir(exist_ok=True)
     if not marker.exists():
         marker.write_text(json.dumps({'root': str(root), 'device': device, 'complete': False}), encoding='utf-8')
@@ -141,7 +153,7 @@ def install_environment(root, uv, device, model, port):
     # Работающая среда не меняется во время установки зависимостей.
     with socket.socket() as probe:
         if probe.connect_ex(('127.0.0.1', port)) == 0:
-            raise RuntimeError(f'PRISM_PORT: порт {port} занят. Остановите эту установку или выберите -Port <свободный>.')
+            raise RuntimeError(translate('PRISM_PORT: порт {port} занят. Остановите эту установку или выберите -Port <свободный>.', 'PRISM_PORT: port {port} is in use. Stop the running installation or choose an available port with -Port.').format(port=port))
     env = {key: value for key, value in os.environ.items()
            if not key.startswith(('UV_', 'PIP_', 'PYTHON', 'CONDA')) and key not in ('VIRTUAL_ENV',)}
     cache = root / '.cache'
@@ -172,7 +184,8 @@ def install_environment(root, uv, device, model, port):
                                 stdout=subprocess.PIPE if capture else None,
                                 stderr=subprocess.PIPE if capture else subprocess.STDOUT)
         if result.returncode:
-            raise RuntimeError(f'PRISM_COMMAND: код {result.returncode}. {(result.stdout or "") + (result.stderr or "") or "См. вывод команды выше."}')
+            detail = (result.stdout or '') + (result.stderr or '') or translate('См. вывод команды выше.', 'See the command output above.')
+            raise RuntimeError(translate('PRISM_COMMAND: код {code}. {detail}', 'PRISM_COMMAND: exit code {code}. {detail}').format(code=result.returncode, detail=detail))
         if capture and result.stderr:
             print(result.stderr, file=sys.stderr, end='', flush=True)
         return (result.stdout or '').strip()
@@ -188,15 +201,15 @@ def install_environment(root, uv, device, model, port):
         run(['git', 'clone', '--no-checkout', '--filter=blob:none', 'https://github.com/Comfy-Org/ComfyUI.git', backend])
     origin = run(['git', '-C', backend, 'remote', 'get-url', 'origin'], capture=True)
     if origin != 'https://github.com/Comfy-Org/ComfyUI.git':
-        raise RuntimeError('PRISM_BACKEND_ORIGIN: .runtime/ComfyUI принадлежит другому репозиторию.')
+        raise RuntimeError(translate('PRISM_BACKEND_ORIGIN: .runtime/ComfyUI принадлежит другому репозиторию.', 'PRISM_BACKEND_ORIGIN: .runtime/ComfyUI belongs to a different repository.'))
     if not (backend / 'main.py').is_file():
         run(['git', '-C', backend, 'checkout', '--detach', manifest['comfy_commit']])
     revision = run(['git', '-C', backend, 'rev-parse', 'HEAD'], capture=True)
     if revision != state.get('comfy_commit', manifest['comfy_commit']):
-        raise RuntimeError('PRISM_BACKEND_REVISION: ComfyUI обновлён отдельно. Setup не откатывает версии; см. README про обновление.')
+        raise RuntimeError(translate('PRISM_BACKEND_REVISION: ComfyUI обновлён отдельно. Setup не откатывает версии; см. README про обновление.', 'PRISM_BACKEND_REVISION: ComfyUI was updated separately. Setup does not roll back versions; see README for updates.'))
     dirty = run(['git', '-C', backend, 'status', '--porcelain', '--untracked-files=no'], capture=True)
     if dirty:
-        raise RuntimeError('PRISM_BACKEND_DIRTY: исходники ComfyUI изменены; сохраните изменения перед установкой.')
+        raise RuntimeError(translate('PRISM_BACKEND_DIRTY: исходники ComfyUI изменены; сохраните изменения перед установкой.', 'PRISM_BACKEND_DIRTY: ComfyUI sources were modified; save the changes before installation.'))
 
     requirements_lock = root / 'scripts' / 'requirements-lock.txt'
     package_manifest = {key: value for key, value in manifest.items() if key != 'optional_models'}
@@ -218,7 +231,9 @@ def install_environment(root, uv, device, model, port):
         run([uv, 'pip', 'check', '--python', python])
     check = 'import torch, torch._dynamo, aiohttp, safetensors, PIL, psutil; print("PyTorch:", torch.__version__)'
     if device == 'nvidia':
-        check += '; assert torch.cuda.is_available(), "CUDA недоступна: обновите драйвер NVIDIA"; print(torch.cuda.get_device_name(0)); assert torch.cuda.get_device_properties(0).total_memory >= 8_000_000_000, "Для начального SDXL-профиля нужно от 8 ГБ VRAM"'
+        cuda_error = translate('CUDA недоступна: обновите драйвер NVIDIA', 'CUDA is unavailable: update the NVIDIA driver')
+        vram_error = translate('Для начального SDXL-профиля нужно от 8 ГБ VRAM', 'The starter SDXL profile requires at least 8 GB VRAM')
+        check += f'; assert torch.cuda.is_available(), {cuda_error!r}; print(torch.cuda.get_device_name(0)); assert torch.cuda.get_device_properties(0).total_memory >= 8_000_000_000, {vram_error!r}'
     run([python, '-I', '-X', 'utf8', '-X', f'pycache_prefix={cache / "pycache"}', '-c', check])
     for entry in selected_models(manifest, model):
         download_verified(entry['url'], Path(plan['models']) / entry['directory'] / entry['name'],
@@ -229,7 +244,7 @@ def install_environment(root, uv, device, model, port):
     marker.write_text(json.dumps(state, indent=2), encoding='utf-8')
     packages = run([uv, 'pip', 'freeze', '--python', python], capture=True)
     (runtime / 'installed-packages.txt').write_text(packages + '\n', encoding='utf-8')
-    print(f'Установка завершена. Запуск: Prism.bat\nПанель: {plan["url"]}', flush=True)
+    print(translate('Установка завершена. Запуск: Prism.bat\nПанель: {url}', 'Installation complete. Start with Prism.bat\nInterface: {url}').format(url=plan['url']), flush=True)
     return plan
 
 
@@ -238,7 +253,7 @@ def main():
     parser.add_argument('--root', type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument('--uv', required=True)
     parser.add_argument('--device', choices=('nvidia', 'cpu'), default='nvidia')
-    parser.add_argument('--model', default='none', help='Ключи моделей через запятую или none')
+    parser.add_argument('--model', default='none', help=translate('Ключи моделей через запятую или none', 'Comma-separated model keys or none'))
     parser.add_argument('--port', type=int)
     args = parser.parse_args()
     install_environment(args.root, args.uv, args.device, args.model, args.port)
@@ -248,5 +263,5 @@ if __name__ == '__main__':
     try:
         main()
     except (OSError, ValueError, RuntimeError) as error:
-        print(f'Установка не завершена: {error}', file=sys.stderr, flush=True)
+        print(translate('Установка не завершена: {error}', 'Installation did not complete: {error}').format(error=error), file=sys.stderr, flush=True)
         sys.exit(1)

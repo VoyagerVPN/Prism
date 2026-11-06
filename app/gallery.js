@@ -5,6 +5,7 @@ import { setSeedMode, setLastGeneratedSeed, reactorImageName } from './state.js'
 import {galleryFavoriteState, galleryHistorySelection, galleryMediaSource, toggleGalleryFavorite} from './gallery_catalog_client.js';
 import {selectedOutputImage} from './result_catalog.js';
 import { imageUrl } from './api.js';
+import {translate as tr} from './i18n.js';
 
 export let history = [];
 export let selectedHistoryItem = null;
@@ -24,9 +25,9 @@ function syncFavoriteControl(button, state) {
   button.disabled = !state.available;
   button.classList.toggle('active', state.favorite);
   button.setAttribute('aria-pressed', String(state.favorite));
-  const label = state.favorite ? 'Убрать из избранного' : 'Добавить в избранное';
+  const label = state.favorite ? tr('archive.removeFavorite','Убрать из избранного') : tr('archive.addFavorite','Добавить в избранное');
   button.setAttribute('aria-label', label);
-  button.title = state.available ? label : 'Сетку батча нельзя добавить в избранное';
+  button.title = state.available ? label : tr('galleryView.gridFavorite','Сетку батча нельзя добавить в избранное');
 }
 
 async function syncOutputFavoriteButton() {
@@ -79,7 +80,7 @@ async function useImageAs(item,index,button) {
   const source=galleryMediaSource(item,index);if(!source)return;
   button.disabled=true;
   try{const {openMediaAssignment}=await import('./library.js');await openMediaAssignment(source);}
-  catch(error){window.dispatchEvent(new CustomEvent('dashboard-warning',{detail:`Не удалось назначить изображение: ${error.message}`}));}
+  catch(error){window.dispatchEvent(new CustomEvent('dashboard-warning',{detail:tr('archive.assignError',`Не удалось назначить изображение: ${error.message}`,{message:error.message})}));}
   finally{syncUseAsButton(button,item,index);}
 }
 
@@ -89,7 +90,7 @@ async function toggleFavorite(item, index, sourceButton) {
   try {
     await toggleGalleryFavorite(item, index);
   } catch (error) {
-    window.dispatchEvent(new CustomEvent('dashboard-warning', {detail: `Не удалось изменить избранное: ${error.message}`}));
+    window.dispatchEvent(new CustomEvent('dashboard-warning', {detail: tr('archive.favoriteError',`Не удалось изменить избранное: ${error.message}`,{message:error.message})}));
   } finally {
     await Promise.all([syncOutputFavoriteButton(), syncLightboxFavoriteButton()]);
   }
@@ -105,7 +106,7 @@ function groupFor(item) {
   };
   const addContent=content=>{
     const id=typeof content?.contentId==='string'&&content.contentId?content.contentId:`${content?.contentType??'content'}:${content?.name??''}`;
-    const label=typeof content?.name==='string'&&content.name?content.name:content?.contentType??'Контент';
+    const label=typeof content?.name==='string'&&content.name?content.name:content?.contentType??tr('galleryView.content','Контент');
     names.set(`content:${id}`,label);
     for(const binding of content?.snapshot?.bindings??[]){
       const lora=binding?.kind==='lora'?loraKey(binding.name):'';if(lora)boundLoras.add(lora);
@@ -128,7 +129,7 @@ function groupFor(item) {
   }
   characters.forEach(addCharacter);contents.forEach(addContent);loras.forEach(addLora);
   const keys=[...names.keys()].sort();
-  return {key:JSON.stringify(keys),label:keys.map(key=>names.get(key)).join(' + ')||'Промпт'};
+  return {key:JSON.stringify(keys),label:keys.map(key=>names.get(key)).join(' + ')||tr('galleryView.prompt','Промпт')};
 }
 
 function selectedSettings(item = selectedHistoryItem, index = selectedBatchIndex) {
@@ -141,7 +142,7 @@ function isArchivedRecipe(item) {
     || (item?.settings ?? item)?.recipe === 'qwen-image-2.1';
 }
 
-const archivedRecipeMessage = 'Результат доступен в галерее. Этот рецепт перенесён в отдельную ветку Prism.';
+const archivedRecipeMessage = () => tr('galleryView.archived','Результат доступен в галерее. Этот рецепт перенесён в отдельную ветку Prism.');
 
 function syncRefineButton() {
   if (!refineBtn) return;
@@ -149,18 +150,18 @@ function syncRefineButton() {
   const gridSelected = hasBatch && selectedBatchIndex === 0;
   const source = selectedOutputImage(selectedHistoryItem, selectedBatchIndex);
   const unavailableReason = !selectedHistoryItem || !source
-    ? 'Сначала выберите готовый арт'
+    ? tr('galleryView.selectFirst','Сначала выберите готовый арт')
     : gridSelected
-      ? 'Выберите отдельный кадр серии'
+      ? tr('galleryView.selectFrame','Выберите отдельный кадр серии')
       : source.type !== 'output'
-        ? 'Refine доступен только для сохранённого результата'
+        ? tr('galleryView.refineSaved','Refine доступен только для сохранённого результата')
         : !outputImage.naturalWidth || !outputImage.naturalHeight
-          ? 'Дождитесь загрузки выбранного изображения'
+          ? tr('galleryView.waitImage','Дождитесь загрузки выбранного изображения')
           : isArchivedRecipe(selectedHistoryItem)
-            ? archivedRecipeMessage
+            ? archivedRecipeMessage()
             : '';
   refineBtn.disabled = Boolean(unavailableReason);
-  refineBtn.title = unavailableReason || 'Дорисовать выбранный кадр в высоком разрешении';
+  refineBtn.title = unavailableReason || tr('galleryView.refine','Дорисовать выбранный кадр в высоком разрешении');
 }
 
 export function updateHistory(newHistory) {
@@ -185,7 +186,7 @@ export function displayOutputImage(job) {
   const gridUrl = job.gridOutput ? imageUrl(job.gridOutput) : null;
   const urls = job.outputs.map(imageUrl).filter(url=>url!==gridUrl);
   if (!urls.length) {
-    window.dispatchEvent(new CustomEvent('dashboard-warning', { detail: 'Задание завершено, но SaveImage не вернул файлов.' }));
+    window.dispatchEvent(new CustomEvent('dashboard-warning', { detail: tr('galleryView.noFiles','Задание завершено, но SaveImage не вернул файлов.') }));
     return;
   }
   const settings = structuredClone(job.settings);
@@ -231,10 +232,10 @@ export function renderGallery() {
   for(const group of groups.values()){
     const button=document.createElement('button');button.type='button';button.className='gallery-group';
     button.dataset.groupKey=group.key;
-    button.setAttribute('aria-label',`Группа: ${group.label}`);button.setAttribute('aria-pressed',String(group.key===activeGalleryGroup));button.setAttribute('aria-controls','gallery-items');button.title=group.label;
+    button.setAttribute('aria-label',tr('galleryView.group',`Группа: ${group.label}`,{label:group.label}));button.setAttribute('aria-pressed',String(group.key===activeGalleryGroup));button.setAttribute('aria-controls','gallery-items');button.title=group.label;
     const cover=document.createElement('img');cover.src=group.items[0].url;cover.alt='';cover.loading='lazy';
     const label=document.createElement('span');label.className='gallery-group-label';label.textContent=group.label;
-    const count=document.createElement('span');count.className='gallery-group-count';count.textContent=group.items.length;count.title='Результатов в группе';
+    const count=document.createElement('span');count.className='gallery-group-count';count.textContent=group.items.length;count.title=tr('galleryView.groupCount','Результатов в группе');
     button.append(cover,label,count);
     button.onclick=()=>{activeGalleryGroup=group.key;renderGallery();[...groupBar.children].find(child=>child.dataset.groupKey===group.key)?.focus({preventScroll:true});};groupBar.append(button);
   }
@@ -244,7 +245,8 @@ export function renderGallery() {
     const index=history.indexOf(item);
     const thumb = document.createElement("button");
     thumb.type = 'button';
-    thumb.setAttribute('aria-label', `Результат ${index + 1}, Seed ${(item.settings??item).seed ?? 'неизвестен'}`);
+    const seed=(item.settings??item).seed??tr('galleryView.unknown','неизвестен');
+    thumb.setAttribute('aria-label', tr('galleryView.result',`Результат ${index + 1}, Seed ${seed}`,{index:index+1,seed}));
     thumb.dataset.resultId=resultKey(item);
     const selected=selectedHistoryItem&&resultKey(selectedHistoryItem)===resultKey(item);
     thumb.className = "gallery-thumb" + (selected ? " active" : "");
@@ -296,26 +298,26 @@ export function selectHistoryItem(item, batchIndex = 0, {restorePrompt=false} = 
     item.batchUrls.forEach((url, index) => {
       const button = document.createElement('button');
       button.type = 'button';
-      button.title = `Выбрать кадр ${index + 1}`;
+      button.title = tr('galleryView.chooseFrame',`Выбрать кадр ${index + 1}`,{index:index+1});
       const number = document.createElement('span');
       number.className = 'batch-number';
       number.textContent = index+1;
       const image = document.createElement('img');
-      image.alt = `Кадр ${index + 1}`;
+      image.alt = tr('galleryView.frame',`Кадр ${index + 1}`,{index:index+1});
       image.src = url;
-      image.onerror = () => { button.textContent = `Кадр ${index + 1} недоступен`; };
+      image.onerror = () => { button.textContent = tr('galleryView.unavailableFrame',`Кадр ${index + 1} недоступен`,{index:index+1}); };
       button.append(image,number);
       button.addEventListener('click', () => selectHistoryItem(item, index + 1,{restorePrompt:true}));
       grid.appendChild(button);
     });
   }
   document.getElementById('download-btn').disabled = false;
-  document.getElementById('download-btn').title = showGrid ? 'Скачать сетку PNG' : 'Скачать выбранный кадр';
-  const repeatLabel=showGrid || (hasBatch && item.settings?.batchLayout !== 'square-v1') ? 'Повторить серию' : 'Повторить кадр';
+  document.getElementById('download-btn').title = showGrid ? tr('galleryView.downloadGrid','Скачать сетку PNG') : tr('galleryView.downloadFrame','Скачать выбранный кадр');
+  const repeatLabel=showGrid || (hasBatch && item.settings?.batchLayout !== 'square-v1') ? tr('galleryView.repeatBatch','Повторить серию') : tr('galleryView.repeatFrame','Повторить кадр');
   const repeatButton = document.getElementById('repeat-btn');
   const archived = isArchivedRecipe(item);
   repeatButton.disabled = archived || !item.workflow;
-  repeatButton.title = archived ? archivedRecipeMessage : item.workflow ? repeatLabel : 'У старой записи не сохранён точный граф';
+  repeatButton.title = archived ? archivedRecipeMessage() : item.workflow ? repeatLabel : tr('galleryView.noGraph','У старой записи не сохранён точный граф');
   repeatButton.setAttribute('aria-label', repeatLabel);
   canvasPlaceholder.style.display = "none";
   
@@ -328,10 +330,10 @@ export function selectHistoryItem(item, batchIndex = 0, {restorePrompt=false} = 
     const gridThumb = document.createElement("button");
     gridThumb.type = 'button';
     gridThumb.className = "batch-thumb" + (batchIndex === 0 ? " active" : "");
-    gridThumb.textContent = 'Сетка';
-    gridThumb.setAttribute('aria-label', 'Показать всю серию');
+    gridThumb.textContent = tr('galleryView.grid','Сетка');
+    gridThumb.setAttribute('aria-label', tr('galleryView.showBatch','Показать всю серию'));
     gridThumb.setAttribute('aria-pressed', String(batchIndex === 0));
-    gridThumb.title = "Сетка (Grid)";
+    gridThumb.title = tr('galleryView.gridTitle','Сетка (Grid)');
     gridThumb.addEventListener("click", () => {
       selectHistoryItem(item, 0,{restorePrompt:true});
     });
@@ -342,11 +344,11 @@ export function selectHistoryItem(item, batchIndex = 0, {restorePrompt=false} = 
       const idx = i + 1;
       const thumb = document.createElement("button");
       thumb.type = 'button';
-      thumb.setAttribute('aria-label', `Кадр ${idx}`);
+      thumb.setAttribute('aria-label', tr('galleryView.frame',`Кадр ${idx}`,{index:idx}));
       thumb.setAttribute('aria-pressed', String(batchIndex === idx));
       thumb.className = "batch-thumb" + (batchIndex === idx ? " active" : "");
       thumb.style.backgroundImage = `url('${url}')`;
-      thumb.title = `Изображение ${idx}`;
+      thumb.title = tr('galleryView.image',`Изображение ${idx}`,{index:idx});
       thumb.addEventListener("click", () => {
         selectHistoryItem(item, idx,{restorePrompt:true});
       });
@@ -363,41 +365,42 @@ export function selectHistoryItem(item, batchIndex = 0, {restorePrompt=false} = 
     ? ` | LoRA: ${item.loras.map(l => `${l.name} (${l.strength})`).join(", ")}` 
     : "";
   
-  let charStr = item.character ? ` | Персонаж: ${item.character.name}` : "";
+  let charStr = item.character ? ` | ${tr('galleryView.character',`Персонаж: ${item.character.name}`,{name:item.character.name})}` : "";
   const settings = selectedSettings(item,batchIndex);
   let activeSeed = settings.seed;
   setLastGeneratedSeed(activeSeed);
   let batchInfoStr = "";
   if (hasBatch) {
     if (batchIndex === 0) {
-      batchInfoStr = " | Сетка";
+      batchInfoStr = ` | ${tr('galleryView.gridInfo','Сетка')}`;
     } else {
-      batchInfoStr = ` | Кадр: ${batchIndex}/${item.batchUrls.length}`;
+      batchInfoStr = ` | ${tr('galleryView.frameInfo',`Кадр: ${batchIndex}/${item.batchUrls.length}`,{index:batchIndex,total:item.batchUrls.length})}`;
     }
   }
   
-  const variationInfo = settings.variationStrength > 0 ? ` | Вариация: ${settings.variationSeed}, сила ${settings.variationStrength}` : '';
+  const variationInfo = settings.variationStrength > 0 ? ` | ${tr('galleryView.variation',`Вариация: ${settings.variationSeed}, сила ${settings.variationStrength}`,{seed:settings.variationSeed,strength:settings.variationStrength})}` : '';
   const seriesSeed = hasBatch && (showGrid || item.settings?.batchLayout !== 'square-v1');
   const renderMetadata = sizeStr => {
-    metadataSummary.textContent = `Модель: ${(item.checkpoint ?? "Неизвестно").split("/").pop()} | Steps: ${item.steps} | CFG: ${item.cfg} | Seed${seriesSeed ? ' серии' : ''}: ${activeSeed}${variationInfo}${sizeStr}${charStr}${loraStr}${batchInfoStr}`;
+    metadataSummary.textContent = `${tr('galleryView.model','Модель')}: ${(item.checkpoint ?? tr('galleryView.unknownModel','Неизвестно')).split("/").pop()} | Steps: ${item.steps} | CFG: ${item.cfg} | Seed${seriesSeed ? tr('galleryView.batchSeed',' серии') : ''}: ${activeSeed}${variationInfo}${sizeStr}${charStr}${loraStr}${batchInfoStr}`;
   };
   renderMetadata('');
   const expectedUrl = new URL(displayUrl,document.baseURI).href;
   outputImage.onload=()=>{
     if(!showLegacyGrid&&outputImage.naturalWidth>0&&outputImage.src===expectedUrl)
-      renderMetadata(` | Размер: ${outputImage.naturalWidth}x${outputImage.naturalHeight}`);
+      renderMetadata(` | ${tr('galleryView.size',`Размер: ${outputImage.naturalWidth}x${outputImage.naturalHeight}`,{width:outputImage.naturalWidth,height:outputImage.naturalHeight})}`);
   };
   if(outputImage.complete)outputImage.onload();
   
   applyPromptBtn.disabled = archived;
-  applyPromptBtn.title = archived ? archivedRecipeMessage : 'Перенести все настройки выбранной генерации в форму';
+  applyPromptBtn.title = archived ? archivedRecipeMessage() : tr('galleryView.applySettings','Перенести все настройки выбранной генерации в форму');
   applySeedBtn.disabled = showGrid || seriesSeed;
-  applySeedBtn.title = showGrid ? 'Сначала выберите кадр в сетке' : seriesSeed ? 'У старой серии сохранён только общий seed' : 'Взять seed выбранного кадра';
+  applySeedBtn.title = showGrid ? tr('galleryView.chooseFrameInGrid','Сначала выберите кадр в сетке') : seriesSeed ? tr('galleryView.oldBatchSeed','У старой серии сохранён только общий seed') : tr('galleryView.takeSeed','Взять seed выбранного кадра');
   fullscreenBtn.style.display = showLegacyGrid ? "none" : "block";
   if(restorePrompt && !archived)window.dispatchEvent(new CustomEvent('restore-history-prompt',{detail:structuredClone(settings)}));
 }
 
 export function initGalleryEvents() {
+  window.addEventListener('prism-language-changed',()=>{renderGallery();if(selectedHistoryItem)selectHistoryItem(selectedHistoryItem,selectedBatchIndex);if(lightbox.style.display==='flex')void syncLightboxFavoriteButton();});
   const outputFavorite = document.getElementById('output-favorite-btn');
   const outputUseAs = document.getElementById('output-use-as-btn');
   outputFavorite.addEventListener('click', () => { void toggleFavorite(selectedHistoryItem, selectedBatchIndex, outputFavorite); });
@@ -415,7 +418,7 @@ export function initGalleryEvents() {
   });
   window.addEventListener('prism-open-catalog-art', event => {
     if (!openCatalogArt(event.detail?.itemId)) {
-      window.dispatchEvent(new CustomEvent('dashboard-warning', {detail: 'Не удалось восстановить операцию выбранного арта.'}));
+      window.dispatchEvent(new CustomEvent('dashboard-warning', {detail: tr('galleryView.restoreError','Не удалось восстановить операцию выбранного арта.')}));
     }
   });
   outputImage.addEventListener('load', syncRefineButton);
@@ -474,7 +477,7 @@ export function initGalleryEvents() {
       const link = document.createElement('a');
       link.href = url; link.download = `prism_${isGrid ? 'grid' : 'frame'}_${Date.now()}.png`;
       document.body.append(link); link.click(); link.remove();
-    } catch (error) { await showNotice(`Не удалось скачать изображение: ${error.message}`); }
+    } catch (error) { await showNotice(tr('galleryView.downloadError',`Не удалось скачать изображение: ${error.message}`,{message:error.message})); }
     finally { if (temporary && url) setTimeout(() => URL.revokeObjectURL(url),1000); }
   });
 

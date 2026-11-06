@@ -1,5 +1,6 @@
 ﻿param(
     [ValidateSet('Nvidia','CPU')][string]$Device = 'Nvidia',
+    [ValidateSet('en','ru')][string]$Language,
     [ValidateSet('SDXL','None')][string]$Model = 'None',
     [switch]$Upscaler,
     [switch]$AnimeUpscaler,
@@ -12,14 +13,22 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new()
 $ProgressPreference = 'SilentlyContinue'
+. "$PSScriptRoot\app\Language.ps1"
+if (-not $Language) { $Language = Get-PrismLanguage "$PSScriptRoot\app" }
+$env:PRISM_LANGUAGE = $Language
+$strings = if ($Language -eq 'ru') { @{
+    setup='Установка Prism'; folder='Папка'; profile='Профиль'; environment='Окружение'; caches='Кэши и журнал'; system='Системные компоненты'; component='Компонент'; value='Значение'; optional='Дополнительные модели'; model='Модель'; purpose='Назначение'; download='Загрузка'; generation='Генерация'; upscale='Апскейл изображений'; anime='Апскейл аниме'; prompt='Номера моделей через запятую (Enter — без моделей)'; invalid='Введите номера из таблицы.'; none='без моделей'; selected='Выбрано'; terms='Условия'; reserve='Запас для окружения'; remaining='Осталось скачать моделей'; required='Требуется свободного места'; free='Свободно'; disk='Диск'; space='Место'; gb='ГБ'; mb='МБ'; gib='ГиБ'; windows='Поддерживается Windows x64. Запустите 64-разрядный Windows PowerShell.'; git='PRISM_GIT: установите Git for Windows https://git-scm.com/download/win и откройте PowerShell заново.'; profileChanged='PRISM_PROFILE_CHANGED: путь или устройство изменились. Используйте отдельную папку.'; foreign='PRISM_FOREIGN_RUNTIME: каталог .runtime уже содержит чужие файлы. Выберите пустую папку.'; existing='PRISM_EXISTING_CONFIG: уже настроен другой ComfyUI. Для новой установки используйте другую папку.'; vc='PRISM_VC_RUNTIME: установите Microsoft VC++ Redistributable x64 https://aka.ms/vc14/vc_redist.x64.exe'; ram='PRISM_RAM: для начального профиля SDXL требуется компьютер с 16 ГБ RAM или больше.'; gpu='PRISM_GPU: NVIDIA не обнаружена. Для CPU повторите с -Device CPU. AMD/Intel этим установщиком не настраиваются.'; busy='PRISM_INSTALL_BUSY: установка или запуск Prism уже выполняется. Дождитесь завершения и повторите Setup.'; noSpace='PRISM_DISK: недостаточно свободного места для установки и выбранных моделей.'; confirm='Продолжить установку? [y/N]'; cancelled='Установка отменена.'; command='PRISM_COMMAND: {0} завершился с кодом {1}. Повторите Setup.ps1 после устранения ошибки выше.'; fetchingUv='Загрузка uv из официального релиза Astral...'; uvHash='PRISM_UV_HASH: контрольная сумма uv не совпала. Установка остановлена.'
+} } else { @{
+    setup='Prism setup'; folder='Folder'; profile='Profile'; environment='Environment'; caches='Cache and log'; system='System components'; component='Component'; value='Value'; optional='Optional models'; model='Model'; purpose='Purpose'; download='Download'; generation='Generation'; upscale='Image upscaling'; anime='Anime upscaling'; prompt='Model numbers separated by commas (Enter for no models)'; invalid='Enter numbers from the table.'; none='no models'; selected='Selected'; terms='Terms'; reserve='Environment space'; remaining='Models left to download'; required='Free space required'; free='Available'; disk='Disk'; space='Space'; gb='GB'; mb='MB'; gib='GiB'; windows='Windows x64 is required. Run 64-bit Windows PowerShell.'; git='PRISM_GIT: install Git for Windows from https://git-scm.com/download/win and reopen PowerShell.'; profileChanged='PRISM_PROFILE_CHANGED: the path or device changed. Use a separate folder.'; foreign='PRISM_FOREIGN_RUNTIME: .runtime already contains unrelated files. Choose an empty folder.'; existing='PRISM_EXISTING_CONFIG: another ComfyUI is already configured. Use a separate folder for a new installation.'; vc='PRISM_VC_RUNTIME: install Microsoft VC++ Redistributable x64 from https://aka.ms/vc14/vc_redist.x64.exe'; ram='PRISM_RAM: the starter SDXL profile requires at least 16 GB RAM.'; gpu='PRISM_GPU: NVIDIA was not detected. For CPU, retry with -Device CPU. This installer does not configure AMD or Intel GPUs.'; busy='PRISM_INSTALL_BUSY: Prism is already installing or starting. Wait for it to finish and retry Setup.'; noSpace='PRISM_DISK: insufficient free space for the installation and selected models.'; confirm='Continue installation? [y/N]'; cancelled='Installation cancelled.'; command='PRISM_COMMAND: {0} exited with code {1}. Resolve the error above and retry Setup.ps1.'; fetchingUv='Downloading uv from the official Astral release...'; uvHash='PRISM_UV_HASH: the uv checksum did not match. Setup stopped.'
+} }
 $manifest = Get-Content -LiteralPath "$PSScriptRoot\scripts\install-manifest.json" -Raw | ConvertFrom-Json
 $installLock = $null
 $transcriptStarted = $false
 
 $choices = @(
-    [pscustomobject]@{ Number = '1'; Key = 'sdxl'; Label = 'SDXL Base'; Use = 'Генерация'; Directory = 'StableDiffusion'; Entry = $manifest.model }
-    [pscustomobject]@{ Number = '2'; Key = 'upscale'; Label = 'Real-ESRGAN ×4'; Use = 'Апскейл изображений'; Directory = $manifest.optional_models.upscale.directory; Entry = $manifest.optional_models.upscale }
-    [pscustomobject]@{ Number = '3'; Key = 'anime'; Label = 'Real-ESRGAN Anime ×4'; Use = 'Апскейл аниме'; Directory = $manifest.optional_models.anime.directory; Entry = $manifest.optional_models.anime }
+    [pscustomobject]@{ Number = '1'; Key = 'sdxl'; Label = 'SDXL Base'; Use = $strings.generation; Directory = 'StableDiffusion'; Entry = $manifest.model }
+    [pscustomobject]@{ Number = '2'; Key = 'upscale'; Label = 'Real-ESRGAN ×4'; Use = $strings.upscale; Directory = $manifest.optional_models.upscale.directory; Entry = $manifest.optional_models.upscale }
+    [pscustomobject]@{ Number = '3'; Key = 'anime'; Label = 'Real-ESRGAN Anime ×4'; Use = $strings.anime; Directory = $manifest.optional_models.anime.directory; Entry = $manifest.optional_models.anime }
 )
 $selected = @(
     if ($Model -eq 'SDXL') { 'sdxl' }
@@ -28,41 +37,41 @@ $selected = @(
 )
 
 function Format-DownloadSize([long]$Bytes) {
-    if ($Bytes -ge 1e9) { return '{0:N2} ГБ' -f ($Bytes / 1e9) }
-    return '{0:N1} МБ' -f ($Bytes / 1e6)
+    if ($Bytes -ge 1e9) { return ('{0:N2} {1}' -f ($Bytes / 1e9), $strings.gb) }
+    return ('{0:N1} {1}' -f ($Bytes / 1e6), $strings.mb)
 }
 
 try {
-    Write-Host 'Установка Prism'
-    Write-Host "Папка: $PSScriptRoot"
+    Write-Host $strings.setup
+    Write-Host "$($strings.folder): $PSScriptRoot"
     ([ordered]@{
-        'Профиль' = $Device.ToUpperInvariant()
+        ($strings.profile) = $Device.ToUpperInvariant()
         'Python' = $manifest.python_version
         'ComfyUI' = $manifest.comfy_release
         'PyTorch' = $manifest.torch_version
-        'Окружение' = '.runtime'
-        'Кэши и журнал' = '.cache'
+        ($strings.environment) = '.runtime'
+        ($strings.caches) = '.cache'
         'Windows' = '10/11 x64'
-        'Системные компоненты' = 'Git, VC++ x64'
-    }).GetEnumerator() | Format-Table @{Name='Компонент';Expression={$_.Key}}, @{Name='Значение';Expression={$_.Value}} -AutoSize | Out-Host
-    Write-Host 'Дополнительные модели'
+        ($strings.system) = 'Git, VC++ x64'
+    }).GetEnumerator() | Format-Table @{Name=$strings.component;Expression={$_.Key}}, @{Name=$strings.value;Expression={$_.Value}} -AutoSize | Out-Host
+    Write-Host $strings.optional
     $choices | Format-Table @{Name='№';Expression={$_.Number}},
-        @{Name='Модель';Expression={$_.Label}}, @{Name='Назначение';Expression={$_.Use}},
-        @{Name='Загрузка';Expression={Format-DownloadSize $_.Entry.bytes}} -AutoSize | Out-Host
+        @{Name=$strings.model;Expression={$_.Label}}, @{Name=$strings.purpose;Expression={$_.Use}},
+        @{Name=$strings.download;Expression={Format-DownloadSize $_.Entry.bytes}} -AutoSize | Out-Host
     if (-not $Plan -and -not $AcceptDownloads -and -not $PSBoundParameters.ContainsKey('Model') -and -not $selected.Count) {
         do {
-            $answer = Read-Host 'Номера моделей через запятую (Enter — без моделей)'
+            $answer = Read-Host $strings.prompt
             $numbers = @(if ($answer.Trim()) { $answer.Trim() -split '\s*,\s*' })
             $invalid = @($numbers | Where-Object { $_ -notin $choices.Number })
-            if ($invalid.Count) { Write-Host 'Введите номера из таблицы.' }
+            if ($invalid.Count) { Write-Host $strings.invalid }
         } while ($invalid.Count)
         $selected = @($choices | Where-Object Number -In $numbers | Select-Object -ExpandProperty Key)
     }
     $selectedChoices = @($choices | Where-Object Key -In $selected)
-    $selection = if ($selectedChoices.Count) { $selectedChoices.Label -join ', ' } else { 'без моделей' }
-    Write-Host "Выбрано: $selection"
+    $selection = if ($selectedChoices.Count) { $selectedChoices.Label -join ', ' } else { $strings.none }
+    Write-Host "$($strings.selected): $selection"
     $selectedChoices | Select-Object -ExpandProperty Entry | Select-Object -ExpandProperty license -Unique |
-        ForEach-Object { Write-Host "Условия: $_" }
+        ForEach-Object { Write-Host "$($strings.terms): $_" }
     $runtime = Join-Path $PSScriptRoot '.runtime'
     $marker = Join-Path $runtime 'prism-install.json'
     $existingInstall = if (Test-Path -LiteralPath $marker -PathType Leaf) {
@@ -87,52 +96,53 @@ try {
     $required = $environmentSpace + $modelSpace
     $free = ([IO.DriveInfo]::new([IO.Path]::GetPathRoot($PSScriptRoot))).AvailableFreeSpace
     ([ordered]@{
-        'Запас для окружения' = '{0:N1} ГиБ' -f ($environmentSpace / 1GB)
-        'Осталось скачать моделей' = Format-DownloadSize $modelSpace
-        'Требуется свободного места' = '{0:N1} ГиБ' -f ($required / 1GB)
-        'Свободно' = '{0:N1} ГиБ' -f ($free / 1GB)
-    }).GetEnumerator() | Format-Table @{Name='Диск';Expression={$_.Key}}, @{Name='Место';Expression={$_.Value}} -AutoSize | Out-Host
+        ($strings.reserve) = '{0:N1} {1}' -f ($environmentSpace / 1GB), $strings.gib
+        ($strings.remaining) = Format-DownloadSize $modelSpace
+        ($strings.required) = '{0:N1} {1}' -f ($required / 1GB), $strings.gib
+        ($strings.free) = '{0:N1} {1}' -f ($free / 1GB), $strings.gib
+    }).GetEnumerator() | Format-Table @{Name=$strings.disk;Expression={$_.Key}}, @{Name=$strings.space;Expression={$_.Value}} -AutoSize | Out-Host
     if ($Plan) { return }
     if (-not [Environment]::Is64BitOperatingSystem -or -not [Environment]::Is64BitProcess -or $env:PROCESSOR_ARCHITECTURE -eq 'ARM64') {
-        throw 'Поддерживается Windows x64. Запустите 64-разрядный Windows PowerShell.'
+        throw $strings.windows
     }
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-        throw 'PRISM_GIT: установите Git for Windows https://git-scm.com/download/win и откройте PowerShell заново.'
+        throw $strings.git
     }
     if ($null -ne $existingInstall) {
         if ($existingInstall.root -ne $PSScriptRoot -or $existingInstall.device -ne $Device.ToLowerInvariant()) {
-            throw 'PRISM_PROFILE_CHANGED: путь или устройство изменились. Используйте отдельную папку.'
+            throw $strings.profileChanged
         }
     } elseif ((Test-Path -LiteralPath $runtime) -and @(Get-ChildItem -LiteralPath $runtime -Force).Count) {
-        throw 'PRISM_FOREIGN_RUNTIME: каталог .runtime уже содержит чужие файлы. Выберите пустую папку.'
+        throw $strings.foreign
     }
     $localConfig = Join-Path $PSScriptRoot 'app\prism.local.json'
     if (Test-Path -LiteralPath $localConfig) {
         $settings = Get-Content -LiteralPath $localConfig -Raw | ConvertFrom-Json
         $backend = if ([IO.Path]::IsPathRooted($settings.backend_root)) { [IO.Path]::GetFullPath($settings.backend_root) } else { [IO.Path]::GetFullPath((Join-Path "$PSScriptRoot\app" $settings.backend_root)) }
         if ($backend -ne (Join-Path $runtime 'ComfyUI')) {
-            throw 'PRISM_EXISTING_CONFIG: уже настроен другой ComfyUI. Для новой установки используйте другую папку.'
+            throw $strings.existing
         }
     }
     if (-not (Test-Path -LiteralPath "$env:WINDIR\System32\vcruntime140_1.dll")) {
-        throw 'PRISM_VC_RUNTIME: установите Microsoft VC++ Redistributable x64 https://aka.ms/vc14/vc_redist.x64.exe'
+        throw $strings.vc
     }
     $ram = (Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory
-    if ($ram -lt 15GB) { throw 'PRISM_RAM: для начального профиля SDXL требуется компьютер с 16 ГБ RAM или больше.' }
+    if ($ram -lt 15GB) { throw $strings.ram }
     if ($Device -eq 'Nvidia') {
         $adapters = @(Get-CimInstance Win32_VideoController | Where-Object Name -Match 'NVIDIA')
-        if (-not $adapters.Count) { throw 'PRISM_GPU: NVIDIA не обнаружена. Для CPU повторите с -Device CPU. AMD/Intel этим установщиком не настраиваются.' }
+        if (-not $adapters.Count) { throw $strings.gpu }
     }
     # Переиспользуем блокировку лончера: зависимостями нельзя заниматься, пока backend ещё запускается без слушающего порта.
     $launcherCache = Join-Path $PSScriptRoot 'app\.cache\runtime'
     New-Item -ItemType Directory -Path $launcherCache -Force | Out-Null
     try { $installLock = [IO.File]::Open("$launcherCache\launcher.lock", 'OpenOrCreate', 'ReadWrite', 'None') }
-    catch { throw 'PRISM_INSTALL_BUSY: установка или запуск Prism уже выполняется. Дождитесь завершения и повторите Setup.' }
-    if ($free -lt $required) { throw 'PRISM_DISK: недостаточно свободного места для установки и выбранных моделей.' }
+    catch { throw $strings.busy }
+    if ($free -lt $required) { throw $strings.noSpace }
     if (-not $AcceptDownloads) {
-        $answer = Read-Host 'Продолжить установку? [y/N]'
-        if ($answer -notmatch '^(y|yes|д|да)$') { Write-Host 'Установка отменена.'; return }
+        $answer = Read-Host $strings.confirm
+        if ($answer -notmatch '^(y|yes|д|да)$') { Write-Host $strings.cancelled; return }
     }
+    Set-PrismLanguage "$PSScriptRoot\app" $Language
     $bootstrap = Join-Path $PSScriptRoot '.cache\bootstrap'
     New-Item -ItemType Directory -Path $bootstrap -Force | Out-Null
     Start-Transcript -LiteralPath "$bootstrap\setup.log" -Append | Out-Null
@@ -182,7 +192,7 @@ try {
         $process.WaitForExit()
         $errors = $errorsTask.Result
         if ($errors) { Write-Host $errors }
-        if ($process.ExitCode -ne 0) { throw "PRISM_COMMAND: $Executable завершился с кодом $($process.ExitCode). Повторите Setup.ps1 после устранения ошибки выше." }
+        if ($process.ExitCode -ne 0) { throw ($strings.command -f $Executable, $process.ExitCode) }
         return ($lines -join "`n")
     }
 
@@ -191,10 +201,10 @@ try {
     if (-not (Test-Path -LiteralPath $uv)) {
         $archive = "$bootstrap\uv-$($manifest.uv_version).zip"
         $download = "$archive.part"
-        Write-Host 'Загрузка uv из официального релиза Astral...'
+        Write-Host $strings.fetchingUv
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/astral-sh/uv/releases/download/$($manifest.uv_version)/uv-x86_64-pc-windows-msvc.zip" -OutFile $download
-        if ((Get-FileHash -LiteralPath $download -Algorithm SHA256).Hash -ne $manifest.uv_sha256) { throw 'PRISM_UV_HASH: контрольная сумма uv не совпала. Установка остановлена.' }
+        if ((Get-FileHash -LiteralPath $download -Algorithm SHA256).Hash -ne $manifest.uv_sha256) { throw $strings.uvHash }
         Move-Item -LiteralPath $download -Destination $archive -Force
         Expand-Archive -LiteralPath $archive -DestinationPath $uvRoot -Force
     }

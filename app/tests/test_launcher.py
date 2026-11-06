@@ -24,6 +24,7 @@ class LauncherCheck(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / '.cache') as directory:
             script = Path(directory) / 'Start.ps1'
             shutil.copyfile(ROOT / 'Start.ps1', script)
+            shutil.copyfile(ROOT / 'Language.ps1', Path(directory) / 'Language.ps1')
             result = run_hidden(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
                                  '-File', str(script), '-NoBrowser'],
                                 capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30)
@@ -37,6 +38,7 @@ class LauncherCheck(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / '.cache') as directory:
             root = Path(directory)
             shutil.copyfile(ROOT / 'Start.ps1', root / 'Start.ps1')
+            shutil.copyfile(ROOT / 'Language.ps1', root / 'Language.ps1')
             server = ThreadingHTTPServer(('127.0.0.1', 0), BaseHTTPRequestHandler)
             port = server.server_port
             server.server_close()
@@ -56,7 +58,7 @@ class LauncherCheck(unittest.TestCase):
     def test_backend_exits_when_launcher_console_exits(self):
         with tempfile.TemporaryDirectory(dir=ROOT / '.cache') as directory:
             root = Path(directory)
-            for name in ('Start.ps1', 'Show-Logs.ps1', 'ProcessLifetime.cs', 'model-paths.json'):
+            for name in ('Start.ps1', 'Language.ps1', 'Show-Logs.ps1', 'ProcessLifetime.cs', 'model-paths.json'):
                 shutil.copyfile(ROOT / name, root / name)
             (root / 'custom_nodes').mkdir()
             (root / 'models').mkdir()
@@ -142,7 +144,7 @@ ThreadingHTTPServer(('127.0.0.1', args.port), Handler).serve_forever()
                         )
                     for _ in range(100):
                         output = output_path.read_text(encoding='utf-8', errors='replace')
-                        if 'Prism готов:' in output:
+                        if 'Prism готов:' in output or 'Prism is ready:' in output:
                             break
                         if launcher.poll() is not None:
                             self.fail(f'Launcher failed to adopt an existing backend: {output}')
@@ -173,6 +175,7 @@ ThreadingHTTPServer(('127.0.0.1', args.port), Handler).serve_forever()
         with tempfile.TemporaryDirectory(dir=ROOT / '.cache') as directory:
             root = Path(directory)
             shutil.copyfile(ROOT / 'Start.ps1', root / 'Start.ps1')
+            shutil.copyfile(ROOT / 'Language.ps1', root / 'Language.ps1')
             probe = ThreadingHTTPServer(('127.0.0.1', 0), BaseHTTPRequestHandler)
             port = probe.server_port
             probe.server_close()
@@ -237,7 +240,7 @@ ThreadingHTTPServer(('127.0.0.1',int(sys.argv[1])),Handler).serve_forever()
                 pass
 
         with tempfile.TemporaryDirectory(dir=ROOT / '.cache') as directory:
-            for name in ('Start.ps1', 'Update.ps1', 'ProcessLifetime.cs'):
+            for name in ('Start.ps1', 'Language.ps1', 'Update.ps1', 'ProcessLifetime.cs'):
                 shutil.copyfile(ROOT / name, Path(directory) / name)
             server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
             thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -267,7 +270,7 @@ ThreadingHTTPServer(('127.0.0.1',int(sys.argv[1])),Handler).serve_forever()
     def test_update_check_rejects_dirty_repo_and_finds_stable_release(self):
         with tempfile.TemporaryDirectory(dir=ROOT / '.cache') as directory:
             root = Path(directory)
-            for name in ('Start.ps1', 'Update.ps1', 'ProcessLifetime.cs'):
+            for name in ('Start.ps1', 'Language.ps1', 'Update.ps1', 'ProcessLifetime.cs'):
                 shutil.copyfile(ROOT / name, root / name)
             upstream = root / 'upstream'
             backend = root / 'backend'

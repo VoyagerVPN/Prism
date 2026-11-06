@@ -147,24 +147,25 @@ export function advanceProgress(current, workflow, type, data = {}) {
   return recalculate(progress, workflow);
 }
 
-export function describeProgress(current, workflow, settings = {}) {
+export function describeProgress(current, workflow, settings = {}, localization = null) {
+  const tr=(key,fallback,values={})=>localization?.language==='en'?localization.t(`progress.${key}`,{...values,defaultValue:fallback,interpolation:{escapeValue:false}}):fallback;
   const progress = normalizedProgress(current);
   const nodeId = progress.activeNode;
   const node = nodeId ? workflow?.[nodeId] : null;
   if (!node) return {
-    label: 'Выполняется',
-    detail: `Общий прогресс ${Math.round(progress.percent)}% · Подготовка workflow`,
+    label: tr('running','Выполняется'),
+    detail: `${tr('overall',`Общий прогресс ${Math.round(progress.percent)}%`,{percent:Math.round(progress.percent)})} · ${tr('preparing','Подготовка workflow')}`,
     percent: progress.percent,
   };
 
   const frame = /^frame_(\d+)_/.exec(nodeId);
   const frameCount = Math.max(1, finite(settings.batchCount, 1));
-  const stage = stageNames[node.class_type] ?? 'Обработка';
-  const label = frame ? `Кадр ${Number(frame[1]) + 1}/${frameCount} · ${stage}` : stage;
-  const parts = [`Общий прогресс ${Math.round(progress.percent)}%`];
+  const stage = tr(`stages.${node.class_type}`,stageNames[node.class_type] ?? tr('processing','Обработка'));
+  const label = frame ? tr('frame',`Кадр ${Number(frame[1]) + 1}/${frameCount} · ${stage}`,{current:Number(frame[1])+1,total:frameCount,stage}) : stage;
+  const parts = [tr('overall',`Общий прогресс ${Math.round(progress.percent)}%`,{percent:Math.round(progress.percent)})];
   const plan = progressPlan(workflow);
   const passIndex = plan.sampling.indexOf(nodeId);
-  if (passIndex >= 0) parts.push(`Проход ${passIndex + 1}/${plan.sampling.length}`);
-  if (progress.max > 0) parts.push(`Шаг ${Math.min(progress.value, progress.max)}/${progress.max}`);
+  if (passIndex >= 0) parts.push(tr('pass',`Проход ${passIndex + 1}/${plan.sampling.length}`,{current:passIndex+1,total:plan.sampling.length}));
+  if (progress.max > 0) parts.push(tr('step',`Шаг ${Math.min(progress.value, progress.max)}/${progress.max}`,{current:Math.min(progress.value,progress.max),total:progress.max}));
   return { label, detail: parts.join(' · '), percent: progress.percent };
 }

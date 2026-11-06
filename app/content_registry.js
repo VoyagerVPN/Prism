@@ -1,4 +1,5 @@
 import {CONTENT_TYPES, createContentCatalog, createContentEntity} from './content_catalog.js';
+import {translate as tr} from './i18n.js';
 
 
 let state={content:{},revision:null};
@@ -6,10 +7,10 @@ let loaded=false;
 
 function validateDocument(value) {
   if(!value||typeof value!=='object'||Array.isArray(value)||!value.content||typeof value.content!=='object'||Array.isArray(value.content)||!('revision' in value)){
-    throw new Error('Некорректный ответ хранилища контента.');
+    throw new Error(tr('contentRegistry.invalidResponse','Некорректный ответ хранилища контента.'));
   }
   const entities=Object.values(value.content).map(createContentEntity);
-  if(entities.some(entity=>value.content[entity.id]?.id!==entity.id))throw new Error('Ключ content entity не совпадает с semantic ID.');
+  if(entities.some(entity=>value.content[entity.id]?.id!==entity.id))throw new Error(tr('contentRegistry.keyMismatch','Ключ content entity не совпадает с semantic ID.'));
   createContentCatalog(entities);
   return {content:Object.fromEntries(entities.map(entity=>[entity.id,structuredClone(entity)])),revision:value.revision};
 }
@@ -21,11 +22,11 @@ async function requestContent(options={}) {
   try{data=raw?JSON.parse(raw):{};}
   catch{
     const message=response.status===404
-      ?'Хранилище контента не зарегистрировано сервером Prism. Перезапустите backend после обновления.'
-      :`Хранилище контента вернуло ответ не в формате JSON: HTTP ${response.status}.`;
+      ?tr('contentRegistry.notRegistered','Хранилище контента не зарегистрировано сервером Prism. Перезапустите backend после обновления.')
+      :tr('contentRegistry.notJson',`Хранилище контента вернуло ответ не в формате JSON: HTTP ${response.status}.`,{status:response.status});
     const error=new Error(message);error.status=response.status;throw error;
   }
-  if(!response.ok){const error=new Error(data.error??`Хранилище контента недоступно: HTTP ${response.status}`);error.status=response.status;throw error;}
+  if(!response.ok){const error=new Error(data.error??tr('contentRegistry.unavailable',`Хранилище контента недоступно: HTTP ${response.status}`,{status:response.status}));error.status=response.status;throw error;}
   return validateDocument(data);
 }
 
@@ -51,7 +52,7 @@ function recipeForBase(base) {
 
 function importedBinding(intent) {
   const name=intent.source?.name;
-  if(typeof name!=='string'||!name.trim())throw new Error('Импортированный источник не содержит backend-имя.');
+  if(typeof name!=='string'||!name.trim())throw new Error(tr('contentRegistry.missingName','Импортированный источник не содержит backend-имя.'));
   return createContentEntity({
     id:'style:source-check',type:'Style',name:'source-check',scopes:['global'],
     bindings:[{kind:'lora',name,strength:1,clipStrength:1,compatibleRecipes:[recipeForBase(intent.base)]}],
@@ -60,11 +61,11 @@ function importedBinding(intent) {
 
 function materialize(intent, content) {
   if(intent.action==='create'){
-    if(!CONTENT_TYPES.includes(intent.contentType)||intent.contentType==='Character')throw new Error('Выберите назначение LoRA.');
+    if(!CONTENT_TYPES.includes(intent.contentType)||intent.contentType==='Character')throw new Error(tr('contentRegistry.choosePurpose','Выберите назначение LoRA.'));
     const name=typeof intent.name==='string'?intent.name.trim():'';
-    if(!name||name.length>500)throw new Error('Укажите название карточки.');
+    if(!name||name.length>500)throw new Error(tr('contentRegistry.cardName','Укажите название карточки.'));
     if(Object.values(content).some(entity=>entity.type===intent.contentType&&entity.name.localeCompare(name,undefined,{sensitivity:'accent'})===0)){
-      throw new Error(`«${name}» уже есть в библиотеке. Измените название или дополните существующую карточку.`);
+      throw new Error(tr('contentRegistry.duplicate',`«${name}» уже есть в библиотеке. Измените название или дополните существующую карточку.`,{name}));
     }
     let id=semanticId(intent.contentType,name),suffix=1;
     while(content[id])id=semanticId(intent.contentType,`${name}\0${++suffix}`);
@@ -72,7 +73,7 @@ function materialize(intent, content) {
     const trigger=typeof intent.trigger==='string'?intent.trigger.trim():'';
     return createContentEntity({id,type:intent.contentType,name,scopes,bindings:[importedBinding(intent),...(trigger?[{kind:'prompt',positive:[trigger],negative:[]}]:[])]});
   }
-  if(intent.action!=='attach')throw new Error('Неизвестное действие с импортированным источником.');
+  if(intent.action!=='attach')throw new Error(tr('contentRegistry.unknownAction','Неизвестное действие с импортированным источником.'));
   const targetId=intent.target?.id;
   const base=content[targetId]??createContentEntity(intent.target);
   const source=importedBinding(intent);
@@ -95,5 +96,5 @@ export async function persistContentImport(intent) {
       await loadContentRegistry({force:true});
     }
   }
-  throw new Error('Не удалось сохранить назначение источника.');
+  throw new Error(tr('contentRegistry.saveFailed','Не удалось сохранить назначение источника.'));
 }

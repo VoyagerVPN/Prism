@@ -9,6 +9,7 @@ import { updateCharLoraList } from './characters.js';
 import { initImageFormats } from './formats.js';
 import {syncBatchControls} from './batch.js';
 import {setupPreferences} from './preferences.js';
+import {translate as tr} from './i18n.js';
 
 export function syncModelLists() {
   populateSelect(checkpointSelect, modelList, "epicrealismXL_pureFix.safetensors");
@@ -31,7 +32,7 @@ function populateSelect(selectEl, list, defaultVal) {
   if (list.includes(currentVal)) {
     selectEl.value = currentVal;
   } else if (currentVal && selectEl.dataset.loaded) {
-    const missing = new Option(`Недоступно: ${currentVal}`, currentVal);
+    const missing = new Option(tr('storage.unavailable',`Недоступно: ${currentVal}`,{value:currentVal}), currentVal);
     missing.disabled = true;
     selectEl.add(missing);
     selectEl.value = currentVal;
@@ -41,8 +42,8 @@ function populateSelect(selectEl, list, defaultVal) {
   selectEl.dataset.loaded = 'true';
 }
 
-export function setupUIEventListeners() {
-  setupPreferences();
+export function setupUIEventListeners({localization=null}={}) {
+  setupPreferences({localization});
   const promptEditor=setupPromptEditor();
   const adjustInlineWeight=isIncrement=>promptEditor.transformTextAtCaret((text,position)=>{
     const field=document.createElement('textarea');field.value=text;field.setSelectionRange(position,position);

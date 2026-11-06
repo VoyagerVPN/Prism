@@ -1,5 +1,6 @@
 import {COMFY_URL, imageUrl} from './api.js';
 import {generationFromHistory, historyFromCatalog, sameImage, selectedOutputImage} from './result_catalog.js';
+import {translate as tr} from './i18n.js';
 
 
 let activeFetch = globalThis.fetch;
@@ -134,7 +135,7 @@ export async function setGalleryFavorite(itemId, favorite) {
 export async function toggleGalleryFavorite(historyItem, batchIndex = 0) {
   const image = selectedOutputImage(historyItem, batchIndex);
   const item = image ? catalog.items.find(value => sameImage(value.image, image)) : null;
-  if (!item) throw new Error('Кадр ещё не добавлен в галерею.');
+  if (!item) throw new Error(tr('gallery.frameNotAdded','Кадр ещё не добавлен в галерею.'));
   await setGalleryFavorite(item.id, !item.favorite);
   return galleryFavoriteState(historyItem, batchIndex);
 }

@@ -1,3 +1,5 @@
+import {translate as tr} from './i18n.js';
+
 export function splitPromptTags(words) {
   const result=[];
   for(const source of words) {
@@ -26,8 +28,9 @@ export function createTagInput(field,{kind,label,icon,onChange,onFocus=()=>{},to
     editTags:{clicks:toggle?1:2,keepInvalid:false},
     templates:{tag(data){
       // Tagify экранирует value/title перед вызовом шаблона.
-      const action=toggle?'toggle':'remove',verb=toggle?'Исключить':'Удалить';
-      return `<tag title="${data.title}" contenteditable="false" tabindex="0" class="tagify__tag"><div><svg class="ui-icon" aria-hidden="true"><use href="#icon-${icon}"/></svg><span class="tagify__tag-text">${data.value}</span></div><button type="button" class="tagify__tag__${action}Btn" aria-label="${verb} тег ${data.value}" title="${verb} тег"><svg class="ui-icon" aria-hidden="true"><use href="#icon-${toggle?'eye':'close'}"/></svg></button></tag>`;
+      const action=toggle?'toggle':'remove',verb=toggle?tr('variant.exclude','Исключить'):tr('variant.remove','Удалить');
+      const aria=tr('variant.tagAction',`${verb} тег ${data.value}`,{verb,value:data.value}),title=tr('variant.tagTitle',`${verb} тег`,{verb});
+      return `<tag title="${data.title}" contenteditable="false" tabindex="0" class="tagify__tag"><div><svg class="ui-icon" aria-hidden="true"><use href="#icon-${icon}"/></svg><span class="tagify__tag-text">${data.value}</span></div><button type="button" class="tagify__tag__${action}Btn" aria-label="${aria}" title="${title}"><svg class="ui-icon" aria-hidden="true"><use href="#icon-${toggle?'eye':'close'}"/></svg></button></tag>`;
     }},
   });
   widget.DOM.scope.dataset.tagKind=kind;
@@ -45,12 +48,16 @@ export function createTagInput(field,{kind,label,icon,onChange,onFocus=()=>{},to
     selection.removeAllRanges();selection.addRange(range);
   },true);
   const refreshActions=()=>{
-    if(!toggle)return;
     for(const tag of widget.getTagElms()){
-      const value=widget.getSetTagData(tag).value,off=toggle.isDisabled(value),button=tag.querySelector('.tagify__tag__toggleBtn');
-      tag.classList.toggle('is-disabled',off);button.setAttribute('aria-label',`${off?'Вернуть':'Исключить'} тег ${value}`);button.setAttribute('aria-pressed',String(!off));button.title=off?'Вернуть в промпт':'Исключить из промпта';button.querySelector('use').setAttribute('href',`#icon-${off?'eye-off':'eye'}`);
+      const value=widget.getSetTagData(tag).value,off=toggle?.isDisabled(value),button=tag.querySelector(toggle?'.tagify__tag__toggleBtn':'.tagify__tag__removeBtn');
+      if(!button)continue;
+      const verb=toggle?(off?tr('variant.restore','Вернуть'):tr('variant.exclude','Исключить')):tr('variant.remove','Удалить');
+      button.setAttribute('aria-label',tr('variant.tagAction',`${verb} тег ${value}`,{verb,value}));
+      if(toggle){tag.classList.toggle('is-disabled',off);button.setAttribute('aria-pressed',String(!off));button.title=off?tr('variant.restorePrompt','Вернуть в промпт'):tr('variant.excludePrompt','Исключить из промпта');button.querySelector('use').setAttribute('href',`#icon-${off?'eye-off':'eye'}`);}
+      else button.title=tr('variant.tagTitle',`${verb} тег`,{verb});
     }
   };
+  win.addEventListener('prism-language-changed',refreshActions);
   if(toggle){widget.DOM.scope.classList.add('prompt-tags-toggle');widget.DOM.input.hidden=true;refreshActions();}
   widget.DOM.scope.addEventListener('click',event=>{
     const button=event.target.closest('.tagify__tag__removeBtn,.tagify__tag__toggleBtn');
@@ -92,6 +99,6 @@ export function createTagInput(field,{kind,label,icon,onChange,onFocus=()=>{},to
     values:()=>widget.value.map(item=>item.value),
     focus:()=>widget.DOM.input.focus(),
     setActive:active=>widget.DOM.scope.classList.toggle('prompt-tags-active',active),
-    destroy:()=>widget.destroy(),
+    destroy:()=>{win.removeEventListener('prism-language-changed',refreshActions);widget.destroy();},
   };
 }

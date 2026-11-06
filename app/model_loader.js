@@ -1,3 +1,5 @@
+import {translate as tr} from './i18n.js';
+
 export function loadModel(graph, params) {
   if (params.recipe === 'anima') {
     graph["1"] = {
@@ -14,7 +16,7 @@ export function loadModel(graph, params) {
     };
     return { modelLink: ["1", 0], clipLink: ["2", 0], vaeLink: ["3", 0] };
   }
-  if (params.recipe !== 'checkpoint') throw new Error('Неподдерживаемый рецепт модели.');
+  if (params.recipe !== 'checkpoint') throw new Error(tr('model.unsupported','Неподдерживаемый рецепт модели.'));
     graph["1"] = {
       "class_type": "CheckpointLoaderSimple",
       "inputs": {
@@ -57,14 +59,14 @@ export function buildModelCatalog(info) {
     .filter(name => /^anima(?:[-_.]|$)/i.test(name.split(/[\\/]/).at(-1)))
     .map(name => {
       const missing = [!clips.includes(clipName) && clipName, !vaes.includes(vaeName) && vaeName].filter(Boolean);
-      return { name, recipe: 'anima', clipName, vaeName, ...(missing.length ? { reason: `Нет компонентов Anima: ${missing.join(', ')}` } : {}) };
+      return { name, recipe: 'anima', clipName, vaeName, ...(missing.length ? { reason: tr('model.missingAnima',`Нет компонентов Anima: ${missing.join(', ')}`,{names:missing.join(', ')}) } : {}) };
     }) : [];
   return [...checkpoints, ...anima];
 }
 
 export function resolveModelSelection(catalog, name) {
   const entry = catalog.find(model => model.name === name);
-  if (!entry || entry.reason) throw new Error(entry?.reason ?? `Модель ${name} недоступна.`);
+  if (!entry || entry.reason) throw new Error(entry?.reason ?? tr('model.unavailable',`Модель ${name} недоступна.`,{name}));
   const selection = { checkpoint: entry.name, recipe: entry.recipe };
   if (entry.clipName) selection.clipName = entry.clipName;
   if (entry.vaeName) selection.vaeName = entry.vaeName;
@@ -84,12 +86,12 @@ export function assertLoraCompatibility(recipe, loras, details) {
     const key = lora.name.replaceAll('\\', '/');
     const metadata = details?.[key] ?? details?.[lora.name];
     const family = loraFamily(metadata?.base_model);
-    if(family==='qwen-image-2.1')throw new Error(`LoRA «${lora.name}» предназначена для Qwen Image 2.1 и не подходит для SDXL или Anima.`);
+    if(family==='qwen-image-2.1')throw new Error(tr('model.qwenLora',`LoRA «${lora.name}» предназначена для Qwen Image 2.1 и не подходит для SDXL или Anima.`,{name:lora.name}));
     if (recipe === 'anima' && family === 'other') {
-      throw new Error(`LoRA «${lora.name}» несовместима с Anima. Выберите LoRA для Anima или смените модель.`);
+      throw new Error(tr('model.incompatible',`LoRA «${lora.name}» несовместима с Anima. Выберите LoRA для Anima или смените модель.`,{name:lora.name}));
     }
     if (recipe !== 'anima' && family === 'anima') {
-      throw new Error(`LoRA «${lora.name}» предназначена только для Anima. Выберите совместимую LoRA или смените модель.`);
+      throw new Error(tr('model.animaOnly',`LoRA «${lora.name}» предназначена только для Anima. Выберите совместимую LoRA или смените модель.`,{name:lora.name}));
     }
   }
 }
@@ -97,15 +99,15 @@ export function assertLoraCompatibility(recipe, loras, details) {
 export function validateCapabilities(graph, info) {
   for (const [id, node] of Object.entries(graph)) {
     const schema = info[node.class_type];
-    if (!schema) throw new Error(`Недоступен узел ${node.class_type}. Проверьте загрузку расширения в ComfyUI.`);
+    if (!schema) throw new Error(tr('model.node',`Недоступен узел ${node.class_type}. Проверьте загрузку расширения в ComfyUI.`,{node:node.class_type}));
     for (const [name, field] of Object.entries(schema.input?.required ?? {})) {
       if (field[0] === 'COMFY_AUTOGROW_V3') {
         const template=field[1]?.template;
         const count=(template?.names ?? []).filter(slot => node.inputs[`${name}.${slot}`] !== undefined).length;
-        if(count < (template?.min ?? 0)) throw new Error(`${node.class_type}: недостаточно входов ${name}.`);
+        if(count < (template?.min ?? 0)) throw new Error(tr('model.tooFew',`${node.class_type}: недостаточно входов ${name}.`,{node:node.class_type,name}));
         continue;
       }
-      if (node.inputs[name] === undefined || node.inputs[name] === null) throw new Error(`${node.class_type}: отсутствует ${name}.`);
+      if (node.inputs[name] === undefined || node.inputs[name] === null) throw new Error(tr('model.missing',`${node.class_type}: отсутствует ${name}.`,{node:node.class_type,name}));
     }
     for (const [name, value] of Object.entries(node.inputs)) {
       let field = schema.input?.required?.[name] ?? schema.input?.optional?.[name];
@@ -119,21 +121,21 @@ export function validateCapabilities(graph, info) {
           if(fields.length===1)field=fields[0];
         }
       }
-      if (!field) throw new Error(`${node.class_type}: вход ${name} не поддерживается этой версией ComfyUI.`);
+      if (!field) throw new Error(tr('model.unsupportedInput',`${node.class_type}: вход ${name} не поддерживается этой версией ComfyUI.`,{node:node.class_type,name}));
       if (Array.isArray(value)) {
         const source = graph[value[0]];
         const outputType = info[source?.class_type]?.output?.[value[1]];
-        if (!source || !outputType) throw new Error(`Некорректная связь ${id}.${name}.`);
+        if (!source || !outputType) throw new Error(tr('model.invalidLink',`Некорректная связь ${id}.${name}.`,{id,name}));
         if (typeof field[0] === 'string' && field[0] !== '*' && !field[0].split(',').includes(outputType)) {
-          throw new Error(`${id}.${name}: ожидается ${field[0]}, получен ${outputType}.`);
+          throw new Error(tr('model.wrongType',`${id}.${name}: ожидается ${field[0]}, получен ${outputType}.`,{id,name,expected:field[0],actual:outputType}));
         }
       } else if ((Array.isArray(field[0]) || field[0] === 'COMBO') && !(['LoadImage','LoadImageMask'].includes(node.class_type) && name === 'image') && !field[1]?.remote?.route) {
         // Загруженные файлы и remote-COMBO проверяет сервер: их значения появляются после снимка object_info.
         const normalized = item => typeof item === 'string' ? item.replaceAll('\\', '/') : item;
-        if (!comboValues(field).some(item => normalized(item) === normalized(value))) throw new Error(`${node.class_type}: недоступно ${name} = ${value}.`);
+        if (!comboValues(field).some(item => normalized(item) === normalized(value))) throw new Error(tr('model.unavailableValue',`${node.class_type}: недоступно ${name} = ${value}.`,{node:node.class_type,name,value}));
       } else if (field[0] === 'INT' || field[0] === 'FLOAT') {
         if (!Number.isFinite(value) || (field[0] === 'INT' && !Number.isSafeInteger(value)) || value < (field[1]?.min ?? -Infinity) || value > (field[1]?.max ?? Infinity)) {
-          throw new Error(`${node.class_type}: недопустимое значение ${name} = ${value}.`);
+          throw new Error(tr('model.invalidValue',`${node.class_type}: недопустимое значение ${name} = ${value}.`,{node:node.class_type,name,value}));
         }
       }
     }

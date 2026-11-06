@@ -1,6 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ComfyClient } from '../api.js';
+import {createLocalization,setActiveLocalization} from '../i18n.js';
+
+test('Ошибки занятости генератора отображаются на выбранном языке',async()=>{
+  const l10n=await createLocalization({storage:{getItem:()=>null,setItem:()=>{}},systemLanguage:'en'});
+  setActiveLocalization(l10n);
+  try{
+    const client=new ComfyClient({storage:null,pollMs:0,fetchImpl:async(_url,options)=>Response.json({prompt_id:JSON.parse(options.body).prompt_id})});
+    await client.submit({},{});
+    await assert.rejects(client.submit({},{}),/Wait for the current job to finish or cancel it/);
+  }finally{setActiveLocalization(null);}
+});
 
 test('Клиент работает по HTTP в локальной сети без crypto.randomUUID', () => {
   const original = crypto.randomUUID;

@@ -1,10 +1,12 @@
+import {translate as tr} from './i18n.js';
+
 // Свободное название и выбор существующей записи — разные действия.
 export function createEditableChoice({id,label,placeholder,maxLength,readName,commitName,options,choose,filter=false,onEnter=()=>{},scrollContainer}) {
   const root=document.createElement('div');root.className='editable-choice';
   const input=document.createElement('input');input.id=id;input.type='text';input.maxLength=maxLength;
   input.placeholder=placeholder;input.autocomplete='off';input.setAttribute('aria-label',label);
   input.setAttribute('role','combobox');input.setAttribute('aria-autocomplete','list');input.setAttribute('aria-expanded','false');
-  const toggle=document.createElement('button');toggle.type='button';toggle.className='editable-choice-toggle';toggle.setAttribute('aria-label',`Выбрать: ${label}`);
+  const toggle=document.createElement('button');toggle.type='button';toggle.className='editable-choice-toggle';toggle.setAttribute('aria-label',tr('variant.choose',`Выбрать: ${label}`,{label}));
   toggle.innerHTML='<svg class="ui-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>';
   const menu=document.createElement('div');menu.className='editable-choice-menu';menu.id=id+'-options';menu.hidden=true;menu.setAttribute('role','listbox');menu.setAttribute('aria-label',label);
   input.setAttribute('aria-controls',menu.id);root.append(input,toggle,menu);
@@ -47,5 +49,9 @@ export function createEditableChoice({id,label,placeholder,maxLength,readName,co
   const scroll=event=>{if(!menu.hidden&&!menu.contains(event.target))position();};
   const dialog=scrollContainer??document.getElementById('lora-library-details');dialog.addEventListener('scroll',scroll,true);
   sync();
-  return {root,input,sync,commit,focus:()=>{input.focus();input.select();},destroy:()=>dialog.removeEventListener('scroll',scroll,true)};
+  const setLabels=({label:nextLabel,placeholder:nextPlaceholder})=>{
+    input.placeholder=nextPlaceholder;input.setAttribute('aria-label',nextLabel);
+    toggle.setAttribute('aria-label',tr('variant.choose',`Выбрать: ${nextLabel}`,{label:nextLabel}));menu.setAttribute('aria-label',nextLabel);
+  };
+  return {root,input,sync,commit,setLabels,focus:()=>{input.focus();input.select();},destroy:()=>dialog.removeEventListener('scroll',scroll,true)};
 }

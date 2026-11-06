@@ -10,6 +10,7 @@ import { imageUrl, modelCatalog } from './api.js';
 import { resolveModelSelection } from './model_loader.js';
 import { readPositiveParts, writePositiveParts } from './prompt_editor.js';
 import { promptPartsFromSettings, resolvePromptParts } from './prompt_parts.js';
+import {translate as tr} from './i18n.js';
 
 const fields = {
   variationSeedInput: el.variationSeedInput, variationStrength: el.variationStrength,
@@ -59,7 +60,7 @@ export function applySettings(settings, { restoreCharacterSnapshot = true, parti
       if (input.type === 'checkbox') input.checked = value === true;
       else {
         if (input.tagName === 'SELECT' && !Array.from(input.options).some(option => option.value === String(value))) {
-          const missing = new Option(`Недоступно: ${value}`, String(value));
+          const missing = new Option(tr('storage.unavailable',`Недоступно: ${value}`,{value}), String(value));
           missing.disabled = true;
           input.appendChild(missing);
         }
@@ -90,7 +91,7 @@ export function applySettings(settings, { restoreCharacterSnapshot = true, parti
       const select = document.getElementById('character-select');
       if (restoreCharacterSnapshot && settings.character) {
         const name = settings.character.name;
-        if (![...select.options].some(option => option.value === name)) select.add(new Option(`${name} (из снимка)`, name));
+        if (![...select.options].some(option => option.value === name)) select.add(new Option(tr('storage.fromSnapshot',`${name} (из снимка)`,{name}), name));
         select.value = name;
       }
       const selected = select.value;
@@ -119,7 +120,7 @@ export function saveSettings() {
   try {
     localStorage.setItem('matrix_dashboard_v3', JSON.stringify({ ...readSettings(), version: 4 }));
   } catch (error) {
-    window.dispatchEvent(new CustomEvent('dashboard-warning', { detail: `Настройки не сохранены: ${error.message}` }));
+    window.dispatchEvent(new CustomEvent('dashboard-warning', { detail: tr('storage.saveError',`Настройки не сохранены: ${error.message}`,{message:error.message}) }));
   }
 }
 
@@ -134,7 +135,7 @@ export function loadSavedSettings() {
   if (!raw) return [];
   try {
     const settings = JSON.parse(raw);
-    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) throw new Error('Некорректный формат настроек');
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) throw new Error(tr('storage.invalid','Некорректный формат настроек'));
     // При обычной загрузке источником персонажей служит JSON, а не старый снимок формы.
     applySettings(settings, { restoreCharacterSnapshot: false });
     return Array.isArray(settings.history)
@@ -144,7 +145,7 @@ export function loadSavedSettings() {
         }))
       : [];
   } catch (error) {
-    window.dispatchEvent(new CustomEvent('dashboard-warning', { detail: `Не удалось восстановить настройки: ${error.message}` }));
+    window.dispatchEvent(new CustomEvent('dashboard-warning', { detail: tr('storage.restoreError',`Не удалось восстановить настройки: ${error.message}`,{message:error.message}) }));
     return [];
   }
 }
@@ -152,5 +153,5 @@ export function loadSavedSettings() {
 window.addEventListener('save-settings', saveSettings);
 window.addEventListener('restore-history-prompt',event=>{
   try{applyHistoryPrompt(event.detail);saveSettings();}
-  catch(error){window.dispatchEvent(new CustomEvent('dashboard-warning',{detail:`Не удалось восстановить промпт: ${error.message}`}));}
+  catch(error){window.dispatchEvent(new CustomEvent('dashboard-warning',{detail:tr('storage.promptError',`Не удалось восстановить промпт: ${error.message}`,{message:error.message})}));}
 });

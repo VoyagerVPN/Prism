@@ -1,5 +1,6 @@
+import {translate as tr} from './i18n.js';
 function record(value, label) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${label} должен быть объектом.`);
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(tr('contentValidation.object',`${label} должен быть объектом.`,{label:tr(`contentValidation.labels.${label}`,label)}));
   return value;
 }
 
@@ -20,17 +21,17 @@ function normalizedLora(binding) {
 
 function normalizeSelection(input, catalog, recipe) {
   const selection = record(input, 'Semantic selection');
-  if (typeof selection.contentId !== 'string' || !selection.contentId) throw new Error('Semantic selection требует contentId.');
+  if (typeof selection.contentId !== 'string' || !selection.contentId) throw new Error(tr('contentValidation.selectionId','Semantic selection требует contentId.'));
   const entity = catalog.get(selection.contentId);
-  if (!entity) throw new Error(`Content entity ${selection.contentId} отсутствует в каталоге.`);
-  if (!['global', 'subject'].includes(selection.scope)) throw new Error('Scope выбора должен быть global или subject.');
-  if (!entity.scopes.includes(selection.scope)) throw new Error(`Scope ${selection.scope} недоступен для ${entity.id}.`);
+  if (!entity) throw new Error(tr('contentValidation.missingEntity',`Content entity ${selection.contentId} отсутствует в каталоге.`,{id:selection.contentId}));
+  if (!['global', 'subject'].includes(selection.scope)) throw new Error(tr('contentValidation.selectionScope','Scope выбора должен быть global или subject.'));
+  if (!entity.scopes.includes(selection.scope)) throw new Error(tr('contentValidation.scopeUnavailable',`Scope ${selection.scope} недоступен для ${entity.id}.`,{scope:selection.scope,id:entity.id}));
   if (selection.scope === 'subject' && (typeof selection.subjectId !== 'string' || !selection.subjectId.trim())) {
-    throw new Error(`Subject scope для ${entity.id} требует subjectId.`);
+    throw new Error(tr('contentValidation.subjectId',`Subject scope для ${entity.id} требует subjectId.`,{id:entity.id}));
   }
-  if (selection.scope === 'global' && selection.subjectId !== undefined) throw new Error('Global scope не принимает subjectId.');
+  if (selection.scope === 'global' && selection.subjectId !== undefined) throw new Error(tr('contentValidation.globalSubject','Global scope не принимает subjectId.'));
   if (entity.compatibleRecipes && !entity.compatibleRecipes.includes(recipe)) {
-    throw new Error(`${entity.id} несовместим с recipe ${recipe}.`);
+    throw new Error(tr('contentValidation.incompatible',`${entity.id} несовместим с recipe ${recipe}.`,{id:entity.id,recipe}));
   }
   const parameters = selection.parameters === undefined ? {} : structuredClone(record(selection.parameters, 'Параметры выбора'));
   return {selection, entity, parameters};
@@ -38,10 +39,10 @@ function normalizeSelection(input, catalog, recipe) {
 
 export function resolveContentPlan(input) {
   const request = record(input, 'Content resolution request');
-  if (!request.catalog || typeof request.catalog.get !== 'function') throw new Error('Resolver требует content catalog.');
-  if (!Array.isArray(request.selections)) throw new Error('Semantic selections должны быть массивом.');
+  if (!request.catalog || typeof request.catalog.get !== 'function') throw new Error(tr('contentValidation.catalogRequired','Resolver требует content catalog.'));
+  if (!Array.isArray(request.selections)) throw new Error(tr('contentValidation.selectionsArray','Semantic selections должны быть массивом.'));
   const modelRecipe = structuredClone(record(request.modelRecipe, 'Model recipe'));
-  if (typeof modelRecipe.recipe !== 'string' || !modelRecipe.recipe.trim()) throw new Error('Model recipe требует recipe.');
+  if (typeof modelRecipe.recipe !== 'string' || !modelRecipe.recipe.trim()) throw new Error(tr('contentValidation.recipeRequired','Model recipe требует recipe.'));
 
   const resolved = request.selections.map(selection => normalizeSelection(selection, request.catalog, modelRecipe.recipe));
   const promptContributions = [];
@@ -72,12 +73,12 @@ export function resolveContentPlan(input) {
         const existing = loraByName.get(binding.name);
         if (existing) {
           if (existing.strength !== binding.strength || existing.clipStrength !== binding.clipStrength) {
-            throw new Error(`LoRA ${binding.name} получила несовместимые веса от ${existing.contentId} и ${entity.id}.`);
+            throw new Error(tr('contentValidation.conflictingWeights',`LoRA ${binding.name} получила несовместимые веса от ${existing.contentId} и ${entity.id}.`,{name:binding.name,first:existing.contentId,second:entity.id}));
           }
           existing.contentIds.push(entity.id);
           diagnostics.push({
             level: 'info', code: 'duplicate-lora',
-            message: `LoRA ${binding.name} объединена для ${existing.contentIds.join(', ')}.`,
+            message: tr('contentValidation.combinedLora',`LoRA ${binding.name} объединена для ${existing.contentIds.join(', ')}.`,{name:binding.name,ids:existing.contentIds.join(', ')}),
             contentIds: [...existing.contentIds],
           });
         } else {

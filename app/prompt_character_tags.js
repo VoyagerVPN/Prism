@@ -1,13 +1,14 @@
 import {readCharacterToken} from './prompt_character.js';
 import {createTagInput,splitPromptTags} from './tag_input.js';
+import {translate as tr} from './i18n.js';
 
 export function createCharacterTagPanel(token,{doc,section,onChange}) {
-  const panel=doc.createElement('span');panel.className='prompt-character-tags';panel.setAttribute('role','group');panel.setAttribute('aria-label','Теги персонажа');
+  const panel=doc.createElement('span');panel.className='prompt-character-tags';panel.setAttribute('role','group');panel.setAttribute('aria-label',tr('variant.characterTags','Теги персонажа'));
   const inputs=[],c=readCharacterToken(token).character;
-  for(const [kind,title,variant,source,icon] of [['appearance','Внешность',c.activeAppearanceName,c.appearances[c.activeAppearanceName],'palette'],['outfit','Одежда',c.activeOutfitName,c.outfits[c.activeOutfitName],'shirt']]){
+  for(const [kind,title,variant,source,icon] of [['appearance',tr('variant.appearance','Внешность'),c.activeAppearanceName,c.appearances[c.activeAppearanceName],'palette'],['outfit',tr('variant.outfit','Одежда'),c.activeOutfitName,c.outfits[c.activeOutfitName],'shirt']]){
     if(section&&section!==kind)continue;
     if(!splitPromptTags([source]).length||(kind==='outfit'&&!c.outfitEnabled)){
-      const empty=doc.createElement('span');empty.className='prompt-character-tags-empty';empty.textContent=kind==='outfit'&&!c.outfitEnabled?'Одежда выключена':'Тегов нет';panel.append(empty);continue;
+      const empty=doc.createElement('span');empty.className='prompt-character-tags-empty';empty.textContent=kind==='outfit'&&!c.outfitEnabled?tr('variant.outfitDisabled','Одежда выключена'):tr('variant.noTags','Тегов нет');panel.append(empty);continue;
     }
     const sourceField=token.querySelector(`[data-character-field="${kind}"]`),field=doc.createElement('input');field.value=source;panel.append(field);
     const isDisabled=value=>JSON.parse(token.dataset.disabledTags).some(entry=>entry.kind===kind&&entry.variant===variant&&splitPromptTags([value]).includes(entry.tag));

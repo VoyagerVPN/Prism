@@ -16,6 +16,39 @@ sys.modules['folder_paths']=types.SimpleNamespace()
 spec=importlib.util.spec_from_file_location('dashboard',Path(__file__).resolve().parents[1]/'__init__.py',submodule_search_locations=[str(Path(__file__).resolve().parents[1])])
 dashboard=importlib.util.module_from_spec(spec);sys.modules['dashboard']=dashboard;spec.loader.exec_module(dashboard)
 class Checks(unittest.IsolatedAsyncioTestCase):
+ async def test_server_errors_follow_shared_language_and_preserve_names(self):
+  cache=Path(__file__).resolve().parents[1]/'.cache';cache.mkdir(exist_ok=True)
+  with tempfile.TemporaryDirectory(dir=cache) as directory:
+   root=Path(directory);language=root/'language.json'
+   async def body():return {'characters':{}}
+   with patch.object(dashboard,'language_path',language):
+    for locale,expected in [('en','Missing data revision'),('ru','Отсутствует версия данных')]:
+     language.write_text(json.dumps({'language':locale}),encoding='utf-8')
+     response=await dashboard.post_characters(types.SimpleNamespace(json=body))
+     self.assertEqual(response.status,400)
+     self.assertEqual(json.loads(response.text)['error'],expected)
+    self.assertEqual(dashboard.localize_message('Алиса: некорректная сила LoRA','en'),'Алиса: invalid LoRA strength')
+    self.assertEqual(dashboard.localize_message('Не удалось сохранить файл: Файл слишком короткий','en'),'Could not save the file: The file is too short')
+    self.assertEqual(dashboard.localize_message('Civitai вернул HTTP 503. Повторите позже.','en'),'Civitai returned HTTP 503. Try again later.')
+    self.assertEqual(dashboard.localize_message('Алиса: некорректное значение cfg','en'),'Алиса: invalid value cfg')
+    self.assertEqual(dashboard.localize_message('Совместимые recipes должен быть массивом строк','en'),'Compatible recipes must be an array of strings')
+ async def test_language_choice_persists_and_invalid_choice_preserves_it(self):
+  from aiohttp import web
+  from aiohttp.test_utils import TestClient, TestServer
+  cache=Path(__file__).resolve().parents[1]/'.cache';cache.mkdir(exist_ok=True)
+  with tempfile.TemporaryDirectory(dir=cache) as directory:
+   path=Path(directory)/'data'/'language.json'
+   app=web.Application();app.router.add_get('/language',dashboard.get_language);app.router.add_post('/language',dashboard.post_language)
+   with patch.object(dashboard,'language_path',path):
+    async with TestClient(TestServer(app)) as client:
+     self.assertIsNone((await (await client.get('/language')).json())['language'])
+     response=await client.post('/language',json={'language':'ru'})
+     self.assertEqual(response.status,200)
+     self.assertEqual((await (await client.get('/language')).json())['language'],'ru')
+     self.assertEqual((await client.post('/language',json={'language':'fr'})).status,400)
+     self.assertEqual((await (await client.get('/language')).json())['language'],'ru')
+     self.assertEqual((await client.post('/language',json={'language':'en'})).status,200)
+     self.assertEqual(json.loads(path.read_text(encoding='utf-8'))['language'],'en')
  def test_routes_use_only_prism_prefix(self):
   paths=[route.path for route in dashboard.routes]
   self.assertIn('/prism',paths)

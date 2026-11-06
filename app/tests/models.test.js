@@ -1,6 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { assertLoraCompatibility, buildModelCatalog, loadModel, resolveModelSelection, validateCapabilities } from '../model_loader.js';
+import {createLocalization,setActiveLocalization} from '../i18n.js';
+
+test('Ошибки выбора модели и несовместимой LoRA следуют языку интерфейса',async()=>{
+  const l10n=await createLocalization({storage:{getItem:()=>null,setItem:()=>{}},systemLanguage:'en'});
+  setActiveLocalization(l10n);
+  try{
+    assert.throws(()=>resolveModelSelection([],'my-model.safetensors'),/Model my-model\.safetensors is unavailable/);
+    assert.throws(()=>assertLoraCompatibility('anima',[{name:'Character/test.safetensors'}],{'Character/test.safetensors':{base_model:'sdxl'}}),/not compatible with Anima/);
+    assert.throws(()=>validateCapabilities({a:{class_type:'MissingNode',inputs:{}}},{}),/Node MissingNode is unavailable/);
+  }finally{setActiveLocalization(null);}
+});
 
 test('Отдельные diffusion models не выдаются за поддерживаемые checkpoint', () => {
   const info = {

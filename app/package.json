@@ -4,10 +4,11 @@
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.js",
-    "vendor": "node -e \"const fs=require('node:fs'); for(const [source,target] of [['tom-select/dist/js/tom-select.complete.min.js','vendor-select.js'],['tom-select/dist/css/tom-select.default.css','vendor-select.css'],['tom-select/LICENSE','vendor-select.LICENSE'],['@yaireo/tagify/dist/tagify.js','vendor-tagify.js'],['@yaireo/tagify/dist/tagify.css','vendor-tagify.css'],['@yaireo/tagify/LICENSE','vendor-tagify.LICENSE']]) fs.copyFileSync('node_modules/'+source,target)\""
+    "vendor": "node -e \"const fs=require('node:fs'); for(const [source,target] of [['tom-select/dist/js/tom-select.complete.min.js','vendor-select.js'],['tom-select/dist/css/tom-select.default.css','vendor-select.css'],['tom-select/LICENSE','vendor-select.LICENSE'],['@yaireo/tagify/dist/tagify.js','vendor-tagify.js'],['@yaireo/tagify/dist/tagify.css','vendor-tagify.css'],['@yaireo/tagify/LICENSE','vendor-tagify.LICENSE'],['i18next/dist/esm/i18next.bundled.js','vendor-i18next.js'],['i18next/LICENSE','vendor-i18next.LICENSE']]) fs.copyFileSync('node_modules/'+source,target)\""
   },
   "dependencies": {
     "@yaireo/tagify": "4.38.0",
+    "i18next": "25.6.3",
     "tom-select": "2.6.2"
   },
   "devDependencies": {

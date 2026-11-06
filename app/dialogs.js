@@ -1,4 +1,5 @@
 import {makeDialogBackdropDismissible} from './popup_behavior.js';
+import {translate as tr} from './i18n.js';
 
 let queue = Promise.resolve();
 
@@ -17,6 +18,7 @@ function openDialog(message, {kind, value = '', title, action, readOnly = false}
     }
     const field = dialog.querySelector('input');
     const cancel = dialog.querySelector('[data-cancel]');
+    cancel.textContent = tr('dialog.cancel','Отмена');
     dialog.querySelector('h2').textContent = title;
     dialog.querySelector('p').textContent = message;
     dialog.querySelector('[type=submit]').textContent = action;
@@ -43,13 +45,13 @@ function openDialog(message, {kind, value = '', title, action, readOnly = false}
 }
 
 export function askText(message, value = '', options = {}) {
-  return openDialog(message, {kind:'text', value, title:'Название', action:'Сохранить', ...options});
+  return openDialog(message, {kind:'text', value, title:tr('dialog.name','Название'), action:tr('dialog.save','Сохранить'), ...options});
 }
 
 export async function askConfirm(message) {
-  return await openDialog(message, {kind:'confirm', title:'Подтверждение', action:'Удалить'}) === true;
+  return await openDialog(message, {kind:'confirm', title:tr('dialog.confirm','Подтверждение'), action:tr('dialog.delete','Удалить')}) === true;
 }
 
 export function showNotice(message) {
-  return openDialog(message, {kind:'notice', title:'Сообщение', action:'Понятно'});
+  return openDialog(message, {kind:'notice', title:tr('dialog.notice','Сообщение'), action:tr('dialog.understood','Понятно')});
 }

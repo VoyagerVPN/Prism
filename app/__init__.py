@@ -15,6 +15,7 @@ from .gallery_catalog import GalleryCatalog
 from .media_library import MediaLibrary, fetch_civitai_image
 from .prism_core import CharacterStore, ContentStore, InvalidDocument, PresetStore, RevisionConflict
 from .runtime_metrics import collect_runtime_metrics
+from .backend_i18n import localize_message, read_language
 
 # Получаем путь к текущей папке плагина
 dir_path = str(Path(__file__).resolve().parent)
@@ -30,7 +31,56 @@ content_path = Path(dir_path) / 'data' / 'content.json'
 import_bases_path = Path(dir_path) / 'data' / 'import-bases.json'
 gallery_catalog = GalleryCatalog(Path(dir_path) / 'data' / 'gallery.json')
 media_library = MediaLibrary(Path(dir_path) / 'data' / 'media.json')
+language_path = Path(dir_path) / 'data' / 'language.json'
 _LOAD_MEDIA_COVER = object()
+
+def localized_message(value, request=None):
+    headers = getattr(request, 'headers', {})
+    return localize_message(value, read_language(language_path, headers.get('Accept-Language', '')))
+
+def error_response(value, status, request=None):
+    return web.json_response({'error': localized_message(value, request)}, status=status)
+
+@routes.get('/prism/language')
+async def get_language(request):
+    try:
+        try:
+            value = json.loads(language_path.read_text(encoding='utf-8-sig'))
+        except FileNotFoundError:
+            value = {'language': None}
+        if not isinstance(value, dict) or value.get('language') not in (None, 'en', 'ru'):
+            raise ValueError('Invalid language preference')
+        return web.json_response({'language': value.get('language')}, headers={'Cache-Control': 'no-store'})
+    except (OSError, ValueError):
+        return web.json_response({'error': 'PRISM_LANGUAGE_READ'}, status=500)
+
+
+@routes.post('/prism/language')
+async def post_language(request):
+    try:
+        value = await request.json()
+        if not isinstance(value, dict) or value.get('language') not in ('en', 'ru'):
+            raise ValueError('Invalid language')
+    except (ValueError, TypeError):
+        return web.json_response({'error': 'PRISM_LANGUAGE_INVALID'}, status=400)
+    temporary = None
+    try:
+        language_path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=language_path.parent,
+                                         prefix='.language-', suffix='.tmp', delete=False) as stream:
+            temporary = Path(stream.name)
+            json.dump({'language': value['language']}, stream)
+        os.replace(temporary, language_path)
+        return web.json_response({'language': value['language']}, headers={'Cache-Control': 'no-store'})
+    except OSError:
+        return web.json_response({'error': 'PRISM_LANGUAGE_WRITE'}, status=500)
+    finally:
+        if temporary is not None:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
+
 
 def read_characters():
     return CharacterStore(character_path).read()
@@ -40,7 +90,7 @@ async def get_characters(request):
     try:
         return web.json_response(read_characters(), headers={'Cache-Control': 'no-store'})
     except (OSError, ValueError) as error:
-        return web.json_response({'error': f'Не удалось прочитать characters.json: {error}'}, status=500)
+        return error_response(f'Не удалось прочитать characters.json: {error}', 500, request)
 
 @routes.post('/prism/characters')
 async def post_characters(request):
@@ -49,15 +99,15 @@ async def post_characters(request):
         if not isinstance(body, dict) or 'revision' not in body:
             raise ValueError('Отсутствует версия данных')
     except (ValueError, TypeError) as error:
-        return web.json_response({'error': str(error)}, status=400)
+        return error_response(str(error), 400, request)
     try:
         return web.json_response(CharacterStore(character_path).save(body.get('characters'), body['revision']))
     except InvalidDocument as error:
-        return web.json_response({'error': str(error)}, status=400)
+        return error_response(str(error), 400, request)
     except RevisionConflict as error:
-        return web.json_response({'error': str(error)}, status=409)
+        return error_response(str(error), 409, request)
     except (OSError, ValueError) as error:
-        return web.json_response({'error': f'Не удалось сохранить characters.json: {error}'}, status=500)
+        return error_response(f'Не удалось сохранить characters.json: {error}', 500, request)
 
 
 @routes.get('/prism/content')
@@ -65,7 +115,7 @@ async def get_content(request):
     try:
         return web.json_response(ContentStore(content_path).read(), headers={'Cache-Control': 'no-store'})
     except (OSError, ValueError, json.JSONDecodeError) as error:
-        return web.json_response({'error': f'Не удалось прочитать content.json: {error}'}, status=500)
+        return error_response(f'Не удалось прочитать content.json: {error}', 500, request)
 
 
 @routes.post('/prism/content')
@@ -75,15 +125,15 @@ async def post_content(request):
         if not isinstance(body, dict) or 'revision' not in body:
             raise ValueError('Отсутствует версия данных')
     except (ValueError, TypeError, json.JSONDecodeError) as error:
-        return web.json_response({'error': str(error)}, status=400)
+        return error_response(str(error), 400, request)
     try:
         return web.json_response(ContentStore(content_path).save(body.get('content'), body['revision']))
     except InvalidDocument as error:
-        return web.json_response({'error': str(error)}, status=400)
+        return error_response(str(error), 400, request)
     except RevisionConflict as error:
-        return web.json_response({'error': str(error)}, status=409)
+        return error_response(str(error), 409, request)
     except (OSError, ValueError, json.JSONDecodeError) as error:
-        return web.json_response({'error': f'Не удалось сохранить content.json: {error}'}, status=500)
+        return error_response(f'Не удалось сохранить content.json: {error}', 500, request)
 
 preset_path = Path(dir_path) / 'data' / 'model-presets.json'
 
@@ -95,7 +145,7 @@ async def get_presets(request):
     try:
         return web.json_response(read_presets(), headers={'Cache-Control': 'no-store'})
     except (OSError, ValueError) as error:
-        return web.json_response({'error': f'Не удалось прочитать model-presets.json: {error}'}, status=500)
+        return error_response(f'Не удалось прочитать model-presets.json: {error}', 500, request)
 
 @routes.post('/prism/presets')
 async def post_presets(request):
@@ -104,15 +154,15 @@ async def post_presets(request):
         if not isinstance(body, dict) or 'revision' not in body:
             raise ValueError('Отсутствует версия данных')
     except (ValueError, TypeError) as error:
-        return web.json_response({'error': str(error)}, status=400)
+        return error_response(str(error), 400, request)
     try:
         return web.json_response(PresetStore(preset_path).save(body.get('presets'), body['revision']))
     except InvalidDocument as error:
-        return web.json_response({'error': str(error)}, status=400)
+        return error_response(str(error), 400, request)
     except RevisionConflict as error:
-        return web.json_response({'error': str(error)}, status=409)
+        return error_response(str(error), 409, request)
     except (OSError, ValueError) as error:
-        return web.json_response({'error': f'Не удалось сохранить model-presets.json: {error}'}, status=500)
+        return error_response(f'Не удалось сохранить model-presets.json: {error}', 500, request)
 
 def get_lora_metadata(file_path):
     global lora_metadata_cache
@@ -219,7 +269,7 @@ async def analyze_model_import(request):
             result['base'] = next((base for base in bases if base.casefold() == result['base'].casefold()), result['base'])
         return web.json_response({**result, 'bases': bases, 'categories': CATEGORIES})
     except (ValueError, TypeError) as error:
-        return web.json_response({'error': str(error)}, status=400)
+        return error_response(str(error), 400, request)
 
 
 @routes.post('/prism/import/upload')
@@ -280,15 +330,15 @@ async def upload_model_import(request):
         except (OSError, ValueError) as error:
             warnings.append(f'Файл сохранён, но название базы не удалось запомнить: {error}')
         if warnings:
-            result['warning'] = ' · '.join(warnings)
+            result['warning'] = ' · '.join(localized_message(warning, request) for warning in warnings)
         folder_paths.filename_list_cache.clear()
         return web.json_response(result)
     except FileExistsError:
-        return web.json_response({'error': 'Такой файл уже есть в выбранной папке. Существующий файл сохранён.'}, status=409)
+        return error_response('Такой файл уже есть в выбранной папке. Существующий файл сохранён.', 409, request)
     except (ValueError, TypeError, AssertionError, IndexError) as error:
-        return web.json_response({'error': str(error)}, status=400)
+        return error_response(str(error), 400, request)
     except OSError as error:
-        return web.json_response({'error': f'Не удалось сохранить файл: {error}'}, status=500)
+        return error_response(f'Не удалось сохранить файл: {error}', 500, request)
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
@@ -304,7 +354,7 @@ async def get_metrics(request):
     try:
         return web.json_response(collect_runtime_metrics(), headers={'Cache-Control': 'no-store'})
     except (ImportError, OSError, RuntimeError, AttributeError, ValueError) as error:
-        return web.json_response({'error': f'Не удалось получить метрики процесса: {error}'}, status=500)
+        return error_response(f'Не удалось получить метрики процесса: {error}', 500, request)
 
 
 @routes.get('/prism/gallery')
@@ -312,7 +362,7 @@ async def get_gallery(request):
     try:
         return web.json_response(await asyncio.to_thread(gallery_catalog.snapshot), headers={'Cache-Control': 'no-store'})
     except (OSError, ValueError, json.JSONDecodeError) as error:
-        return web.json_response({'error': f'Не удалось прочитать галерею: {error}'}, status=500)
+        return error_response(f'Не удалось прочитать галерею: {error}', 500, request)
 
 
 @routes.post('/prism/gallery')
@@ -323,9 +373,9 @@ async def post_gallery(request):
             raise ValueError('Слишком большая или некорректная запись галереи')
         return web.json_response(await asyncio.to_thread(gallery_catalog.register, body))
     except (ValueError, TypeError, json.JSONDecodeError) as error:
-        return web.json_response({'error': str(error)}, status=400)
+        return error_response(str(error), 400, request)
     except OSError as error:
-        return web.json_response({'error': f'Не удалось записать галерею: {error}'}, status=500)
+        return error_response(f'Не удалось записать галерею: {error}', 500, request)
 
 
 @routes.patch('/prism/gallery/favorite')
@@ -337,9 +387,9 @@ async def patch_gallery_favorite(request):
         item = await asyncio.to_thread(gallery_catalog.set_favorite, body.get('id'), body.get('favorite'))
         return web.json_response({'item': item})
     except (ValueError, TypeError, json.JSONDecodeError) as error:
-        return web.json_response({'error': str(error)}, status=400)
+        return error_response(str(error), 400, request)
     except OSError as error:
-        return web.json_response({'error': f'Не удалось записать избранное: {error}'}, status=500)
+        return error_response(f'Не удалось записать избранное: {error}', 500, request)
 
 
 def gallery_image_path(art_id):
@@ -395,17 +445,17 @@ async def assign_media(request):
         if target['kind'] == 'lora':
             await asyncio.to_thread(media_library.set_lora_cover, target_name, media['id'])
             path = library_file(target_name)
-            return web.json_response({'media': public_media(media), 'item': library_entry(target_name, path)})
+            return web.json_response({'media': public_media(media), 'item': localize_library_entry(library_entry(target_name, path), request)})
         characters = {key: dict(value) for key, value in document['characters'].items()}
         characters[target_name]['portrait'] = media
         saved = await asyncio.to_thread(store.save, characters, body['revision'])
         return web.json_response({**saved, 'media': public_media(media)})
     except RevisionConflict as error:
-        return web.json_response({'error': str(error)}, status=409)
+        return error_response(str(error), 409, request)
     except (ValueError, TypeError, json.JSONDecodeError) as error:
-        return web.json_response({'error': str(error)}, status=400)
+        return error_response(str(error), 400, request)
     except OSError as error:
-        return web.json_response({'error': f'Не удалось сохранить изображение: {error}'}, status=500)
+        return error_response(f'Не удалось сохранить изображение: {error}', 500, request)
 
 def library_file(name):
     if name not in folder_paths.get_filename_list('loras'):
@@ -419,6 +469,11 @@ def library_entry(name, path, header=None, categories=None, cover=_LOAD_MEDIA_CO
         cover = public_media(media_library.lora_cover(name))
     return lora_library.local_entry(name, path, get_lora_metadata(str(path)) if header is None else header, categories, cover)
 
+def localize_library_entry(entry, request):
+    if entry.get('warning'):
+        return {**entry, 'warning': localized_message(entry['warning'], request)}
+    return entry
+
 @routes.get('/prism/lora-library')
 async def get_lora_library(request):
     def scan():
@@ -430,9 +485,9 @@ async def get_lora_library(request):
             entries.append(library_entry(name, path, categories=categories, cover=public_media(covers.get(name.replace('\\', '/')))))
         return entries
     try:
-        return web.json_response({'items': await asyncio.to_thread(scan)}, headers={'Cache-Control':'no-store'})
+        return web.json_response({'items': [localize_library_entry(item, request) for item in await asyncio.to_thread(scan)]}, headers={'Cache-Control':'no-store'})
     except (ValueError, OSError) as error:
-        return web.json_response({'error':str(error)},status=500)
+        return error_response(str(error), 500, request)
 
 @routes.post('/prism/lora-library/category')
 async def set_lora_category(request):
@@ -443,9 +498,9 @@ async def set_lora_category(request):
         name = body['name']; path = library_file(name)
         await asyncio.to_thread(lora_library.save_category, name, body['category'])
         entry = await asyncio.to_thread(library_entry, name, path)
-        return web.json_response(entry)
+        return web.json_response(localize_library_entry(entry, request))
     except (ValueError, OSError) as error:
-        return web.json_response({'error':str(error)},status=400)
+        return error_response(str(error), 400, request)
 
 @routes.get('/prism/lora-preview')
 async def get_lora_preview(request):
@@ -465,7 +520,7 @@ async def reveal_lora_file(request):
         subprocess.Popen(['explorer.exe',f'/select,{path}'])
         return web.Response(status=204)
     except (ValueError, OSError) as error:
-        return web.json_response({'error':str(error)},status=400)
+        return error_response(str(error), 400, request)
 
 # ponytail: один запрос Civitai за раз; очередь по файлам нужна только для массового обновления.
 library_lookup_lock = asyncio.Lock()
@@ -476,12 +531,12 @@ async def lookup_lora_library(request):
         body = await request.json()
         if not isinstance(body,dict) or not isinstance(body.get('name'),str): raise ValueError('Не указано имя LoRA')
         name = body['name']; path = library_file(name)
-        if library_lookup_lock.locked(): return web.json_response({'error':'Обновление уже выполняется. Повторите позже.'},status=409)
+        if library_lookup_lock.locked(): return error_response('Обновление уже выполняется. Повторите позже.', 409, request)
         async with library_lookup_lock:
             await asyncio.to_thread(lora_library.lookup,name,path)
-        return web.json_response(library_entry(name,path))
+        return web.json_response(localize_library_entry(library_entry(name,path), request))
     except (ValueError, OSError, TimeoutError) as error:
-        return web.json_response({'error':str(error)},status=400)
+        return error_response(str(error), 400, request)
 
 @routes.get("/prism/{filename:.*}")
 async def get_dashboard_static(request):

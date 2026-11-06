@@ -9,6 +9,7 @@ import {
   setGalleryFavorite,
 } from './gallery_catalog_client.js';
 import {generationFromHistory, selectedOutputImage} from './result_catalog.js';
+import {translate as tr} from './i18n.js';
 
 export {galleryFavoriteState, toggleGalleryFavorite} from './gallery_catalog_client.js';
 export {generationFromHistory, selectedOutputImage} from './result_catalog.js';
@@ -109,7 +110,7 @@ function booruFacets() {
   for (const item of archiveItems) {
     const characters = [...new Set(charactersForItem(item).map(character => normalizeTag(character.name)).filter(Boolean))];
     if (characters.length) for (const name of characters) add('character', name);
-    else add('character', '__none__', 'Без персонажа');
+    else add('character', '__none__', tr('archive.noCharacter','Без персонажа'));
     for (const tag of promptTags(item)) add(promptTagKind(tag), tag);
   }
   return [...facets.values()].sort((left, right) => right.count - left.count || left.displayLabel.localeCompare(right.displayLabel, 'ru'));
@@ -139,7 +140,7 @@ function renderBooruPanel() {
   document.getElementById('archive-general-tags').replaceChildren(...shown.filter(facet => facet.kind === 'tag').map(buttonFor));
   const selected = document.getElementById('archive-selected-tags');
   selected.replaceChildren(...[...activeBooruTags.values()].map(facet => {
-    const chip = document.createElement('button'); chip.type = 'button'; chip.className = 'archive-selected-tag'; chip.textContent = `${facet.displayLabel} ×`;
+    const chip = document.createElement('button'); chip.type = 'button'; chip.className = 'archive-selected-tag'; chip.textContent = `${facet.label==='__none__'?tr('archive.noCharacter','Без персонажа'):facet.displayLabel} ×`;
     chip.addEventListener('click', () => { activeBooruTags.delete(facet.key); renderArchiveGallery(); });
     return chip;
   }));
@@ -169,7 +170,7 @@ function setPreviewSize(value, {persist = true} = {}) {
 function syncFavoriteButton(button, item) {
   button.classList.toggle('active', Boolean(item.favorite));
   button.setAttribute('aria-pressed', String(Boolean(item.favorite)));
-  button.setAttribute('aria-label', item.favorite ? 'Убрать из избранного' : 'Добавить в избранное');
+  button.setAttribute('aria-label', item.favorite ? tr('archive.removeFavorite','Убрать из избранного') : tr('archive.addFavorite','Добавить в избранное'));
   button.title = button.getAttribute('aria-label');
 }
 
@@ -183,7 +184,7 @@ function syncFavoriteCard(card, item) {
 function syncEmptyState(items = visibleItems()) {
   const empty = document.getElementById('archive-empty');
   empty.hidden = items.length > 0;
-  empty.textContent = archiveItems.length ? 'По выбранному фильтру артов нет.' : 'После первой генерации здесь появятся арты Prism.';
+  empty.textContent = archiveItems.length ? tr('archive.emptyFilter','По выбранному фильтру артов нет.') : tr('archive.empty','После первой генерации здесь появятся арты Prism.');
 }
 
 function cardFor(item) {
@@ -193,9 +194,11 @@ function cardFor(item) {
   const characters = charactersForItem(item);
   if (operation) article.dataset.operationId = operation.id;
   if (item.parentId) article.dataset.parentId = item.parentId;
-  const imageButton = document.createElement('button'); imageButton.type = 'button'; imageButton.className = 'archive-image'; imageButton.setAttribute('aria-label', kind === 'grid' ? 'Открыть сетку' : 'Открыть арт');
-  const image = document.createElement('img'); image.src = imageUrl(item.image); image.alt = kind === 'grid' ? `Сетка из ${item.childIds?.length ?? 0} кадров` : characters.length ? `Арт: ${characters.map(value => value.name).join(', ')}` : 'Арт без указанного персонажа'; image.loading = 'lazy';
-  const kindLabel = document.createElement('span'); kindLabel.className = 'archive-kind'; kindLabel.textContent = `Сетка · ${item.childIds?.length ?? 0}`; kindLabel.hidden = kind !== 'grid';
+  const count=item.childIds?.length??0, names=characters.map(value=>value.name).join(', ');
+  const gridText=tr('archive.grid',`Сетка из ${count} кадров`,{count});
+  const imageButton = document.createElement('button'); imageButton.type = 'button'; imageButton.className = 'archive-image'; imageButton.setAttribute('aria-label', kind === 'grid' ? tr('archive.openGrid','Открыть сетку') : tr('archive.openImage','Открыть арт'));
+  const image = document.createElement('img'); image.src = imageUrl(item.image); image.alt = kind === 'grid' ? gridText : characters.length ? tr('archive.imageNamed',`Арт: ${names}`,{names}) : tr('archive.imageUnnamed','Арт без указанного персонажа'); image.loading = 'lazy';
+  const kindLabel = document.createElement('span'); kindLabel.className = 'archive-kind'; kindLabel.textContent = tr('archive.gridLabel',`Сетка · ${count}`,{count}); kindLabel.hidden = kind !== 'grid';
   const marker = document.createElement('span'); marker.className = 'archive-favorite-marker'; marker.hidden = !item.favorite; marker.setAttribute('aria-hidden', 'true');
   marker.innerHTML = '<svg class="ui-icon"><use href="#icon-heart"/></svg>';
   image.addEventListener('load', () => {
@@ -208,22 +211,22 @@ function cardFor(item) {
   });
   const footer = document.createElement('footer');
   const description = document.createElement('span'); description.className = 'archive-description';
-  const caption = document.createElement('span'); caption.className = 'archive-caption'; caption.textContent = kind === 'grid' ? `Сетка из ${item.childIds?.length ?? 0} кадров` : characters.map(value => value.name).join(' + ') || 'Без персонажа';
+  const caption = document.createElement('span'); caption.className = 'archive-caption'; caption.textContent = kind === 'grid' ? gridText : characters.map(value => value.name).join(' + ') || tr('archive.noCharacter','Без персонажа');
   const origin = document.createElement('span'); origin.className = 'archive-origin';
-  const operationLabel=operation?.kind==='refine'?'Refine':operation?.kind==='image-edit'?'Редактирование':'Генерация';
-  origin.textContent = operation?.sourceArtIds?.length ? `${operationLabel} · из исходника` : '';
+  const operationLabel=operation?.kind==='refine'?'Refine':operation?.kind==='image-edit'?tr('archive.edit','Редактирование'):tr('archive.generation','Генерация');
+  origin.textContent = operation?.sourceArtIds?.length ? tr('archive.fromSource',`${operationLabel} · из исходника`,{operation:operationLabel}) : '';
   origin.hidden = !origin.textContent;
   description.append(caption, origin);
   const continueButton = document.createElement('button'); continueButton.type = 'button'; continueButton.className = 'archive-continue';
-  continueButton.setAttribute('aria-label', 'Продолжить с этого арта'); continueButton.title = 'Открыть арт в генерации';
+  continueButton.setAttribute('aria-label', tr('archive.continue','Продолжить с этого арта')); continueButton.title = tr('archive.openGeneration','Открыть арт в генерации');
   continueButton.innerHTML = '<svg class="ui-icon" aria-hidden="true"><use href="#icon-sliders"/></svg>';
   continueButton.hidden = kind !== 'art' || !operation;
   continueButton.addEventListener('click', () => {
     window.dispatchEvent(new CustomEvent('prism-open-catalog-art', {detail: {itemId: item.id}}));
     setAppView('generation');
   });
-  const useAs = document.createElement('button'); useAs.type = 'button'; useAs.className = 'archive-use-as';useAs.setAttribute('aria-label','Использовать изображение как…');useAs.title='Использовать как портрет персонажа или обложку элемента библиотеки';useAs.innerHTML='<svg class="ui-icon" aria-hidden="true"><use href="#icon-person"/></svg>';
-  useAs.addEventListener('click',async()=>{useAs.disabled=true;try{const {openMediaAssignment}=await import('./library.js');await openMediaAssignment({kind:'gallery',id:item.id});}catch(error){window.dispatchEvent(new CustomEvent('dashboard-warning',{detail:`Не удалось назначить изображение: ${error.message}`}));}finally{useAs.disabled=false;}});
+  const useAs = document.createElement('button'); useAs.type = 'button'; useAs.className = 'archive-use-as';useAs.setAttribute('aria-label',tr('archive.useAs','Использовать изображение как…'));useAs.title=tr('archive.useAsHelp','Использовать как портрет персонажа или обложку элемента библиотеки');useAs.innerHTML='<svg class="ui-icon" aria-hidden="true"><use href="#icon-person"/></svg>';
+  useAs.addEventListener('click',async()=>{useAs.disabled=true;try{const {openMediaAssignment}=await import('./library.js');await openMediaAssignment({kind:'gallery',id:item.id});}catch(error){window.dispatchEvent(new CustomEvent('dashboard-warning',{detail:tr('archive.assignError',`Не удалось назначить изображение: ${error.message}`,{message:error.message})}));}finally{useAs.disabled=false;}});
   const favorite = document.createElement('button'); favorite.type = 'button'; favorite.className = 'archive-favorite';
   favorite.innerHTML = '<svg class="ui-icon" aria-hidden="true"><use href="#icon-heart"/></svg>';
   favorite.addEventListener('click', async () => {
@@ -237,7 +240,7 @@ function cardFor(item) {
         article.remove();
         syncEmptyState();
       }
-    } catch (error) { window.dispatchEvent(new CustomEvent('dashboard-warning', {detail: `Не удалось изменить избранное: ${error.message}`})); favorite.disabled = false; }
+    } catch (error) { window.dispatchEvent(new CustomEvent('dashboard-warning', {detail: tr('archive.favoriteError',`Не удалось изменить избранное: ${error.message}`,{message:error.message})})); favorite.disabled = false; }
   });
   footer.append(description, continueButton, useAs, favorite); article.append(imageButton, footer); syncFavoriteCard(article, item); return article;
 }
@@ -272,7 +275,8 @@ export async function initArchiveGallery({fetchImpl = globalThis.fetch, migrate 
   let savedPreviewSize = 220;
   try { savedPreviewSize = localStorage.getItem(PREVIEW_SIZE_KEY) ?? savedPreviewSize; } catch { /* Используем размер по умолчанию. */ }
   setPreviewSize(savedPreviewSize, {persist: false});
-  window.addEventListener('prism-output-created', event => register(event.detail).catch(error => window.dispatchEvent(new CustomEvent('dashboard-warning', {detail: `Арт сохранён на диске, но не добавлен в галерею: ${error.message}`}))));
+  window.addEventListener('prism-output-created', event => register(event.detail).catch(error => window.dispatchEvent(new CustomEvent('dashboard-warning', {detail: tr('archive.registerError',`Арт сохранён на диске, но не добавлен в галерею: ${error.message}`,{message:error.message})}))));
+  window.addEventListener('prism-language-changed',renderArchiveGallery);
   await loadGalleryCatalog();
   archiveItems = galleryCatalogItems();
   archiveOperations = galleryCatalogOperations();

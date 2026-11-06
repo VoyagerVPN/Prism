@@ -2,6 +2,23 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
 import {setupFirstRun} from '../first_run.js';
+import {createLocalization} from '../i18n.js';
+
+test('Подсказка первого запуска и отсутствие модели отображаются на выбранном языке', async()=>{
+  const dom=new JSDOM('<button id="first-run-open">Первый запуск</button>',{url:'http://localhost:8197/prism/'});
+  dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
+  dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;};
+  const l10n=await createLocalization({storage:{getItem:()=>null,setItem:()=>{}},systemLanguage:'en'});
+  try{
+    const guide=setupFirstRun({doc:dom.window.document,storage:dom.window.localStorage,localization:l10n,readiness:async()=>({backend:'http://localhost',version:'1',models:[]})});
+    await guide.open();
+    assert.equal(dom.window.document.querySelector('#first-run-title').textContent,'Getting started with Prism');
+    assert.match(dom.window.document.querySelector('[data-models]').textContent,/No model found/);
+    await l10n.changeLanguage('ru');
+    dom.window.dispatchEvent(new dom.window.CustomEvent('prism-language-changed',{detail:{language:'ru'}}));
+    assert.equal(dom.window.document.querySelector('#first-run-title').textContent,'Первый запуск Prism');
+  }finally{dom.window.close();}
+});
 
 test('Первый запуск показывает backend и недостающую модель, затем проверяет снова', async()=>{
   const dom=new JSDOM('<button id="first-run-open">Первый запуск</button>',{url:'http://localhost:8197/prism/'});

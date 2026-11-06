@@ -1,9 +1,11 @@
+import {translate as tr,translatePlural} from './i18n.js';
+
 export const batchSizes = [1,4,9];
 
 export function frameSettings(settings, index) {
-  if (!Number.isInteger(index) || index < 0 || index >= (settings.batchCount ?? 1)) throw new Error('Некорректный номер кадра');
+  if (!Number.isInteger(index) || index < 0 || index >= (settings.batchCount ?? 1)) throw new Error(tr('batch.invalidIndex','Некорректный номер кадра'));
   const offset = (seed, amount) => {
-    if (!Number.isSafeInteger(seed) || seed < 0) throw new Error('Некорректный seed кадра');
+    if (!Number.isSafeInteger(seed) || seed < 0) throw new Error(tr('batch.invalidSeed','Некорректный seed кадра'));
     return Number((BigInt(seed)+BigInt(amount)) % (BigInt(Number.MAX_SAFE_INTEGER)+1n));
   };
   const variation = settings.variationStrength > 0;
@@ -17,8 +19,9 @@ export function frameSettings(settings, index) {
 export function syncBatchControls() {
   const input = document.getElementById('batch-count');
   const count = batchSizes[Number(input.value)];
-  document.getElementById('batch-count-label').textContent = count === 1 ? '1 изображение' : `${count} изображений · ${Math.sqrt(count)}×${Math.sqrt(count)}`;
-  input.setAttribute('aria-valuetext',`${count} изображений`);
+  const text=translatePlural('gallery.imageCount',count,count===1?'1 изображение':`${count} изображений`);
+  document.getElementById('batch-count-label').textContent = count === 1 ? text : `${text} · ${Math.sqrt(count)}×${Math.sqrt(count)}`;
+  input.setAttribute('aria-valuetext',text);
 }
 
 export async function gridImage(urls) {
@@ -38,12 +41,12 @@ export async function gridImage(urls) {
   canvas.width = Math.max(1,Math.floor(width*scale));
   canvas.height = Math.max(1,Math.floor(height*scale));
   const context = canvas.getContext('2d');
-  if (!context) throw new Error('Браузер не смог создать изображение сетки');
+  if (!context) throw new Error(tr('batch.canvas','Браузер не смог создать изображение сетки'));
   context.fillStyle = '#101114'; context.fillRect(0,0,canvas.width,canvas.height);
   images.forEach((image,index) => {
     const fit = Math.min(cellWidth/image.naturalWidth,cellHeight/image.naturalHeight)*scale;
     const w = image.naturalWidth*fit, h = image.naturalHeight*fit;
     context.drawImage(image,(index%columns+.5)*cellWidth*scale-w/2,(Math.floor(index/columns)+.5)*cellHeight*scale-h/2,w,h);
   });
-  return new Promise((resolve,reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Не удалось собрать PNG сетки')),'image/png'));
+  return new Promise((resolve,reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error(tr('batch.png','Не удалось собрать PNG сетки'))),'image/png'));
 }
