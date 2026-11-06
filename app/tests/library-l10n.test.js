@@ -11,7 +11,8 @@ test('библиотека переводит категории и действ
   dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
   dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;};
   const originalFetch=globalThis.fetch;
-  globalThis.fetch=async url=>url==='/prism/characters'?Response.json({characters:{},revision:'1'}):url==='/prism/content'?Response.json({content:{},revision:'1'}):Response.json({items:[{name:'Style/light.safetensors',title:'Мой стиль',category:'Style',base:'SDXL',version:'',author:'',tags:[],triggers:[],preview:'',images:[],description:'',url:''}]});
+  let libraryRequests=0;
+  globalThis.fetch=async url=>url==='/prism/characters'?Response.json({characters:{},revision:'1'}):url==='/prism/content'?Response.json({content:{},revision:'1'}):(libraryRequests++,Response.json({items:[{name:'Style/light.safetensors',title:'Мой стиль',category:'Style',base:'SDXL',version:'',author:'',tags:[],triggers:[],preview:'',images:[],description:'',url:'',warning:'Could not read metadata: Invalid JSON',warningLocales:{en:'Could not read metadata: Invalid JSON',ru:'Не удалось прочитать метаданные: Некорректный JSON'}}]}));
   const l10n=await createLocalization({storage:{getItem:()=>null,setItem:()=>{}},systemLanguage:'en'});setActiveLocalization(l10n);
   try{
     const {initCharacters}=await import('../characters.js');const {loadLoraLibrary}=await import('../library.js');
@@ -19,6 +20,7 @@ test('библиотека переводит категории и действ
     assert.equal(document.getElementById('lora-library-title').textContent,'Library');
     assert.match(document.querySelector('[data-category=Style]').textContent,/Styles/);
     assert.equal(document.querySelector('.library-card-title span:last-child').textContent,'Мой стиль');
+    assert.equal(document.querySelector('.library-card-status').textContent,'Could not read metadata: Invalid JSON');
     assert.equal(document.querySelector('.library-add').textContent,'Add style');
     document.querySelector('.library-open').click();
     assert.equal(document.querySelector('.library-technical-details summary').textContent,'Technical details');
@@ -28,6 +30,12 @@ test('библиотека переводит категории и действ
     await l10n.changeLanguage('ru');dom.window.dispatchEvent(new dom.window.CustomEvent('prism-language-changed'));
     assert.equal(document.getElementById('lora-library-title').textContent,'Библиотека');
     assert.equal(document.querySelector('.library-card-title span:last-child').textContent,'Мой стиль');
+    assert.equal(document.querySelector('.library-card-status').textContent,'Не удалось прочитать метаданные: Некорректный JSON');
+    assert.equal(libraryRequests,1,'смена языка не требует повторного запроса');
     assert.equal(document.querySelector('[data-category=Style]').getAttribute('aria-pressed'),'true');
+    await l10n.changeLanguage('en');dom.window.dispatchEvent(new dom.window.CustomEvent('prism-language-changed'));
+    assert.equal(document.querySelector('.library-card-status').textContent,'Could not read metadata: Invalid JSON');
+    assert.equal(document.querySelector('.library-card-title span:last-child').textContent,'Мой стиль');
+    assert.equal(libraryRequests,1);
   }finally{setActiveLocalization(null);globalThis.fetch=originalFetch;dom.window.close();for(const key of ['window','document','CustomEvent','Event','Option','MutationObserver','localStorage'])delete globalThis[key];}
 });

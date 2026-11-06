@@ -470,9 +470,18 @@ def library_entry(name, path, header=None, categories=None, cover=_LOAD_MEDIA_CO
     return lora_library.local_entry(name, path, get_lora_metadata(str(path)) if header is None else header, categories, cover)
 
 def localize_library_entry(entry, request):
-    if entry.get('warning'):
-        return {**entry, 'warning': localized_message(entry['warning'], request)}
-    return entry
+    message_keys = [key for key in ('warning', 'metadataMessage') if entry.get(key)]
+    if not message_keys:
+        return entry
+    result = dict(entry)
+    headers = getattr(request, 'headers', {})
+    language = read_language(language_path, headers.get('Accept-Language', ''))
+    for key in message_keys:
+        message = entry[key]
+        locales = {'ru': message, 'en': ' · '.join(localize_message(part, 'en') for part in message.split(' · '))}
+        result[key] = locales[language]
+        result[key + 'Locales'] = locales
+    return result
 
 @routes.get('/prism/lora-library')
 async def get_lora_library(request):

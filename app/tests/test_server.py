@@ -16,6 +16,24 @@ sys.modules['folder_paths']=types.SimpleNamespace()
 spec=importlib.util.spec_from_file_location('dashboard',Path(__file__).resolve().parents[1]/'__init__.py',submodule_search_locations=[str(Path(__file__).resolve().parents[1])])
 dashboard=importlib.util.module_from_spec(spec);sys.modules['dashboard']=dashboard;spec.loader.exec_module(dashboard)
 class Checks(unittest.IsolatedAsyncioTestCase):
+ def test_library_warning_locales_preserve_combined_diagnostics_and_names(self):
+  raw='Не удалось прочитать метаданные: Некорректный JSON · Не удалось загрузить метаданные Civitai: offline'
+  entry={'name':'Алиса.safetensors','warning':raw,'metadataMessage':'Не удалось загрузить метаданные Civitai: offline'}
+  cache=Path(__file__).resolve().parents[1]/'.cache';cache.mkdir(exist_ok=True)
+  with tempfile.TemporaryDirectory(dir=cache) as directory:
+   language=Path(directory)/'language.json';language.write_text('{"language":"en"}',encoding='utf-8')
+   with patch.object(dashboard,'language_path',language):
+    result=dashboard.localize_library_entry(entry,None)
+    language.write_text('{"language":"ru"}',encoding='utf-8')
+    russian=dashboard.localize_library_entry(entry,None)
+  self.assertEqual(result['name'],'Алиса.safetensors')
+  self.assertEqual(result['warning'],'Could not read metadata: Invalid JSON · Could not load Civitai metadata: offline')
+  self.assertEqual(result['warningLocales']['ru'],raw)
+  self.assertEqual(result['warningLocales']['en'],result['warning'])
+  self.assertEqual(result['metadataMessageLocales']['en'],'Could not load Civitai metadata: offline')
+  self.assertEqual(russian['warning'],raw)
+  self.assertEqual(russian['warningLocales'],result['warningLocales'])
+  self.assertEqual(entry['warning'],raw)
  async def test_server_errors_follow_shared_language_and_preserve_names(self):
   cache=Path(__file__).resolve().parents[1]/'.cache';cache.mkdir(exist_ok=True)
   with tempfile.TemporaryDirectory(dir=cache) as directory:

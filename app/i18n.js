@@ -123,6 +123,7 @@ Object.assign(resources.en.translation.library,{
 });
 
 resources.en.translation.gallery.frameNotAdded='The image is not yet in the gallery.';
+resources.en.translation.library.warningValue='{{value}}';
 resources.en.translation.contentRegistry={
   invalidResponse:'Invalid response from content storage.', keyMismatch:'The content entity key does not match its semantic ID.',
   notRegistered:'Content storage is not registered by the Prism server. Restart the backend after updating.',

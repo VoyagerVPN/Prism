@@ -17,6 +17,9 @@ import {getPersistedContentEntities,loadContentRegistry} from './content_registr
 let items = [], initialized = false, category = 'all', modelRecipe = 'checkpoint', semanticCatalog=createContentCatalog([]), contentBySource=new Map(), semanticEntities=[], contentRegistryError='';
 const $ = id => document.getElementById(id);
 const node = (tag,text,className) => {const el=document.createElement(tag);el.textContent=text;if(className)el.className=className;return el;};
+const warningText = item => item.warningLocales
+  ? tr('library.warningValue',item.warningLocales.ru??item.warning??'',{value:item.warningLocales.en??item.warning??''})
+  : item.warning??'';
 
 function iconNode(name, label = '') {
   const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');icon.classList.add('ui-icon');
@@ -214,7 +217,7 @@ function updateButton(item, message) {
   const button=node('button','','library-update');button.type='button';button.innerHTML='<svg class="ui-icon" aria-hidden="true"><use href="#icon-refresh"/></svg>';button.title=retry?tr('library.retryMetadata','Повторить загрузку метаданных Civitai'):tr('library.updateMetadata','Обновить метаданные с Civitai');button.setAttribute('aria-label',`${button.title}: ${item.title}`);
   button.onclick=async()=>{
     button.disabled=true;message.textContent=tr('library.searchingCivitai','Поиск на Civitai…');
-    try{const response=await fetch('/prism/lora-library/lookup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:item.name}),signal:AbortSignal.timeout(90000)});const data=await response.json();if(!response.ok)throw new Error(data.error||`HTTP ${response.status}`);items=items.map(old=>old.name===item.name?data:old);syncFilters();render();$('lora-library-status').textContent=data.metadataStatus==='partial'?data.warning:tr('library.updatedCivitai',`Обновлено с Civitai: ${data.title}`,{title:data.title});}
+    try{const response=await fetch('/prism/lora-library/lookup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:item.name}),signal:AbortSignal.timeout(90000)});const data=await response.json();if(!response.ok)throw new Error(data.error||`HTTP ${response.status}`);items=items.map(old=>old.name===item.name?data:old);syncFilters();render();$('lora-library-status').textContent=data.metadataStatus==='partial'?warningText(data):tr('library.updatedCivitai',`Обновлено с Civitai: ${data.title}`,{title:data.title});}
     catch(error){message.textContent=error.message;button.disabled=false;}
   };
   return button;
@@ -430,7 +433,7 @@ function render() {
     if(kind!=='character'&&item.author)info.append(cardRow('small',item.author,'user-circle',tr('library.author','Автор')));
     if(kind==='source')info.append(cardRow('small',tr('library.needsSetup','Требуется настройка'),'inbox',tr('library.sourceStatus','Статус источника')));
     const actions=node('div','','library-card-actions');
-    const message=node('small',item.warning,'library-card-status');message.dataset.metadataStatus=item.metadataStatus??'idle';message.setAttribute('role','status');
+    const message=node('small',warningText(item),'library-card-status');message.dataset.metadataStatus=item.metadataStatus??'idle';message.setAttribute('role','status');
     if(kind==='character')actions.append(useCharacterButton(entity.name));
     else if(kind==='source')actions.append(setupSourceButton(actionItem),updateButton(actionItem,message));
     else if(type==='Character')actions.append(createCharacterButton(actionItem),copyButton(actionItem),updateButton(actionItem,message));
