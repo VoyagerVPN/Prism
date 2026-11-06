@@ -28,6 +28,7 @@ const client = new ComfyClient();
 let preparing = false;
 let ready = false;
 let queueCount = null;
+let modelScanStatus = null;
 const message = document.getElementById('dashboard-message');
 const resetButton = document.getElementById('reset-job-btn');
 const labels = { submitting: 'Отправка', queued: 'В очереди', running: 'Выполняется', reconnecting: 'Восстановление связи', unknown: 'Состояние неизвестно', cancelling: 'Отмена', cancelled: 'Отменено', failed: 'Ошибка', succeeded: 'Готово', lost: 'Задание отсоединено' };
@@ -35,6 +36,18 @@ const tr=(key,fallback,values={})=>localization?.language==='en'?localization.t(
 function warn(text) {
   message.textContent = text;
   message.hidden = !text;
+}
+function renderModelScanStatus() {
+  if (!modelScanStatus) return;
+  const status = document.getElementById('model-scan-status');
+  if (modelScanStatus.kind === 'scanning') status.textContent = tr('scanning','Поиск файлов моделей на диске…');
+  else if (modelScanStatus.kind === 'complete') {
+    const {total,added} = modelScanStatus;
+    status.textContent = tr('scanComplete',`Список обновлён: моделей ${total}, новых ${added}.`,{total,added});
+  } else {
+    const {message} = modelScanStatus;
+    status.textContent = tr('scanFailed',`Не удалось обновить список: ${message}`,{message});
+  }
 }
 function jobProgressView(job) {
   const progress = describeProgress(job.progress, job.workflow, job.settings, localization);
@@ -197,16 +210,16 @@ window.addEventListener('cancel-job', () => client.cancel().catch(error => warn(
 window.addEventListener('clear-queue', () => client.clearQueue().catch(error => warn(error.message)));
 resetButton.addEventListener('click', () => { client.abandon(); warn(tr('abandoned','Связь с неизвестным заданием снята. Оно не отправлялось повторно.')); });
 document.getElementById('refresh-models-btn').addEventListener('click', async event => {
-  const button = event.currentTarget, status = document.getElementById('model-scan-status');
+  const button = event.currentTarget;
   button.disabled = true;
   const before = new Set(modelList);
-  status.textContent = tr('scanning','Поиск файлов моделей на диске…');
+  modelScanStatus = {kind:'scanning'};renderModelScanStatus();
   try {
     await refresh();
     const added = modelList.filter(name => !before.has(name)).length;
-    status.textContent = tr('scanComplete',`Список обновлён: моделей ${modelList.length}, новых ${added}.`,{total:modelList.length,added});
-  } catch (error) { status.textContent = tr('scanFailed',`Не удалось обновить список: ${error.message}`,{message:error.message}); }
-  finally { button.disabled = false; }
+    modelScanStatus = {kind:'complete',total:modelList.length,added};
+  } catch (error) { modelScanStatus = {kind:'failed',message:error.message}; }
+  finally { button.disabled = false; renderModelScanStatus(); }
 });
 window.addEventListener('load', async () => {
   try {
@@ -223,6 +236,7 @@ window.addEventListener('load', async () => {
     document.documentElement.lang=event.detail.language;
     translateStatic(localization);
     syncBatchControls();
+    renderModelScanStatus();
     if(queueCount!==null)el.queueLengthText.textContent=tr('queuedJobs',`Заданий: ${queueCount}`,{count:queueCount});
     availability();render();void stats();
   });
